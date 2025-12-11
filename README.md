@@ -4,6 +4,29 @@ Dieses Tampermonkey-Skript ergänzt die GitLab-Issue-Boards auf `gitlab.ambient-
 Fortschrittsanzeige aus dem Portal. Es liest die dort gebuchten Stunden und zeigt sie als Progressbar in
 ausgewählten Spalten an, inklusive eines Buttons, der direkt ins Portal führt.
 
+## Installation (Tampermonkey lädt direkt von GitHub)
+
+Die Datei `portal-gitlab-ticket-progress.js` in diesem Repository ist das volle Tampermonkey-Skript; Tampermonkey lädt
+sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automatisch die neueste Version bekommen.
+
+1. Öffne das Tampermonkey-Dashboard (Icon in der Erweiterungsleiste → „Dashboard“).
+2. Klicke auf „+“ und wähle „Install from URL“ / „Bei URL installieren“, statt ein neues Skript anzulegen.
+3. Gib die RAW-URL ein:
+
+   ```text
+   https://raw.githubusercontent.com/christoph-teichmeister/tampermonkey-portal-gitlab-ticket-progress/main/portal-gitlab-ticket-progress.js
+   ```
+
+   Die URL verweist auf dieselbe `portal-gitlab-ticket-progress.js`, die in diesem Repo liegt.
+4. Tampermonkey zeigt Name/Version/Berechtigungen und du bestätigst mit „Installieren“. Das Script wird auf
+   `https://gitlab.ambient-innovation.com/*/*/-/boards*` aktiv.
+5. Die `@updateURL`/`@downloadURL` im Skriptkopf halten alles automatisch aktuell – nach der einmaligen Installation
+   liefert Tampermonkey neue Versionen direkt aus diesem Repo.
+6. Über die Debug/Anzeige-Toggles in der GitLab-Topbar kannst du das Verhalten bei Bedarf ein- oder ausschalten.
+7. Klicke in der GitLab-Topbar auf das Zahnrad, um die „Projekt-Konfiguration“ zu öffnen, und trage dort die
+   Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Die Einstellung wird lokal gespeichert, damit dieser
+   Workspace weiß, welche URL er abfragen darf, und du musst sie nur einmal eintragen.
+
 ## Wesentliche Features
 
 - Setzt eine Toolbar oberhalb der Board-Ansicht mit Dark-Mode-Stil, Debug- und Anzeige-Toggles.
@@ -34,29 +57,6 @@ ausgewählten Spalten an, inklusive eines Buttons, der direkt ins Portal führt.
 Die beiden Schalter befinden sich direkt in der GitLab-Topbar (rechts außen) als stilisierte Switch-Toggles. Es
 gibt keine zusätzliche Toolbar mehr oberhalb des Boards; die Steuerelemente folgen optisch der oberen Navigation
 und bleiben beim Board-Scrollen sichtbar.
-
-## Installation (Tampermonkey lädt direkt von GitHub)
-
-Die Datei `portal-gitlab-ticket-progress.js` in diesem Repository ist das volle Tampermonkey-Skript; Tampermonkey lädt
-sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automatisch die neueste Version bekommen.
-
-1. Öffne das Tampermonkey-Dashboard (Icon in der Erweiterungsleiste → „Dashboard“).
-2. Klicke auf „+“ und wähle „Install from URL“ / „Bei URL installieren“, statt ein neues Skript anzulegen.
-3. Gib die RAW-URL ein:
-
-   ```text
-   https://raw.githubusercontent.com/christoph-teichmeister/tampermonkey-portal-gitlab-ticket-progress/main/portal-gitlab-ticket-progress.js
-   ```
-
-   Die URL verweist auf dieselbe `portal-gitlab-ticket-progress.js`, die in diesem Repo liegt.
-4. Tampermonkey zeigt Name/Version/Berechtigungen und du bestätigst mit „Installieren“. Das Script wird auf
-   `https://gitlab.ambient-innovation.com/*/*/-/boards*` aktiv.
-5. Die `@updateURL`/`@downloadURL` im Skriptkopf halten alles automatisch aktuell – nach der einmaligen Installation
-   liefert Tampermonkey neue Versionen direkt aus diesem Repo.
-6. Über die Debug/Anzeige-Toggles in der GitLab-Topbar kannst du das Verhalten bei Bedarf ein- oder ausschalten.
-7. Klicke in der GitLab-Topbar auf das Zahnrad, um die „Projekt-Konfiguration“ zu öffnen, und trage dort die
-   Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Die Einstellung wird lokal gespeichert, damit dieser
-   Workspace weiß, welche URL er abfragen darf, und du musst sie nur einmal eintragen.
 
 ## Hinweise
 
