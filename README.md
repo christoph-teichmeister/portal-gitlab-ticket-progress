@@ -61,7 +61,8 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
 - **Debug** (`portalProgressDebug`): schaltet Logging (`console.log`) für den Entwicklungsworkflow ein/aus.
 - **Anzeigen** (`portalProgressShow`): blendet alle Badges ein/aus. Bei eingeschaltetem Zustand löst das Skript ggf.
   einen neuen Board-Scan aus.
-- **Cache leeren**: ein grüner Button in der Toolbar löscht den Fortschritts-Cache und startet sofort einen neuen Scan.
+- **Cache leeren**: über den grünen Button im Einstellungen-Dropdown der Toolbar kannst du den Fortschritts-Cache
+  löschen. Es wird sofort ein neuer Scan gestartet und du siehst eine temporäre Bestätigung in der Bannerleiste.
 
 Die beiden Schalter befinden sich direkt in der GitLab-Topbar (rechts außen) als stilisierte Switch-Toggles. Es
 gibt keine zusätzliche Toolbar mehr oberhalb des Boards; die Steuerelemente folgen optisch der oberen Navigation

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.1.4
+// @version      3.1.5
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles im Dark Mode und Link-Button zum Portal.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -22,6 +22,22 @@
   const HOST_CONFIG = {};
 
   let toolbarPortalWarningElement = null;
+  const TOOLBAR_BANNER_DEFAULT = {
+    background: '#fbbf24',
+    color: '#1f2937'
+  };
+
+  function showToolbarBanner(options) {
+    if (!toolbarPortalWarningElement) return;
+    if (!options || !options.visible) {
+      toolbarPortalWarningElement.style.display = 'none';
+      return;
+    }
+    toolbarPortalWarningElement.style.display = 'flex';
+    toolbarPortalWarningElement.textContent = options.text || '';
+    toolbarPortalWarningElement.style.background = options.background || TOOLBAR_BANNER_DEFAULT.background;
+    toolbarPortalWarningElement.style.color = options.color || TOOLBAR_BANNER_DEFAULT.color;
+  }
 
   // Debug / Anzeige – gesteuert über Toolbar, persistiert in localStorage
   const LS_KEY_DEBUG = 'portalProgressDebug';
@@ -29,7 +45,7 @@
   const LS_KEY_LIST_SELECTIONS = 'ambientProgressListSelections';
   const LS_KEY_PROJECT_CONFIG = 'ambientProgressProjectConfigs';
 
-  let debugEnabled = readBoolFromLocalStorage(LS_KEY_DEBUG, true);  // default: Debug an
+  let debugEnabled = readBoolFromLocalStorage(LS_KEY_DEBUG, false);  // default: Debug aus
   let showEnabled = readBoolFromLocalStorage(LS_KEY_SHOW, true);    // default: Anzeigen an
 
   const LOG_PREFIX = '[GitLab Progress]';
@@ -1391,7 +1407,16 @@
   function refreshPortalBaseWarning(projectSettings) {
     if (!toolbarPortalWarningElement) return;
     const baseUrl = getPortalBaseUrl(projectSettings);
-    toolbarPortalWarningElement.style.display = baseUrl ? 'none' : 'flex';
+    if (!baseUrl) {
+      showToolbarBanner({
+        visible: true,
+        text: 'Portal-Base URL fehlt – ⚙ → Projekt-Konfiguration öffnen und eintragen.',
+        background: TOOLBAR_BANNER_DEFAULT.background,
+        color: TOOLBAR_BANNER_DEFAULT.color
+      });
+    } else {
+      showToolbarBanner({visible: false});
+    }
   }
 
   function createToolbar(hostConfig, projectSettings) {
@@ -1588,10 +1613,14 @@
       const projectConfigSection = createProjectConfigSection(hostConfig, projectSettings);
       dropdown.appendChild(projectConfigSection);
     }
-    gearWrapper.appendChild(gearButton);
-    gearWrapper.appendChild(dropdown);
-    bar.appendChild(gearWrapper);
 
+    const actionsRow = document.createElement('div');
+    applyStyles(actionsRow, {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingTop: '0.35rem'
+    });
     const clearCacheButton = document.createElement('button');
     clearCacheButton.type = 'button';
     clearCacheButton.textContent = 'Cache leeren';
@@ -1600,7 +1629,7 @@
       border: 'none',
       borderRadius: '6px',
       color: '#fff',
-      padding: '4px 10px',
+      padding: '0.35rem 0.85rem',
       fontSize: '12px',
       cursor: 'pointer'
     });
@@ -1612,12 +1641,21 @@
         scanBoard(hostConfig, projectSettings);
         scanIssueDetail(hostConfig, projectSettings);
       }
-      clearCacheButton.textContent = 'Cache geleert';
+      showToolbarBanner({
+        visible: true,
+        text: 'Cache geleert',
+        background: '#10b981',
+        color: '#0f172a'
+      });
       setTimeout(function () {
-        clearCacheButton.textContent = 'Cache leeren';
-      }, 1200);
+        refreshPortalBaseWarning(projectSettings);
+      }, 1400);
     });
-    bar.appendChild(clearCacheButton);
+    actionsRow.appendChild(clearCacheButton);
+    dropdown.appendChild(actionsRow);
+    gearWrapper.appendChild(gearButton);
+    gearWrapper.appendChild(dropdown);
+    bar.appendChild(gearWrapper);
 
     const warningBanner = document.createElement('div');
     applyStyles(warningBanner, {
