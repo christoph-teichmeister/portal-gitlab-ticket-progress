@@ -10,7 +10,8 @@ Die Datei `portal-gitlab-ticket-progress.js` in diesem Repository ist das volle 
 sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automatisch die neueste Version bekommen.
 
 1. Öffne das Tampermonkey-Dashboard (Icon in der Erweiterungsleiste → "Dashboard").
-2. Klicke auf "Utilities" / "Hilfsmittel" und wähle "Import from URL" / "Von URL importieren", statt ein neues Skript anzulegen.
+2. Klicke auf "Utilities" / "Hilfsmittel" und wähle "Import from URL" / "Von URL importieren", statt ein neues Skript
+   anzulegen.
 3. Gib die RAW-URL ein:
 
    ```text
@@ -24,7 +25,8 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    liefert Tampermonkey neue Versionen direkt aus diesem Repo.
 6. Über die Debug/Anzeige-Toggles in der GitLab-Topbar kannst du das Verhalten bei Bedarf ein- oder ausschalten.
 7. Klicke in der GitLab-Topbar auf das Zahnrad, um die „Projekt-Konfiguration“ zu öffnen, und trage dort die
-   Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Die Einstellung wird lokal gespeichert, damit dieser
+   Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Die Einstellung wird lokal gespeichert, damit
+   dieser
    Workspace weiß, welche URL er abfragen darf, und du musst sie nur einmal eintragen.
 8. Wenn du die Portal-Base-URL noch nicht gespeichert hast, zeigt eine gelbe Warnung in der Toolbar unter den Toggles
    den Hinweis „Portal-Base URL fehlt […]“. Öffne dann einfach das Zahnrad und trage die URL ein.
@@ -47,7 +49,7 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
   zusätzlichen Eintrag unter dem Host hinzufügen, z. B. mit `projectId` und `listNamesToInclude`.
 - Die URL zum Portal wird über `buildPortalUrl(projectId, issueIid)` generiert; `projectId` muss mit dem Portal
   übereinstimmen, damit der Link funktioniert.
-- Die Toolbar unter "Projekt-Konfiguration" erlaubt es, pro Projekt eine `Portal-Base URL` zu speichern (z. B.
+- Die Toolbar unter "Projekt-Konfiguration" erlaubt es, pro Projekt eine `Portal-Base URL` zu speichern (z. B.
   `https://user-portal.arbeitgeber.com`). Diese Einstellung wird lokal im Browser behalten und erst dann werden
   Ticketdaten geladen. Optional kann `HOST_CONFIG` einen `portalBaseUrl`-Wert enthalten, um die Eingabe vorab zu
   befüllen, falls mehrere Nutzer den gleichen Host verwenden.
@@ -59,6 +61,7 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
 - **Debug** (`portalProgressDebug`): schaltet Logging (`console.log`) für den Entwicklungsworkflow ein/aus.
 - **Anzeigen** (`portalProgressShow`): blendet alle Badges ein/aus. Bei eingeschaltetem Zustand löst das Skript ggf.
   einen neuen Board-Scan aus.
+- **Cache leeren**: ein grüner Button in der Toolbar löscht den Fortschritts-Cache und startet sofort einen neuen Scan.
 
 Die beiden Schalter befinden sich direkt in der GitLab-Topbar (rechts außen) als stilisierte Switch-Toggles. Es
 gibt keine zusätzliche Toolbar mehr oberhalb des Boards; die Steuerelemente folgen optisch der oberen Navigation

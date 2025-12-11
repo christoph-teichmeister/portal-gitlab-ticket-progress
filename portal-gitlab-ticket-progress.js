@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.1.3
+// @version      3.1.4
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles im Dark Mode und Link-Button zum Portal.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -1591,6 +1591,33 @@
     gearWrapper.appendChild(gearButton);
     gearWrapper.appendChild(dropdown);
     bar.appendChild(gearWrapper);
+
+    const clearCacheButton = document.createElement('button');
+    clearCacheButton.type = 'button';
+    clearCacheButton.textContent = 'Cache leeren';
+    applyStyles(clearCacheButton, {
+      background: '#10b981',
+      border: 'none',
+      borderRadius: '6px',
+      color: '#fff',
+      padding: '4px 10px',
+      fontSize: '12px',
+      cursor: 'pointer'
+    });
+    clearCacheButton.addEventListener('click', function () {
+      clearProgressCache();
+      const hostConfig = getCurrentHostConfig();
+      const projectSettings = hostConfig && getProjectSettings(hostConfig);
+      if (hostConfig && projectSettings) {
+        scanBoard(hostConfig, projectSettings);
+        scanIssueDetail(hostConfig, projectSettings);
+      }
+      clearCacheButton.textContent = 'Cache geleert';
+      setTimeout(function () {
+        clearCacheButton.textContent = 'Cache leeren';
+      }, 1200);
+    });
+    bar.appendChild(clearCacheButton);
 
     const warningBanner = document.createElement('div');
     applyStyles(warningBanner, {
