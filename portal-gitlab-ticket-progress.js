@@ -911,7 +911,7 @@
       ev.stopPropagation();
       ev.preventDefault();
       if (url) {
-        window.open(url, '_blank', 'noopener');
+        window.open(url, '_blank', 'noopener,noreferrer');
       }
     }, true);
     row.appendChild(barOuter);
