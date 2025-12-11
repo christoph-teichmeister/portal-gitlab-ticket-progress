@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.1.1
+// @version      3.1.2
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles im Dark Mode und Link-Button zum Portal.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
 // @grant        GM_xmlhttpRequest
 // @connect      portal.ambient.digital
-// @updateURL    https://raw.githubusercontent.com/christoph-teichmeister/tampermonkey-ambient-gitlab-ticket-progress/main/ambient-gitlab-ticket-progress.js
-// @downloadURL  https://raw.githubusercontent.com/christoph-teichmeister/tampermonkey-ambient-gitlab-ticket-progress/main/ambient-gitlab-ticket-progress.js
+// @updateURL    https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/main/portal-gitlab-ticket-progress.js
+// @downloadURL  https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/main/portal-gitlab-ticket-progress.js
 // ==/UserScript==
 
 (function () {
