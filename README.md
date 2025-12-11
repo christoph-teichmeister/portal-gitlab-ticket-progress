@@ -68,12 +68,16 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
 - **Version**: im Einstellungen-Dropdown (⚙) steht oben ein Label „Version: X.X.X“, damit du direkt siehst, welche
   Skript-Version gerade aktiv ist.
 - **Cache leeren**: über den grünen Button im Einstellungen-Dropdown kannst du den Fortschritts-Cache löschen. Es
-  wird sofort ein neuer Scan gestartet und du erhältst eine kurze Bestätigung über den Toast rechts oben.
+  wird sofort ein neuer Scan gestartet und du erhältst eine kurze Bestätigung über den Toast rechts oben. Cache
+  leeren hebt auch einen Block auf, den ein fehlerhafter Portal-Request (403/404) vorbelegt, sodass neue Requests
+  wieder erlaubt sind.
+- **Fehlerzustände**: Wenn ein Portal-Request z. B. mit 404 oder 403 antwortet, bekommst du sofort einen Toast mit dem
+  Statuscode und das Script stoppt alle weiteren Anfragen, bis du über das ⚙ die Portal-Base-URL noch einmal speicherst.
 - **UI-Feedback**: Warnungen wie „Portal-Base URL fehlt …“ oder Bestätigungen wie „Cache geleert“ fliegen von oben
   rechts ein, bleiben fünf Sekunden sichtbar und fliegen wieder aus. So bleibt die Toolbar aufgeräumt.
-- **Fehlerzustände**: Wenn der Portal-Request z. B. mit 404 oder 403 antwortet, bekommst du sofort einen Toast mit dem
-  Statuscode und das Skript stoppt weitere Requests, bis du die Portal-Base-URL über das ⚙ neu abspeicherst oder den
-  Cache löschst.
+- **Einstellungen speichern**: Der Save-Button am Dropdown-Bottom ist zunächst deaktiviert und wird bei jeder Änderung
+  aktiv. Nach dem Speichern der Portal-Base-URL oder Projekt-ID lädt das Script die Seite neu, damit die neuen Einstellungen
+  sofort wirken.
 
 Die beiden Switches (Debug/Anzeigen) befinden sich direkt in der GitLab-Topbar (rechts außen) als stilisierte
 Schalter; die restlichen Einstellungen leben im Dropdown hinter dem ⚙ und bleiben beim Scrollen sichtbar.

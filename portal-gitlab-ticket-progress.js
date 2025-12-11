@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.1.8
+// @version      3.1.9
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -19,7 +19,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.1.8';
+  const SCRIPT_VERSION = '3.1.9';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -43,6 +43,12 @@
   let toastHideTimer = null;
   let lastPortalWarningAt = 0;
   const blockedProjectRequests = {};
+  let saveButtonElement = null;
+  let settingsDirty = false;
+  let projectIdInputElement = null;
+  let portalUrlInputElement = null;
+  let projectStatusElement = null;
+  let portalStatusElement = null;
 
   // Debug / Anzeige – gesteuert über Toolbar, persistiert in localStorage
   const LS_KEY_DEBUG = 'portalProgressDebug';
@@ -146,6 +152,21 @@
     if (!projectKey) return;
     if (blockedProjectRequests[projectKey]) {
       delete blockedProjectRequests[projectKey];
+    }
+  }
+
+  function markSettingsDirty() {
+    if (!saveButtonElement) return;
+    if (!settingsDirty) {
+      settingsDirty = true;
+      saveButtonElement.disabled = false;
+    }
+  }
+
+  function resetSettingsDirty() {
+    settingsDirty = false;
+    if (saveButtonElement) {
+      saveButtonElement.disabled = true;
     }
   }
 
@@ -1620,6 +1641,7 @@
       checkbox.addEventListener('change', function () {
         updateAppearance(checkbox.checked);
         onChange(checkbox.checked);
+        markSettingsDirty();
       });
 
       switchWrapper.appendChild(slider);
@@ -1760,6 +1782,83 @@
     });
     actionsRow.appendChild(clearCacheButton);
     dropdown.appendChild(actionsRow);
+    const saveRow = document.createElement('div');
+    applyStyles(saveRow, {
+      display: 'flex',
+      justifyContent: 'center',
+      padding: '0.35rem 0 0 0'
+    });
+    const saveButton = document.createElement('button');
+    saveButton.type = 'button';
+    saveButton.textContent = 'Einstellungen speichern';
+    applyStyles(saveButton, {
+      background: '#2563eb',
+      border: 'none',
+      borderRadius: '6px',
+      padding: '0.45rem 1rem',
+      color: '#fff',
+      fontSize: '12px',
+      cursor: 'pointer',
+      width: '100%'
+    });
+    saveButton.disabled = true;
+    saveButtonElement = saveButton;
+    saveButton.addEventListener('click', function () {
+      if (!projectSettings || !projectIdInputElement || !portalUrlInputElement) {
+        return;
+      }
+      const projectAttempt = projectIdInputElement.value.trim();
+      const portalAttempt = portalUrlInputElement.value.trim();
+      if (!projectAttempt) {
+        if (projectStatusElement) {
+          projectStatusElement.textContent = 'Bitte gib eine Projekt-ID ein.';
+        }
+        return;
+      }
+      if (!/^\d+$/.test(projectAttempt)) {
+        if (projectStatusElement) {
+          projectStatusElement.textContent = 'Projekt-ID darf nur Zahlen enthalten.';
+        }
+        return;
+      }
+      if (!portalAttempt) {
+        if (portalStatusElement) {
+          portalStatusElement.textContent = 'Bitte gib eine Portal-Base URL ein.';
+        }
+        return;
+      }
+      const entry = {};
+      let changed = false;
+      if (projectAttempt !== projectSettings.projectId) {
+        entry.projectId = projectAttempt;
+        changed = true;
+      }
+      if (portalAttempt !== projectSettings.portalBaseUrl) {
+        entry.portalBaseUrl = portalAttempt;
+        changed = true;
+      }
+      if (!changed) {
+        showToast({text: 'Keine Änderungen vorhanden.', variant: 'info'});
+        resetSettingsDirty();
+        return;
+      }
+      writeProjectConfigEntry(projectSettings.projectKey, entry);
+      if (entry.projectId) {
+        projectSettings.projectId = entry.projectId;
+      }
+      if (entry.portalBaseUrl) {
+        projectSettings.portalBaseUrl = entry.portalBaseUrl;
+      }
+      resetSettingsDirty();
+      clearProgressCache();
+      clearProjectRequestBlock(projectSettings.projectKey);
+      showToast({text: 'Einstellungen gespeichert', variant: 'success'});
+      setTimeout(function () {
+        window.location.reload();
+      }, 100);
+    });
+    saveRow.appendChild(saveButton);
+    dropdown.appendChild(saveRow);
     gearWrapper.appendChild(gearButton);
     gearWrapper.appendChild(dropdown);
     bar.appendChild(gearWrapper);
@@ -1880,19 +1979,7 @@
       color: '#f8fafc',
       fontSize: '0.85rem'
     });
-
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = 'Speichern';
-    applyStyles(button, {
-      background: '#2563eb',
-      border: 'none',
-      borderRadius: '6px',
-      padding: '0.35rem 0.85rem',
-      color: '#fff',
-      fontSize: '0.85rem',
-      cursor: 'pointer'
-    });
+    projectIdInputElement = input;
 
     const status = document.createElement('div');
     applyStyles(status, {
@@ -1901,30 +1988,14 @@
       minHeight: '1em'
     });
 
-    button.addEventListener('click', function () {
-      const attempt = input.value.trim();
-      if (!attempt) {
-        status.textContent = 'Bitte gib eine Projekt-ID ein.';
-        return;
-      }
-      if (!/^\d+$/.test(attempt)) {
-        status.textContent = 'Projekt-ID darf nur Zahlen enthalten.';
-        return;
-      }
-      writeProjectConfigEntry(projectSettings.projectKey, {projectId: attempt});
-      projectSettings.projectId = attempt;
-      updateCurrentLabel(attempt);
-      status.textContent = 'Projekt-ID gespeichert.';
-      clearProgressCache();
-      if (hostConfig && projectSettings) {
-        scanBoard(hostConfig, projectSettings);
-        scanIssueDetail(hostConfig, projectSettings);
-      }
-      window.location.reload();
+    projectStatusElement = status;
+
+    input.addEventListener('input', function () {
+      markSettingsDirty();
+      status.textContent = '';
     });
 
     formRow.appendChild(input);
-    formRow.appendChild(button);
     section.appendChild(heading);
     section.appendChild(pathInfo);
     section.appendChild(currentId);
@@ -1972,19 +2043,7 @@
       color: '#f8fafc',
       fontSize: '0.85rem'
     });
-
-    const portalButton = document.createElement('button');
-    portalButton.type = 'button';
-    portalButton.textContent = 'Speichern';
-    applyStyles(portalButton, {
-      background: '#2563eb',
-      border: 'none',
-      borderRadius: '6px',
-      padding: '0.35rem 0.85rem',
-      color: '#fff',
-      fontSize: '0.85rem',
-      cursor: 'pointer'
-    });
+    portalUrlInputElement = portalInput;
 
     const portalStatus = document.createElement('div');
     applyStyles(portalStatus, {
@@ -1992,28 +2051,14 @@
       color: '#a5b4fc',
       minHeight: '1em'
     });
+    portalStatusElement = portalStatus;
 
-    portalButton.addEventListener('click', function () {
-      const attempt = portalInput.value.trim();
-      if (!attempt) {
-        portalStatus.textContent = 'Bitte gib eine Portal-Base URL ein.';
-        return;
-      }
-      writeProjectConfigEntry(projectSettings.projectKey, {portalBaseUrl: attempt});
-      projectSettings.portalBaseUrl = attempt;
-      updatePortalLabel(attempt);
-      portalStatus.textContent = 'Portal-Base URL gespeichert.';
-      clearProgressCache();
-      clearProjectRequestBlock(projectSettings.projectKey);
-      if (hostConfig && projectSettings) {
-        scanBoard(hostConfig, projectSettings);
-        scanIssueDetail(hostConfig, projectSettings);
-      }
-      refreshPortalBaseWarning(projectSettings);
+    portalInput.addEventListener('input', function () {
+      markSettingsDirty();
+      portalStatus.textContent = '';
     });
 
     portalRow.appendChild(portalInput);
-    portalRow.appendChild(portalButton);
     section.appendChild(portalHeading);
     section.appendChild(portalCurrent);
     section.appendChild(portalRow);
