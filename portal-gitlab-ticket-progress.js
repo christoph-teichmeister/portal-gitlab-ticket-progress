@@ -1779,7 +1779,7 @@
 
     const portalInput = document.createElement('input');
     portalInput.type = 'text';
-    portalInput.placeholder = 'https://portal.ambient.digital';
+    portalInput.placeholder = 'https://user-portal.arbeitgeber.com';
     portalInput.value = projectSettings.portalBaseUrl || '';
     applyStyles(portalInput, {
       flex: '1 1 auto',
