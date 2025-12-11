@@ -45,6 +45,10 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
   zusätzlichen Eintrag unter dem Host hinzufügen, z. B. mit `projectId` und `listNamesToInclude`.
 - Die URL zum Portal wird über `buildPortalUrl(projectId, issueIid)` generiert; `projectId` muss mit dem Portal
   übereinstimmen, damit der Link funktioniert.
+- Die Toolbar unter „Projekt-Konfiguration“ erlaubt es, pro Projekt eine `Portal-Base URL` zu speichern (z. B.
+  `https://user-portal.arbeitgeber.com`). Diese Einstellung wird lokal im Browser behalten und erst dann werden
+  Ticketdaten geladen. Optional kann `HOST_CONFIG` einen `portalBaseUrl`-Wert enthalten, um die Eingabe vorab zu
+  befüllen, falls mehrere Nutzer den gleichen Host verwenden.
 - Die Progress-Daten werden entweder aus einer `div.progress` (mit `div.progress-bar`-Unterelementen) oder als Fallback
   über den Text `Booked Hours` extrahiert.
 
