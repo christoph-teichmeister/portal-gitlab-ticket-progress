@@ -7,8 +7,8 @@
 // @match        https://gitlab.ambient-innovation.com/*
 // @grant        GM_xmlhttpRequest
 // @connect      portal.ambient.digital
-// @updateURL    https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/main/portal-gitlab-ticket-progress.js
-// @downloadURL  https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/main/portal-gitlab-ticket-progress.js
+// @updateURL    https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/portal-gitlab-ticket-progress.js
+// @downloadURL  https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/portal-gitlab-ticket-progress.js
 // ==/UserScript==
 
 (function () {

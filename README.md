@@ -14,7 +14,7 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
 3. Gib die RAW-URL ein:
 
    ```text
-   https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/main/portal-gitlab-ticket-progress.js
+   https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/portal-gitlab-ticket-progress.js
    ```
 
    Die URL verweist auf dieselbe `portal-gitlab-ticket-progress.js`, die in diesem Repo liegt.
