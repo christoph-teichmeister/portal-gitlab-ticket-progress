@@ -1719,27 +1719,27 @@
       minHeight: '1em'
     });
 
-      button.addEventListener('click', function () {
-        const attempt = input.value.trim();
-        if (!attempt) {
-          status.textContent = 'Bitte gib eine Projekt-ID ein.';
-          return;
-        }
-        if (!/^\d+$/.test(attempt)) {
-          status.textContent = 'Projekt-ID darf nur Zahlen enthalten.';
-          return;
-        }
-        writeProjectConfigEntry(projectSettings.projectKey, {projectId: attempt});
-        projectSettings.projectId = attempt;
-        updateCurrentLabel(attempt);
-        status.textContent = 'Projekt-ID gespeichert.';
-        clearProgressCache();
-        if (hostConfig && projectSettings) {
-          scanBoard(hostConfig, projectSettings);
-          scanIssueDetail(hostConfig, projectSettings);
-        }
-        window.location.reload();
-      });
+    button.addEventListener('click', function () {
+      const attempt = input.value.trim();
+      if (!attempt) {
+        status.textContent = 'Bitte gib eine Projekt-ID ein.';
+        return;
+      }
+      if (!/^\d+$/.test(attempt)) {
+        status.textContent = 'Projekt-ID darf nur Zahlen enthalten.';
+        return;
+      }
+      writeProjectConfigEntry(projectSettings.projectKey, {projectId: attempt});
+      projectSettings.projectId = attempt;
+      updateCurrentLabel(attempt);
+      status.textContent = 'Projekt-ID gespeichert.';
+      clearProgressCache();
+      if (hostConfig && projectSettings) {
+        scanBoard(hostConfig, projectSettings);
+        scanIssueDetail(hostConfig, projectSettings);
+      }
+      window.location.reload();
+    });
 
     formRow.appendChild(input);
     formRow.appendChild(button);
