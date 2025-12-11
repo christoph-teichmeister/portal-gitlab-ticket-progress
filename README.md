@@ -23,9 +23,11 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
 5. Die `@updateURL`/`@downloadURL` im Skriptkopf halten alles automatisch aktuell – nach der einmaligen Installation
    liefert Tampermonkey neue Versionen direkt aus diesem Repo.
 6. Über die Debug/Anzeige-Toggles in der GitLab-Topbar kannst du das Verhalten bei Bedarf ein- oder ausschalten.
-7. Klicke in der GitLab-Topbar auf das Zahnrad, um die "Projekt-Konfiguration" zu öffnen, und trage dort die
-   Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Die Einstellung wird lokal gespeichert, damit dieser
+7. Klicke in der GitLab-Topbar auf das Zahnrad, um die „Projekt-Konfiguration“ zu öffnen, und trage dort die
+   Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Die Einstellung wird lokal gespeichert, damit dieser
    Workspace weiß, welche URL er abfragen darf, und du musst sie nur einmal eintragen.
+8. Wenn du die Portal-Base-URL noch nicht gespeichert hast, zeigt eine gelbe Warnung in der Toolbar unter den Toggles
+   den Hinweis „Portal-Base URL fehlt […]“. Öffne dann einfach das Zahnrad und trage die URL ein.
 
 ## Wesentliche Features
 

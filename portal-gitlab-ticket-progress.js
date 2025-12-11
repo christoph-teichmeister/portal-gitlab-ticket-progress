@@ -21,6 +21,8 @@
   // Host- / Projekt-Konfiguration
   const HOST_CONFIG = {};
 
+  let toolbarPortalWarningElement = null;
+
   // Debug / Anzeige – gesteuert über Toolbar, persistiert in localStorage
   const LS_KEY_DEBUG = 'portalProgressDebug';
   const LS_KEY_SHOW = 'portalProgressShow';
@@ -1386,6 +1388,12 @@
    * Toolbar (Debug/Anzeigen – Dark Mode)
    ******************************************************************/
 
+  function refreshPortalBaseWarning(projectSettings) {
+    if (!toolbarPortalWarningElement) return;
+    const baseUrl = getPortalBaseUrl(projectSettings);
+    toolbarPortalWarningElement.style.display = baseUrl ? 'none' : 'flex';
+  }
+
   function createToolbar(hostConfig, projectSettings) {
     const existing = document.getElementById('ambient-progress-toolbar');
     if (existing) return existing;
@@ -1583,6 +1591,27 @@
     gearWrapper.appendChild(gearButton);
     gearWrapper.appendChild(dropdown);
     bar.appendChild(gearWrapper);
+
+    const warningBanner = document.createElement('div');
+    applyStyles(warningBanner, {
+      display: 'none',
+      alignItems: 'center',
+      gap: '0.35rem',
+      padding: '0.2rem 0.85rem',
+      borderRadius: '999px',
+      background: '#fbbf24',
+      color: '#1f2937',
+      fontSize: '11px',
+      fontWeight: '500',
+      letterSpacing: '0.02em',
+      whiteSpace: 'nowrap',
+      cursor: 'default'
+    });
+    warningBanner.setAttribute('role', 'alert');
+    warningBanner.textContent =
+      'Portal-Base URL fehlt – ⚙ → Projekt-Konfiguration öffnen und eintragen.';
+    toolbarPortalWarningElement = warningBanner;
+    bar.appendChild(warningBanner);
     let dropdownLocked = false;
     let hoverOpen = false;
     let closeTimer = null;
@@ -1635,6 +1664,7 @@
     });
 
     insertParent.appendChild(bar);
+    refreshPortalBaseWarning(projectSettings);
     return bar;
   }
 
@@ -1826,6 +1856,7 @@
         scanBoard(hostConfig, projectSettings);
         scanIssueDetail(hostConfig, projectSettings);
       }
+      refreshPortalBaseWarning(projectSettings);
     });
 
     portalRow.appendChild(portalInput);
