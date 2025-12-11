@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.2.0
+// @version      3.2.1
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -19,7 +19,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.2.0';
+  const SCRIPT_VERSION = '3.2.1';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -43,8 +43,6 @@
   let toastHideTimer = null;
   let lastPortalWarningAt = 0;
   const blockedProjectRequests = {};
-  let saveButtonElement = null;
-  let settingsDirty = false;
   let projectIdInputElement = null;
   let portalUrlInputElement = null;
   let projectStatusElement = null;
@@ -152,21 +150,6 @@
     if (!projectKey) return;
     if (blockedProjectRequests[projectKey]) {
       delete blockedProjectRequests[projectKey];
-    }
-  }
-
-  function markSettingsDirty() {
-    if (!saveButtonElement) return;
-    if (!settingsDirty) {
-      settingsDirty = true;
-      saveButtonElement.disabled = false;
-    }
-  }
-
-  function resetSettingsDirty() {
-    settingsDirty = false;
-    if (saveButtonElement) {
-      saveButtonElement.disabled = true;
     }
   }
 
@@ -1641,7 +1624,6 @@
       checkbox.addEventListener('change', function () {
         updateAppearance(checkbox.checked);
         onChange(checkbox.checked);
-        markSettingsDirty();
       });
 
       switchWrapper.appendChild(slider);
@@ -1804,8 +1786,6 @@
       cursor: 'pointer',
       width: '100%'
     });
-    saveButton.disabled = true;
-    saveButtonElement = saveButton;
     saveButton.addEventListener('click', function () {
       if (!projectSettings || !projectIdInputElement || !portalUrlInputElement) {
         return;
@@ -1842,7 +1822,6 @@
       }
       if (!changed) {
         showToast({text: 'Keine Änderungen vorhanden.', variant: 'info'});
-        resetSettingsDirty();
         return;
       }
       writeProjectConfigEntry(projectSettings.projectKey, entry);
@@ -1852,7 +1831,6 @@
       if (entry.portalBaseUrl) {
         projectSettings.portalBaseUrl = entry.portalBaseUrl;
       }
-      resetSettingsDirty();
       clearProgressCache();
       clearProjectRequestBlock(projectSettings.projectKey);
       showToast({text: 'Einstellungen gespeichert', variant: 'success'});
@@ -1994,7 +1972,6 @@
     projectStatusElement = status;
 
     input.addEventListener('input', function () {
-      markSettingsDirty();
       status.textContent = '';
     });
 
@@ -2057,7 +2034,6 @@
     portalStatusElement = portalStatus;
 
     portalInput.addEventListener('input', function () {
-      markSettingsDirty();
       portalStatus.textContent = '';
     });
 
