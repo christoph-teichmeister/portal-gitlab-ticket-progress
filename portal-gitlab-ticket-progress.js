@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.1.9
+// @version      3.2.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -19,7 +19,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.1.9';
+  const SCRIPT_VERSION = '3.2.0';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -1561,7 +1561,7 @@
       display: 'flex',
       alignItems: 'center',
       gap: '1rem',
-      padding: '0 0.75rem',
+      padding: '0',
       height: '42px',
       marginLeft: 'auto',
       fontSize: '13px',
@@ -1662,12 +1662,6 @@
       minWidth: '220px'
     });
 
-    const debugToggle = makeSwitch('Debug', debugEnabled, function (val) {
-      debugEnabled = val;
-      writeBoolToLocalStorage(LS_KEY_DEBUG, debugEnabled);
-      console.log(LOG_PREFIX, 'Debug geändert auf:', debugEnabled);
-    });
-
     const showToggle = makeSwitch('Anzeigen', showEnabled, function (val) {
       showEnabled = val;
       writeBoolToLocalStorage(LS_KEY_SHOW, showEnabled);
@@ -1685,8 +1679,14 @@
       }
     });
 
-    togglesContainer.appendChild(debugToggle);
+    const debugToggle = makeSwitch('Debug', debugEnabled, function (val) {
+      debugEnabled = val;
+      writeBoolToLocalStorage(LS_KEY_DEBUG, debugEnabled);
+      console.log(LOG_PREFIX, 'Debug geändert auf:', debugEnabled);
+    });
+
     togglesContainer.appendChild(showToggle);
+    togglesContainer.appendChild(debugToggle);
 
     const gearWrapper = document.createElement('div');
     applyStyles(gearWrapper, {
@@ -1725,7 +1725,7 @@
       flexDirection: 'column',
       zIndex: '150',
       gap: '0',
-      padding: '0.35rem 0.75rem'
+      padding: '0.75rem'
     });
 
     const versionLabel = document.createElement('div');
@@ -1749,7 +1749,8 @@
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      paddingTop: '0.35rem'
+      paddingTop: '0.35rem',
+      width: '100%'
     });
     const clearCacheButton = document.createElement('button');
     clearCacheButton.type = 'button';
@@ -1761,7 +1762,8 @@
       color: '#fff',
       padding: '0.35rem 0.85rem',
       fontSize: '12px',
-      cursor: 'pointer'
+      cursor: 'pointer',
+      width: '100%'
     });
     clearCacheButton.addEventListener('click', function () {
       clearProgressCache();
@@ -1786,7 +1788,8 @@
     applyStyles(saveRow, {
       display: 'flex',
       justifyContent: 'center',
-      padding: '0.35rem 0 0 0'
+      padding: '0.35rem 0 0 0',
+      width: '100%'
     });
     const saveButton = document.createElement('button');
     saveButton.type = 'button';
