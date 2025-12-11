@@ -1,4 +1,4 @@
-# GitLab Issues Progress Bars (Progress Userscript)
+# Portal GitLab Ticket Progress
 
 Dieses Tampermonkey-Skript ergänzt die GitLab-Issue-Boards auf `gitlab.ambient-innovation.com` mit einer eingebetteten
 Fortschrittsanzeige aus dem Portal. Es liest die dort gebuchten Stunden und zeigt sie als Progressbar in
