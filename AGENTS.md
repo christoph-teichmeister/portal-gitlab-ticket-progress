@@ -25,6 +25,8 @@
 - Maintain metadata comments (e.g., `// ==UserScript==` block) sorted by importance; update version numbers when
   behavior changes.
 - Always bump the `@version` in the metadata header for every non-trivial change so Tampermonkey users receive updates.
+- Ensure the `SCRIPT_VERSION` constant mirrors the `@version` tag and is incremented together so dropdown labels and
+  update checks remain aligned.
 
 ## Testing Guidelines
 

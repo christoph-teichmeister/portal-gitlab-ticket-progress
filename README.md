@@ -23,13 +23,16 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    `https://gitlab.ambient-innovation.com/*/*/-/boards*` aktiv.
 5. Die `@updateURL`/`@downloadURL` im Skriptkopf halten alles automatisch aktuell – nach der einmaligen Installation
    liefert Tampermonkey neue Versionen direkt aus diesem Repo.
-6. Über die Debug/Anzeige-Toggles in der GitLab-Topbar kannst du das Verhalten bei Bedarf ein- oder ausschalten.
+6. Über die Debug/Anzeige-Toggles in der GitLab-Topbar kannst du das Verhalten bei Bedarf ein- oder ausschalten. Die
+   Toggles hängen direkt rechts vom oberen Menü und bleiben beim Scrollen sichtbar; Debug ist standardmäßig aus, die
+   Anzeige (Badges) standardmäßig an.
 7. Klicke in der GitLab-Topbar auf das Zahnrad, um die „Projekt-Konfiguration“ zu öffnen, und trage dort die
-   Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Die Einstellung wird lokal gespeichert, damit
-   dieser
-   Workspace weiß, welche URL er abfragen darf, und du musst sie nur einmal eintragen.
-8. Wenn du die Portal-Base-URL noch nicht gespeichert hast, zeigt eine gelbe Warnung in der Toolbar unter den Toggles
-   den Hinweis „Portal-Base URL fehlt […]“. Öffne dann einfach das Zahnrad und trage die URL ein.
+   Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Die Einstellung wird ausschließlich lokal im
+   Browser gespeichert (per Projekt) und verhindert, dass die Portal-Base-URL in der Repository-Historie landet; du
+   musst sie nur einmal hinterlegen.
+8. Wenn die Portal-Base-URL fehlt, blendet das Script einen kleinen Toast von oben rechts ein („Portal-Base URL fehlt –
+   ⚙ → Projekt-Konfiguration öffnen und eintragen.“). Nach fünf Sekunden verschwindet der Hinweis wieder; du kannst
+   ihn bei Bedarf erneut triggern, indem du das Zahnrad öffnest.
 
 ## Wesentliche Features
 
@@ -58,15 +61,19 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
 
 ## Lokale Controls
 
-- **Debug** (`portalProgressDebug`): schaltet Logging (`console.log`) für den Entwicklungsworkflow ein/aus.
-- **Anzeigen** (`portalProgressShow`): blendet alle Badges ein/aus. Bei eingeschaltetem Zustand löst das Skript ggf.
-  einen neuen Board-Scan aus.
-- **Cache leeren**: über den grünen Button im Einstellungen-Dropdown der Toolbar kannst du den Fortschritts-Cache
-  löschen. Es wird sofort ein neuer Scan gestartet und du siehst eine temporäre Bestätigung in der Bannerleiste.
+- **Debug** (`portalProgressDebug`): schaltet Logging (`console.log`) für den Entwicklungsworkflow ein/aus. Standardmäßig
+  ist Debug aus.
+- **Anzeigen** (`portalProgressShow`): blendet alle Badges ein/aus. Bei eingeschaltetem Zustand löst das Skript ggf. einen
+  neuen Board-Scan aus.
+- **Version**: im Einstellungen-Dropdown (⚙) steht oben ein Label „Version: X.X.X“, damit du direkt siehst, welche
+  Skript-Version gerade aktiv ist.
+- **Cache leeren**: über den grünen Button im Einstellungen-Dropdown kannst du den Fortschritts-Cache löschen. Es
+  wird sofort ein neuer Scan gestartet und du erhältst eine kurze Bestätigung über den Toast rechts oben.
+- **UI-Feedback**: Warnungen wie „Portal-Base URL fehlt …“ oder Bestätigungen wie „Cache geleert“ fliegen von oben
+  rechts ein, bleiben fünf Sekunden sichtbar und fliegen wieder aus. So bleibt die Toolbar aufgeräumt.
 
-Die beiden Schalter befinden sich direkt in der GitLab-Topbar (rechts außen) als stilisierte Switch-Toggles. Es
-gibt keine zusätzliche Toolbar mehr oberhalb des Boards; die Steuerelemente folgen optisch der oberen Navigation
-und bleiben beim Board-Scrollen sichtbar.
+Die beiden Switches (Debug/Anzeigen) befinden sich direkt in der GitLab-Topbar (rechts außen) als stilisierte
+Schalter; die restlichen Einstellungen leben im Dropdown hinter dem ⚙ und bleiben beim Scrollen sichtbar.
 
 ## Hinweise
 

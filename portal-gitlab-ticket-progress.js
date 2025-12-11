@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.1.6
-// @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles im Dark Mode und Link-Button zum Portal.
+// @version      3.1.7
+// @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
 // @grant        GM_xmlhttpRequest
@@ -19,26 +19,29 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.1.6';
+  const SCRIPT_VERSION = '3.1.7';
   const HOST_CONFIG = {};
 
-  let toolbarPortalWarningElement = null;
-  const TOOLBAR_BANNER_DEFAULT = {
-    background: '#fbbf24',
-    color: '#1f2937'
+  const TOAST_DEFAULT_DURATION_MS = 5000;
+  const PORTAL_WARNING_COOLDOWN_MS = 2 * 60 * 1000;
+  const TOAST_VARIANTS = {
+    warning: {
+      background: '#fbbf24',
+      color: '#1f2937'
+    },
+    success: {
+      background: '#10b981',
+      color: '#0f172a'
+    },
+    info: {
+      background: '#0f172a',
+      color: '#d1d5db'
+    }
   };
 
-  function showToolbarBanner(options) {
-    if (!toolbarPortalWarningElement) return;
-    if (!options || !options.visible) {
-      toolbarPortalWarningElement.style.display = 'none';
-      return;
-    }
-    toolbarPortalWarningElement.style.display = 'flex';
-    toolbarPortalWarningElement.textContent = options.text || '';
-    toolbarPortalWarningElement.style.background = options.background || TOOLBAR_BANNER_DEFAULT.background;
-    toolbarPortalWarningElement.style.color = options.color || TOOLBAR_BANNER_DEFAULT.color;
-  }
+  let toastElement = null;
+  let toastHideTimer = null;
+  let lastPortalWarningAt = 0;
 
   // Debug / Anzeige – gesteuert über Toolbar, persistiert in localStorage
   const LS_KEY_DEBUG = 'portalProgressDebug';
@@ -52,6 +55,78 @@
   const LOG_PREFIX = '[GitLab Progress]';
   const PROGRESS_CACHE_TTL_MS = 5 * 60 * 1000;
   const progressCache = {}; // key: projectId + ':' + issueIid → {data, timestamp}
+
+  function ensureToastElement() {
+    if (toastElement) return toastElement;
+    const el = document.createElement('div');
+    el.id = 'ambient-progress-toast';
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    applyStyles(el, {
+      position: 'fixed',
+      top: '1rem',
+      right: '1rem',
+      maxWidth: '320px',
+      padding: '0.75rem 1.25rem',
+      borderRadius: '10px',
+      boxShadow: '0 15px 40px rgba(15, 23, 42, 0.35)',
+      zIndex: '1050',
+      fontSize: '0.85rem',
+      fontWeight: '600',
+      lineHeight: '1.4',
+      overflow: 'hidden',
+      pointerEvents: 'none',
+      transform: 'translateX(110%)',
+      opacity: '0',
+      transition: 'transform 0.35s ease, opacity 0.35s ease'
+    });
+    document.body.appendChild(el);
+    toastElement = el;
+    return el;
+  }
+
+  function hideToast() {
+    if (!toastElement) return;
+    toastElement.style.transform = 'translateX(110%)';
+    toastElement.style.opacity = '0';
+  }
+
+  function showToast(options) {
+    if (!options || !options.text) return;
+    const {text, variant = 'info', duration = TOAST_DEFAULT_DURATION_MS} = options;
+    const el = ensureToastElement();
+    const variantStyles = TOAST_VARIANTS[variant] || TOAST_VARIANTS.info;
+    applyStyles(el, {
+      background: variantStyles.background,
+      color: variantStyles.color
+    });
+    el.textContent = text;
+    void el.offsetWidth;
+    el.style.transform = 'translateX(0)';
+    el.style.opacity = '1';
+    if (toastHideTimer) {
+      clearTimeout(toastHideTimer);
+    }
+    toastHideTimer = setTimeout(function () {
+      hideToast();
+    }, duration);
+  }
+
+  function resetPortalWarningCooldown() {
+    lastPortalWarningAt = 0;
+  }
+
+  function showPortalWarningToast() {
+    const now = Date.now();
+    if (now - lastPortalWarningAt < PORTAL_WARNING_COOLDOWN_MS) {
+      return;
+    }
+    lastPortalWarningAt = now;
+    showToast({
+      text: 'Portal-Base URL fehlt – ⚙ → Projekt-Konfiguration öffnen und eintragen.',
+      variant: 'warning'
+    });
+  }
 
   /******************************************************************
    * Utils
@@ -1406,17 +1481,9 @@
    ******************************************************************/
 
   function refreshPortalBaseWarning(projectSettings) {
-    if (!toolbarPortalWarningElement) return;
     const baseUrl = getPortalBaseUrl(projectSettings);
     if (!baseUrl) {
-      showToolbarBanner({
-        visible: true,
-        text: 'Portal-Base URL fehlt – ⚙ → Projekt-Konfiguration öffnen und eintragen.',
-        background: TOOLBAR_BANNER_DEFAULT.background,
-        color: TOOLBAR_BANNER_DEFAULT.color
-      });
-    } else {
-      showToolbarBanner({visible: false});
+      showPortalWarningToast();
     }
   }
 
@@ -1652,12 +1719,8 @@
         scanBoard(hostConfig, projectSettings);
         scanIssueDetail(hostConfig, projectSettings);
       }
-      showToolbarBanner({
-        visible: true,
-        text: 'Cache geleert',
-        background: '#10b981',
-        color: '#0f172a'
-      });
+      showToast({text: 'Cache geleert', variant: 'success'});
+      resetPortalWarningCooldown();
       setTimeout(function () {
         refreshPortalBaseWarning(projectSettings);
       }, 1400);
@@ -1668,26 +1731,6 @@
     gearWrapper.appendChild(dropdown);
     bar.appendChild(gearWrapper);
 
-    const warningBanner = document.createElement('div');
-    applyStyles(warningBanner, {
-      display: 'none',
-      alignItems: 'center',
-      gap: '0.35rem',
-      padding: '0.2rem 0.85rem',
-      borderRadius: '999px',
-      background: '#fbbf24',
-      color: '#1f2937',
-      fontSize: '11px',
-      fontWeight: '500',
-      letterSpacing: '0.02em',
-      whiteSpace: 'nowrap',
-      cursor: 'default'
-    });
-    warningBanner.setAttribute('role', 'alert');
-    warningBanner.textContent =
-      'Portal-Base URL fehlt – ⚙ → Projekt-Konfiguration öffnen und eintragen.';
-    toolbarPortalWarningElement = warningBanner;
-    bar.appendChild(warningBanner);
     let dropdownLocked = false;
     let hoverOpen = false;
     let closeTimer = null;
