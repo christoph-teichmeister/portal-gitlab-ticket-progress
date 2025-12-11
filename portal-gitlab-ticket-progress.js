@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         GitLab Issue Board – Ambient Progress Anzeige (Progressbar, Dark-Toolbar, Link-Button)
+// @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
 // @version      3.1.0
-// @description  Zeigt gebuchte Stunden aus dem Ambient-Portal in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles im Dark Mode und Link-Button zum Portal.
-// @author       you
+// @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles im Dark Mode und Link-Button zum Portal.
+// @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
 // @grant        GM_xmlhttpRequest
 // @connect      portal.ambient.digital
