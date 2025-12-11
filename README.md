@@ -71,6 +71,9 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
   wird sofort ein neuer Scan gestartet und du erhältst eine kurze Bestätigung über den Toast rechts oben.
 - **UI-Feedback**: Warnungen wie „Portal-Base URL fehlt …“ oder Bestätigungen wie „Cache geleert“ fliegen von oben
   rechts ein, bleiben fünf Sekunden sichtbar und fliegen wieder aus. So bleibt die Toolbar aufgeräumt.
+- **Fehlerzustände**: Wenn der Portal-Request z. B. mit 404 oder 403 antwortet, bekommst du sofort einen Toast mit dem
+  Statuscode und das Skript stoppt weitere Requests, bis du die Portal-Base-URL über das ⚙ neu abspeicherst oder den
+  Cache löschst.
 
 Die beiden Switches (Debug/Anzeigen) befinden sich direkt in der GitLab-Topbar (rechts außen) als stilisierte
 Schalter; die restlichen Einstellungen leben im Dropdown hinter dem ⚙ und bleiben beim Scrollen sichtbar.

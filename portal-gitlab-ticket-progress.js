@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.1.7
+// @version      3.1.8
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -19,7 +19,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.1.7';
+  const SCRIPT_VERSION = '3.1.8';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -42,6 +42,7 @@
   let toastElement = null;
   let toastHideTimer = null;
   let lastPortalWarningAt = 0;
+  const blockedProjectRequests = {};
 
   // Debug / Anzeige – gesteuert über Toolbar, persistiert in localStorage
   const LS_KEY_DEBUG = 'portalProgressDebug';
@@ -126,6 +127,26 @@
       text: 'Portal-Base URL fehlt – ⚙ → Projekt-Konfiguration öffnen und eintragen.',
       variant: 'warning'
     });
+  }
+
+  function isProjectRequestBlocked(projectKey) {
+    return !!(projectKey && blockedProjectRequests[projectKey]);
+  }
+
+  function blockProjectRequests(projectKey, status) {
+    if (!projectKey || blockedProjectRequests[projectKey]) return;
+    blockedProjectRequests[projectKey] = true;
+    showToast({
+      text: 'Portal-Requests blockiert (Status ' + status + ') – bitte Portal-Base URL prüfen.',
+      variant: 'warning'
+    });
+  }
+
+  function clearProjectRequestBlock(projectKey) {
+    if (!projectKey) return;
+    if (blockedProjectRequests[projectKey]) {
+      delete blockedProjectRequests[projectKey];
+    }
   }
 
   /******************************************************************
@@ -1031,15 +1052,15 @@
         url: url,
         headers: {},
         withCredentials: true,
-        onload: function (response) {
-          if (debugEnabled) {
-            log('Response-Status für Issue', issueIid, ':', response.status);
-          }
-          if (response.status !== 200) {
-            warn('Antwort != 200 für Issue', issueIid, 'Status:', response.status);
-            resolve(null);
-            return;
-          }
+      onload: function (response) {
+        if (debugEnabled) {
+          log('Response-Status für Issue', issueIid, ':', response.status);
+        }
+        if (response.status !== 200) {
+          warn('Antwort != 200 für Issue', issueIid, 'Status:', response.status);
+          reject({status: response.status});
+          return;
+        }
           const progressData = parseProgressHtml(response.responseText);
           if (!progressData) {
             log(
@@ -1061,6 +1082,12 @@
 
   function fetchAndDisplayProgress(hostConfig, projectSettings, issueIid, cardElem) {
     if (!issueIid || !cardElem) return;
+
+    const projectKey = projectSettings && projectSettings.projectKey;
+    if (isProjectRequestBlocked(projectKey)) {
+      log('Requests pausiert für Projekt', projectSettings ? projectSettings.projectPath : '<unbekannt>');
+      return;
+    }
 
     const projectId = projectSettings.projectId;
     if (!projectId) {
@@ -1101,6 +1128,9 @@
       })
       .catch(function (err) {
         error('Request-Fehler für Issue ' + issueIid + ':', err);
+        if (err && err.status) {
+          blockProjectRequests(projectSettings.projectKey, err.status);
+        }
       });
   }
 
@@ -1715,6 +1745,9 @@
       clearProgressCache();
       const hostConfig = getCurrentHostConfig();
       const projectSettings = hostConfig && getProjectSettings(hostConfig);
+      if (projectSettings) {
+        clearProjectRequestBlock(projectSettings.projectKey);
+      }
       if (hostConfig && projectSettings) {
         scanBoard(hostConfig, projectSettings);
         scanIssueDetail(hostConfig, projectSettings);
@@ -1971,6 +2004,7 @@
       updatePortalLabel(attempt);
       portalStatus.textContent = 'Portal-Base URL gespeichert.';
       clearProgressCache();
+      clearProjectRequestBlock(projectSettings.projectKey);
       if (hostConfig && projectSettings) {
         scanBoard(hostConfig, projectSettings);
         scanIssueDetail(hostConfig, projectSettings);
