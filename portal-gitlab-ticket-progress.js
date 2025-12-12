@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.4.10
+// @version      3.4.11
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.4.10';
+  const SCRIPT_VERSION = '3.4.11';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -670,6 +670,33 @@
       return null;
     }
     return entry.data;
+  }
+
+  function findProgressCacheEntryForIssue(projectSettings, issueIid) {
+    if (!projectSettings || !issueIid) return null;
+    const projectIdentifier = projectSettings.projectKey || projectSettings.projectPath;
+    if (!projectIdentifier) return null;
+
+    const primaryKey = buildProgressCacheKey(projectSettings, issueIid);
+    if (primaryKey) {
+      const primaryCached = getProgressCacheEntry(primaryKey);
+      if (primaryCached) {
+        return primaryCached;
+      }
+    }
+
+    const suffix = '|' + projectIdentifier + ':' + String(issueIid);
+    for (const key in progressCache) {
+      if (!Object.prototype.hasOwnProperty.call(progressCache, key)) continue;
+      if (!key.endsWith(suffix)) continue;
+      const candidate = getProgressCacheEntry(key);
+      if (candidate) {
+        log('Detail-Cache-Fallback nutzt Board-Cache', key, 'für Issue', issueIid);
+        return candidate;
+      }
+    }
+
+    return null;
   }
 
   function setProgressCacheEntry(cacheKey, data) {
@@ -1517,7 +1544,7 @@
       log('Detail-Cache: Kein Cache-Key möglich für Issue', issueIid);
       return;
     }
-    const cached = getProgressCacheEntry(cacheKey);
+    const cached = findProgressCacheEntryForIssue(projectSettings, issueIid);
     if (!cached) {
       log(
         'Kein Cache-Eintrag für Issue-Detail gefunden (Projekt',
