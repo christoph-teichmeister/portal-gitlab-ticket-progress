@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.4.6
+// @version      3.4.7
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.4.6';
+  const SCRIPT_VERSION = '3.4.7';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -1449,11 +1449,21 @@
     const cacheKey = String(projectId) + ':' + String(issueIid);
     const cached = getProgressCacheEntry(cacheKey);
     if (!cached) {
-      if (debugEnabled) {
-        log('Kein Cache-Eintrag für Issue-Detail gefunden (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ').');
-      }
+      log(
+        'Kein Cache-Eintrag für Issue-Detail gefunden (Projekt',
+        projectSettings.projectPath + ',',
+        'Issue',
+        issueIid + ').'
+      );
       return;
     }
+
+    log(
+      'Ticket-Detail liest Cache (Projekt',
+      projectSettings.projectPath + ',',
+      'Issue',
+      issueIid + ').'
+    );
 
     injectProgressIntoIssueDetail(participantsElem, cached);
     participantsElem.dataset.ambientProgressIssueIid = issueIid;
