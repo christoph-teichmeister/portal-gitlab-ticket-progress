@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.4.8
+// @version      3.4.9
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.4.8';
+  const SCRIPT_VERSION = '3.4.9';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -2304,9 +2304,14 @@
     }
 
     const root = document.querySelector('.boards-app');
-    if (!root) {
-      log('Keine .boards-app gefunden; MutationObserver wird nicht gestartet.');
-      return;
+    let observerTarget = root;
+    if (!observerTarget) {
+      log('Keine .boards-app gefunden; MutationObserver wird auf document.body gestartet.');
+      observerTarget = document.body;
+      if (!observerTarget) {
+        log('document.body nicht verfügbar; MutationObserver wird nicht gestartet.');
+        return;
+      }
     }
 
     const observer = new MutationObserver(function (mutations) {
@@ -2324,7 +2329,7 @@
       }
     });
 
-    observer.observe(root, {
+    observer.observe(observerTarget, {
       childList: true,
       subtree: true
     });
