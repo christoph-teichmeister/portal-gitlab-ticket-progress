@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.6.1
+// @version      3.6.2
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.6.1';
+  const SCRIPT_VERSION = '3.6.2';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -49,6 +49,12 @@
   let lastRefreshLabelElement = null;
   let manualRefreshButtonElement = null;
   let forceRefreshMode = false;
+  const DETAIL_RETRY_INTERVAL_MS = 700;
+  const DETAIL_RETRY_MAX_ATTEMPTS = 3;
+  const detailRetryState = {
+    timer: null,
+    attempts: 0
+  };
 
   // Debug / Anzeige – gesteuert über Toolbar, persistiert in localStorage
   const LS_KEY_DEBUG = 'portalProgressDebug';
@@ -139,6 +145,30 @@
       text: 'Portal-Base URL fehlt – ⚙ → Projekt-Konfiguration öffnen und eintragen.',
       variant: 'warning'
     });
+  }
+
+  function resetDetailRetryState() {
+    detailRetryState.attempts = 0;
+    if (detailRetryState.timer) {
+      clearTimeout(detailRetryState.timer);
+      detailRetryState.timer = null;
+    }
+  }
+
+  function scheduleDetailRetry(hostConfig, projectSettings) {
+    if (!hostConfig || !projectSettings) return;
+    if (detailRetryState.attempts >= DETAIL_RETRY_MAX_ATTEMPTS) {
+      return;
+    }
+    if (detailRetryState.timer) {
+      return;
+    }
+    detailRetryState.attempts += 1;
+    detailRetryState.timer = setTimeout(function () {
+      detailRetryState.timer = null;
+      log('Detail-Teilnehmerbereich noch nicht vorhanden – erneuter Versuch #' + detailRetryState.attempts);
+      scanIssueDetail(hostConfig, projectSettings);
+    }, DETAIL_RETRY_INTERVAL_MS);
   }
 
   function isProjectRequestBlocked(projectKey) {
@@ -1668,6 +1698,15 @@
     }
   }
 
+  function shouldAttemptIssueDetailInjection() {
+    const path = window.location.pathname;
+    if (/\/issues\/\d+/.test(path)) {
+      return true;
+    }
+    const search = window.location.search || '';
+    return search.includes('show=');
+  }
+
   function scanIssueDetail(hostConfig, projectSettings) {
     if (!hostConfig || !projectSettings) {
       log('scanIssueDetail übersprungen (Host/Project fehlt).');
@@ -1677,26 +1716,36 @@
       log('scanIssueDetail übersprungen (Anzeigen-Toggle aus).');
       return;
     }
-
-    const participants = document.querySelector('[data-testid="work-item-participants"]');
-    if (!participants) {
-      log('scanIssueDetail: Teilnehmer-Abschnitt nicht gefunden.');
+    if (!shouldAttemptIssueDetailInjection()) {
       return;
     }
 
-    const issueIid = getIssueIidFromDetailView(participants);
-    if (!issueIid) {
-      log('scanIssueDetail: IssueIID nicht bestimmbar.', window.location.pathname);
+    const wrapperList = document.querySelectorAll('.work-item-attributes-wrapper');
+    if (!wrapperList || !wrapperList.length) {
+      log('scanIssueDetail: Attribute-Wrapper nicht gefunden.');
+      scheduleDetailRetry(hostConfig, projectSettings);
       return;
     }
+    resetDetailRetryState();
 
-    const alreadyInjected = participants.dataset.ambientProgressIssueIid;
-    if (alreadyInjected === issueIid) return;
+    for (let i = 0; i < wrapperList.length; i++) {
+      const wrapper = wrapperList[i];
+      const issueIid = getIssueIidFromDetailView(wrapper);
+      if (!issueIid) {
+        log('scanIssueDetail: IssueIID nicht bestimmbar für Attribute-Wrapper', wrapper);
+        continue;
+      }
 
-    fetchAndDisplayProgressForIssueDetail(hostConfig, projectSettings, issueIid, participants);
+      const alreadyInjected = wrapper.dataset.ambientProgressIssueIid;
+      if (alreadyInjected === issueIid) {
+        continue;
+      }
+
+      fetchAndDisplayProgressForIssueDetail(hostConfig, projectSettings, issueIid, wrapper);
+    }
   }
 
-  function getIssueIidFromDetailView(participantsElem) {
+  function getIssueIidFromDetailView(detailElem) {
     const fromShow = parseIssueIidFromShowParam();
     if (fromShow) return fromShow;
 
@@ -1705,10 +1754,10 @@
       return pathMatch[1];
     }
 
-    if (participantsElem) {
+    if (detailElem) {
       const ancestor =
-        participantsElem.closest('[work-item-iid]') ||
-        participantsElem.closest('[data-work-item-iid]');
+        detailElem.closest('[work-item-iid]') ||
+        detailElem.closest('[data-work-item-iid]');
       if (ancestor) {
         return (
           ancestor.getAttribute('work-item-iid') ||
@@ -1739,8 +1788,8 @@
     return null;
   }
 
-  function fetchAndDisplayProgressForIssueDetail(hostConfig, projectSettings, issueIid, participantsElem) {
-    if (!issueIid || !participantsElem) return;
+  function fetchAndDisplayProgressForIssueDetail(hostConfig, projectSettings, issueIid, detailWrapperElem) {
+    if (!issueIid || !detailWrapperElem) return;
 
     const projectId = projectSettings.projectId;
     if (!projectId) {
@@ -1780,8 +1829,8 @@
           clearProjectRequestBlock(projectSettings.projectKey);
           if (!progressData) return;
           setProgressCacheEntry(cacheKey, progressData);
-          injectProgressIntoIssueDetail(participantsElem, progressData);
-          participantsElem.dataset.ambientProgressIssueIid = issueIid;
+          injectProgressIntoIssueDetail(detailWrapperElem, progressData);
+          detailWrapperElem.dataset.ambientProgressIssueIid = issueIid;
         })
         .catch(function (err) {
           error('Request-Fehler für Issue ' + issueIid + ' (Detailansicht):', err);
@@ -1799,25 +1848,33 @@
       issueIid + ').'
     );
 
-    injectProgressIntoIssueDetail(participantsElem, cached);
-    participantsElem.dataset.ambientProgressIssueIid = issueIid;
+    injectProgressIntoIssueDetail(detailWrapperElem, cached);
+    detailWrapperElem.dataset.ambientProgressIssueIid = issueIid;
   }
 
-  function injectProgressIntoIssueDetail(participantsElem, progressData) {
-    if (!participantsElem || !progressData) return;
+  function injectProgressIntoIssueDetail(detailWrapperElem, progressData) {
+    if (!detailWrapperElem || !progressData) return;
 
     const windowBackground = getGitLabWindowBackgroundColor(true);
     const textColor = getContrastTextColor(windowBackground);
-    let container = participantsElem.nextElementSibling;
-    if (!container || !container.classList.contains('ambient-progress-detail-badge')) {
+    let container = detailWrapperElem.querySelector('.ambient-progress-detail-badge');
+    if (!container) {
       container = document.createElement('div');
       container.className = 'ambient-progress-detail-badge';
       applyStyles(container, {
-        marginTop: '0.65rem',
+        marginBottom: '0.6rem',
         padding: '0.45rem 0',
+        borderRadius: '10px',
         background: windowBackground
       });
-      participantsElem.insertAdjacentElement('afterend', container);
+      const assigneesSection = detailWrapperElem.querySelector('[data-testid="work-item-assignees"]');
+      if (assigneesSection) {
+        detailWrapperElem.insertBefore(container, assigneesSection);
+      } else if (detailWrapperElem.firstChild) {
+        detailWrapperElem.insertBefore(container, detailWrapperElem.firstChild);
+      } else {
+        detailWrapperElem.appendChild(container);
+      }
     }
 
     container.style.display = showEnabled ? '' : 'none';
