@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.4.7
+// @version      3.4.8
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.4.7';
+  const SCRIPT_VERSION = '3.4.8';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -1377,14 +1377,24 @@
   }
 
   function scanIssueDetail(hostConfig, projectSettings) {
-    if (!hostConfig || !projectSettings) return;
-    if (!showEnabled) return;
+    if (!hostConfig || !projectSettings) {
+      log('scanIssueDetail übersprungen (Host/Project fehlt).');
+      return;
+    }
+    if (!showEnabled) {
+      log('scanIssueDetail übersprungen (Anzeigen-Toggle aus).');
+      return;
+    }
 
     const participants = document.querySelector('[data-testid="work-item-participants"]');
-    if (!participants) return;
+    if (!participants) {
+      log('scanIssueDetail: Teilnehmer-Abschnitt nicht gefunden.');
+      return;
+    }
 
     const issueIid = getIssueIidFromDetailView(participants);
     if (!issueIid) {
+      log('scanIssueDetail: IssueIID nicht bestimmbar.', window.location.pathname);
       return;
     }
 
