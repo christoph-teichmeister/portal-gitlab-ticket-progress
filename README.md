@@ -82,9 +82,12 @@ Ausführungsoberfläche beschränkt sich auf den Code in diesem Repository.
   ein- oder ausschaltest. Die Auswahl wird lokal gespeichert (haftet an den Projekt-Keys) und aktiviert den
   expliziten Modus, wenn du manuell eingreifst.
 - Fügt pro Board-Karte ein Overlay-Badge ein, das eine farbige Progressbar, `spent`/`remaining`-Labels (oder
-  Over-/Booked-Hours-Fallback) sowie einen `↗`-Button zum entsprechenden Portal-Ticket enthält.
-- Zeigt die gleichen Progressdaten direkt im Issue-Detail unterhalb der Teilnehmer-Liste an, sofern die Ansicht
-  geladen ist.
+  Over-/Booked-Hours-Fallback) sowie einen `↗`-Button zum entsprechenden Portal-Ticket enthält. Booked-Hours-Fallbacks
+  nutzen einen deutlich blauen Balken, damit sie sich besser von den normalen Fortschrittsdaten abheben.
+- Zeigt die gleichen Progressdaten direkt im Issue-Detail unterhalb der Teilnehmer-Liste an, sofern auf dem Ticket
+  bereits Daten im Cache liegen. Das Detail-Widget versucht weder einen zusätzlichen Board-Scan noch einen erneuten
+  Portal-Request, sondern greift ausschließlich auf die zuletzt geladenen Werte zurück, die durch ein Board-Scan oder
+  eine manuelle Aktualisierung (Cache leeren / Jetzt aktualisieren) gespeichert wurden.
 - Lädt die Daten über `GM_xmlhttpRequest` aus dem Portal, cached sie lokal (60-min TTL) und merkt sich Zeitstempel +
   Fortschritts-Daten in `localStorage`, sodass ein einfacher Reload keine neuen Portal-Requests auslöst, solange die
   letzte Aktualisierung jünger als eine Stunde ist.
@@ -94,7 +97,7 @@ Ausführungsoberfläche beschränkt sich auf den Code in diesem Repository.
   tatsächlich auf das Portal zugreifen darf.
 - Beobachtet das Board via `MutationObserver`, reagiert auf neue Karten/Listen und führt bei Bedarf neue Scans aus.
 - Zeigt im Dropdown eine Zeile mit dem Zeitstempel der letzten Portal-Anfrage und einen Button zum sofortigen
-  Neuladen aller Tickets; der Button leert den lokalen Cache, setzt den Zeitstempel zurück und lädt die Seite neu,
+  Neuladen aller Tickets; der Button löscht den lokalen Cache, setzt den Zeitstempel zurück und lädt die Seite neu,
   damit wirklich alle Tickets erneut vom Portal angefragt werden.
 
 ## Konfiguration & Erweiterung
@@ -123,11 +126,12 @@ Ausführungsoberfläche beschränkt sich auf den Code in diesem Repository.
 - **Einstellungen speichern**: Nach erfolgreichem Speichern der Projekt-ID bzw. Portal-Base-URL siehst du ein Erfolgstoast
   und die Seite lädt sich neu, damit die neuen Werte sofort greifen.
 - **Letzte Aktualisierung**: Die Dropdown-Zeile zeigt den Zeitpunkt der letzten erfolgreichen Portal-Anfrage; der
--  Button `Jetzt aktualisieren` leert den lokalen Cache und lädt die Seite neu, sodass eine vollständige neue Runde an
--  Portal-Requests durchlaufen wird.
+  Button `Jetzt aktualisieren` leert den lokalen Cache, setzt den Zeitstempel zurück und lädt die Seite neu, damit
+  wirklich alle Tickets nochmals vom Portal abgefragt werden.
 
 ## Hinweise
 
+- Das Skript ist auf `merge_requests`-Seiten komplett deaktiviert, damit die Detailansichten dort nicht durch die Board-Scans geblockt werden.
 - Das Skript geht davon aus, dass eine Session beim Portal existiert (`withCredentials: true`). Werden nicht alle Daten
   geladen, liegt es meist an einem fehlenden Login, einer falschen Base-URL oder einem blockierten Request nach einem
   403/404.

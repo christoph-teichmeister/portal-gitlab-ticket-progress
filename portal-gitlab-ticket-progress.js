@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.4.5
+// @version      3.4.6
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.4.5';
+  const SCRIPT_VERSION = '3.4.6';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -493,7 +493,7 @@
       spent: '#6FBF73',
       spentHover: '#57A55D',
       neutral: '#D9D4C7',
-      bookedFallback: '#3b82f6',
+      bookedFallback: '#2563eb',
       over: '#dc3545'
     }
   };
@@ -1448,37 +1448,15 @@
 
     const cacheKey = String(projectId) + ':' + String(issueIid);
     const cached = getProgressCacheEntry(cacheKey);
-    if (cached) {
-      injectProgressIntoIssueDetail(participantsElem, cached);
-      participantsElem.dataset.ambientProgressIssueIid = issueIid;
+    if (!cached) {
+      if (debugEnabled) {
+        log('Kein Cache-Eintrag für Issue-Detail gefunden (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ').');
+      }
       return;
     }
 
-    if (!shouldPerformPortalRequest()) {
-      log('Portal-Request für Issue-Detail ausgelassen (letzte Aktualisierung < 1h):', issueIid);
-      return;
-    }
-
-    const url = buildPortalUrl(projectSettings, issueIid);
-    if (!url) {
-      warn(
-        'Keine Portal-Basis konfiguriert für',
-        projectSettings.projectPath,
-        '; Detail-Progress wird nicht geladen.'
-      );
-      return;
-    }
-    log('Hole Detail-Progress für Issue', issueIid, '→', url);
-    loadProgressData(url, issueIid)
-      .then(function (progressData) {
-        if (!progressData) return;
-        setProgressCacheEntry(cacheKey, progressData);
-        injectProgressIntoIssueDetail(participantsElem, progressData);
-        participantsElem.dataset.ambientProgressIssueIid = issueIid;
-      })
-      .catch(function (err) {
-        error('Request-Fehler für Issue ' + issueIid + ':', err);
-      });
+    injectProgressIntoIssueDetail(participantsElem, cached);
+    participantsElem.dataset.ambientProgressIssueIid = issueIid;
   }
 
   function injectProgressIntoIssueDetail(participantsElem, progressData) {
