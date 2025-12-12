@@ -91,7 +91,8 @@ Ausführungsoberfläche beschränkt sich auf den Code in diesem Repository.
 - Blockiert weitere Requests nach Fehlern (403/404), bis du den Cache leerst oder die Portal-URL neu speicherst.
 - Beobachtet das Board via `MutationObserver`, reagiert auf neue Karten/Listen und führt bei Bedarf neue Scans aus.
 - Zeigt im Dropdown eine Zeile mit dem Zeitstempel der letzten Portal-Anfrage und einen Button zum sofortigen
-  Neuladen aller Tickets, falls du doch eine frische Runde brauchst.
+  Neuladen aller Tickets; der Button leert den lokalen Cache, setzt den Zeitstempel zurück und lädt die Seite neu,
+  damit wirklich alle Tickets erneut vom Portal angefragt werden.
 
 ## Konfiguration & Erweiterung
 
@@ -118,8 +119,9 @@ Ausführungsoberfläche beschränkt sich auf den Code in diesem Repository.
   dem erfolgreichen Speichern von Einstellungen; die Warnung zu fehlender Base meldet sich maximal alle zwei Minuten.
 - **Einstellungen speichern**: Nach erfolgreichem Speichern der Projekt-ID bzw. Portal-Base-URL siehst du ein Erfolgstoast
   und die Seite lädt sich neu, damit die neuen Werte sofort greifen.
-- **Letzte Aktualisierung**: Die Dropdown-Zeile zeigt den Zeitpunkt der letzten erfolgreichen Portal-Anfrage; der neue
-  Button `Jetzt aktualisieren` erzwingt eine erneute Runde für alle Tickets und aktualisiert den Zeitstempel sofort.
+- **Letzte Aktualisierung**: Die Dropdown-Zeile zeigt den Zeitpunkt der letzten erfolgreichen Portal-Anfrage; der
+-  Button `Jetzt aktualisieren` leert den lokalen Cache und lädt die Seite neu, sodass eine vollständige neue Runde an
+-  Portal-Requests durchlaufen wird.
 
 ## Hinweise
 

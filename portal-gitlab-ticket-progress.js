@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.4.1
+// @version      3.4.2
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -19,7 +19,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.4.1';
+  const SCRIPT_VERSION = '3.4.2';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -638,6 +638,7 @@
     } catch (e) {
       // ignore
     }
+    writeLastRefreshTimestamp(null);
   }
 
   function getCurrentHostConfig() {
@@ -1683,6 +1684,17 @@
     }
   }
 
+  function clearCacheAndReload(hostConfig, projectSettings) {
+    clearProgressCache();
+    if (projectSettings) {
+      clearProjectRequestBlock(projectSettings.projectKey);
+    }
+    showToast({text: 'Cache geleert, lade neu…', variant: 'info'});
+    setTimeout(function () {
+      window.location.reload();
+    }, 50);
+  }
+
   function createToolbar(hostConfig, projectSettings) {
     const existing = document.getElementById('ambient-progress-toolbar');
     if (existing) return existing;
@@ -1915,7 +1927,7 @@
         cursor: 'pointer'
       });
       refreshButton.addEventListener('click', function () {
-        triggerManualProgressRefresh(hostConfig, projectSettings);
+        clearCacheAndReload(hostConfig, projectSettings);
       });
       manualRefreshButtonElement = refreshButton;
       timestampRow.appendChild(refreshButton);
