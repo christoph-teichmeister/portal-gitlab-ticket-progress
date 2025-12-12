@@ -74,55 +74,53 @@ während der Übertragung und stellt die Integrität des ausgelieferten Codes si
 Das Script nutzt keine externen CDNs, keine Remote-Imports und keine dynamisch geladenen Abhängigkeiten. Die gesamte
 Ausführungsoberfläche beschränkt sich auf den Code in diesem Repository.
 
-
 ## Wesentliche Features
 
-- Setzt eine Toolbar oberhalb der Board-Ansicht mit Dark-Mode-Stil, Debug- und Anzeige-Toggles.
-- Liest über `GM_xmlhttpRequest` das Portal aus und parsed dort bestehende
-  Progress-/Booked-Hours-Daten.
-- Fügt pro Karte ein Badge mit Progressbar und Text hinzu (Spenden: `spent`, `remaining`, `over` oder Fallback
-  `Booked Hours`).
-- Fügt einen Button (`↗`) hinzu, der die entsprechende Issue-Detailseite im Portal öffnet.
-- Nutzt lokale Einstellungen (`localStorage`) für die Toolbar-Toggles (`portalProgressDebug`/`portalProgressShow`).
-- Beobachtet das Board per `MutationObserver`, um neu geladene Karten automatisch zu erkennen.
+- Platziert eine Toolbar rechts in der GitLab-Topbar, zeigt dort Versionslabel, `Anzeigen`- und `Debug`-Toggles,
+  einen Gear-Button sowie die „Cache leeren“- und „Einstellungen speichern“-Actions.
+- Fügt pro Board-Spalte eine Checkbox direkt neben dem Spalten-Titel ein, damit du die Listen zur Progress-Anzeige
+  ein- oder ausschaltest. Die Auswahl wird lokal gespeichert (haftet an den Projekt-Keys) und aktiviert den
+  expliziten Modus, wenn du manuell eingreifst.
+- Fügt pro Board-Karte ein Overlay-Badge ein, das eine farbige Progressbar, `spent`/`remaining`-Labels (oder
+  Over-/Booked-Hours-Fallback) sowie einen `↗`-Button zum entsprechenden Portal-Ticket enthält.
+- Zeigt die gleichen Progressdaten direkt im Issue-Detail unterhalb der Teilnehmer-Liste an, sofern die Ansicht
+  geladen ist.
+- Lädt die Daten über `GM_xmlhttpRequest` aus dem Portal, cached sie lokal (5-min TTL) und blockiert weitere
+  Requests nach Fehlern (403/404), bis du den Cache leerst oder die Portal-URL neu speicherst.
+- Beobachtet das Board via `MutationObserver`, reagiert auf neue Karten/Listen und führt bei Bedarf neue Scans aus.
 
 ## Konfiguration & Erweiterung
 
-- Die Projekte und erlaubten Spalten sind im Objekt `HOST_CONFIG` definiert. Neue Projekte lassen sich über einen
-  zusätzlichen Eintrag unter dem Host hinzufügen, z. B. mit `projectId` und `listNamesToInclude`.
-- Die URL zum Portal wird über `buildPortalUrl(projectId, issueIid)` generiert; `projectId` muss mit dem Portal
-  übereinstimmen, damit der Link funktioniert.
-- Die Toolbar unter "Projekt-Konfiguration" erlaubt es, pro Projekt eine `Portal-Base URL` zu speichern (z. B.
-  `https://user-portal.arbeitgeber.com`). Diese Einstellung wird lokal im Browser behalten und erst dann werden
-  Ticketdaten geladen. Optional kann `HOST_CONFIG` einen `portalBaseUrl`-Wert enthalten, um die Eingabe vorab zu
-  befüllen, falls mehrere Nutzer den gleichen Host verwenden.
-- Die Progress-Daten werden entweder aus einer `div.progress` (mit `div.progress-bar`-Unterelementen) oder als Fallback
-  über den Text `Booked Hours` extrahiert.
+- Die Projekte (Projektpfad, Projekt-ID, voreingestellte Listen) können initial im `HOST_CONFIG` stehen. Das
+  Script liest diesen Sockel und überschreibt ihn mit den lokal gespeicherten Einträgen aus `ambientProgressProjectConfigs`
+  bzw. `ambientProgressListSelections`, sobald du die Projekt-ID/Portal-Base-URL oder die Listenauswahl änderst.
+- Der Gear-Dropdown bietet ein Formular für Projekt-ID und Portal-Base-URL; Werte werden normalisiert (`https://`-Prefix,
+  Trailing-Slash entfernt), in LocalStorage gespeichert und mit einem Reload sofort aktiv („Einstellungen speichern“).
+- Die Portal-URL besteht aus der Base + `/management/project/{projectId}/booking-label/#` + IID; ohne gültige Projekt-ID
+  oder Base wird kein Request abgesendet und es erscheint ein gelber Toast.
+- Das Parsing der Portal-Seite schaut zuerst nach `div.progress`-Elementen mit `progress-bar`, dann nach Inline- oder
+  Tabellenwerten zu „Booked Hours“, um `spent`/`remaining`/`over` sinnvoll abzuleiten.
 
 ## Lokale Controls
 
-- **Debug** (`portalProgressDebug`): schaltet Logging (`console.log`) für den Entwicklungsworkflow ein/aus.
-  Standardmäßig ist Debug aus.
-- **Anzeigen** (`portalProgressShow`): blendet alle Badges ein/aus. Bei eingeschaltetem Zustand löst das Skript ggf.
-  einen neuen Board-Scan aus.
-- **Version**: im Einstellungen-Dropdown (⚙) steht oben ein Label „Version: X.X.X“, damit du direkt siehst, welche
-  Skript-Version gerade aktiv ist.
-- **Cache leeren**: über den grünen Button im Einstellungen-Dropdown kannst du den Fortschritts-Cache löschen. Es
-  wird sofort ein neuer Scan gestartet und du erhältst eine kurze Bestätigung über den Toast rechts oben. Cache
-  leeren hebt auch einen Block auf, den ein fehlerhafter Portal-Request (403/404) vorbelegt, sodass neue Requests
-  wieder erlaubt sind.
-- **Fehlerzustände**: Wenn ein Portal-Request z. B. mit 404 oder 403 antwortet, bekommst du sofort einen Toast mit dem
-  Statuscode und das Script stoppt alle weiteren Anfragen, bis du über das ⚙ die Portal-Base-URL noch einmal speicherst.
-- **UI-Feedback**: Warnungen wie „Portal-Base URL fehlt …“ oder Bestätigungen wie „Cache geleert“ fliegen von oben
-  rechts ein, bleiben fünf Sekunden sichtbar und fliegen wieder aus. So bleibt die Toolbar aufgeräumt.
-- **Einstellungen speichern**: Nach dem Speichern der Portal-Base-URL oder Projekt-ID lädt das Script die Seite neu,
-  damit die neuen Einstellungen sofort wirken.
+- **Debug** (`portalProgressDebug`): aktiviert `console.log` und zeigt zusätzliche Informationen im Browser-Console-Log.
+- **Anzeigen** (`portalProgressShow`): blendet die Badges und Detail-Widgets ein/aus; beim Aktivieren wird das Board
+  erneut gescannt, beim Deaktivieren werden die Badges lediglich ausgeblendet.
+- **Listen-Checkboxes**: Aktivierte Listen werden im Cache gespeichert; sobald du eine Spalte per Checkbox erlaubst oder
+  deaktivierst, wechselt das Script in den expliziten Modus und speichert die Auswahl unter dem Projektschlüssel.
+- **Cache leeren**: Entfernt alle gespeicherten Progress-Daten, hebt eventuell gesetzte Request-Blocks und triggert
+  neue Scans sowie einen grünen Toast („Cache geleert“).
+- **Fehlerzustände & Portal-Hinweise**: Hilfreiche Toasts warnen bei fehlender Portal-Base, 403/404-Block(-Wiederholung) oder
+  dem erfolgreichen Speichern von Einstellungen; die Warnung zu fehlender Base meldet sich maximal alle zwei Minuten.
+- **Einstellungen speichern**: Nach erfolgreichem Speichern der Projekt-ID bzw. Portal-Base-URL siehst du ein Erfolgstoast
+  und die Seite lädt sich neu, damit die neuen Werte sofort greifen.
 
 ## Hinweise
 
-- Das Skript geht davon aus, dass eine Session beim Portal existiert (`withCredentials: true`). Bei fehlender
-  Authentifizierung lädt das Parsing die Login-Seite und es werden ggf. keine Daten angezeigt.
-- Die Render-Logik ist komplett über DOM-Manipulation realisiert; damit Stile funktionieren, ist das Badge auf
-  `z-index: 20` gestellt und nutzt `flex`/`position` für Text-Overlay und Button.
-- Bei Problemen sollte der Browser-Console-Log (mit aktivem Debug) Hinweise liefern, vor allem wenn `progressCache` oder
-  `GM_xmlhttpRequest` scheitern.
+- Das Skript geht davon aus, dass eine Session beim Portal existiert (`withCredentials: true`). Werden nicht alle Daten
+  geladen, liegt es meist an einem fehlenden Login, einer falschen Base-URL oder einem blockierten Request nach einem
+  403/404.
+- Die Render-Logik nutzt ausschließlich DOM-Manipulation; Badges werden mit `z-index: 20` platziert, weil sie sonst
+  von GitLab-Elementen überdeckt wären.
+- MutationObserver beobachten das Board und triggern bei frisch geladenen Listen oder Karten neue Scans; Ähnliche
+  Mechanismen sorgen dafür, dass Issue-Detailansichten (Teilnehmer-Sektion) synchron mit den Board-Badges bleiben.
