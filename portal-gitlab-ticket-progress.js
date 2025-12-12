@@ -1,12 +1,11 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.4.4
+// @version      3.4.5
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
 // @grant        GM_xmlhttpRequest
-// @connect      portal.ambient.digital
 // @updateURL    https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/portal-gitlab-ticket-progress.js
 // @downloadURL  https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/portal-gitlab-ticket-progress.js
 // ==/UserScript==
@@ -19,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.4.4';
+  const SCRIPT_VERSION = '3.4.5';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -2322,7 +2321,6 @@
       }
       if (relevantChange) {
         log('MutationObserver → scanBoard()/scanIssueDetail()');
-        clearProgressCache();
         scanBoard(hostConfig, projectSettings);
         scanIssueDetail(hostConfig, projectSettings);
       }
