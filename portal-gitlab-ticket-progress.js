@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.4.12
+// @version      3.4.13
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.4.12';
+  const SCRIPT_VERSION = '3.4.13';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -777,6 +777,195 @@
       listFilterMode,
       portalBaseUrl
     });
+  }
+
+  const GITLAB_LIGHT_BG_VARS = [
+    '--body-bg',
+    '--gl-body-bg',
+    '--gl-app-background',
+    '--gl-page-bg',
+    '--gl-warm-background',
+    '--gl-surface-0',
+    '--gl-surface-100'
+  ];
+  const GITLAB_DARK_BG_VARS = [
+    '--gl-dark-mode-body-bg',
+    '--gl-dark-surface',
+    '--gl-dark-mode-surface',
+    '--gl-navbar-background',
+    '--gl-top-bar-background',
+    '--gl-page-background'
+  ];
+  const GITLAB_BG_SELECTORS = [
+    '.top-bar-container',
+    '.top-bar-fixed',
+    '.gl-app-header',
+    '.gl-top-bar',
+    'body'
+  ];
+  const gitlabWindowBackgroundCache = {
+    light: null,
+    default: null
+  };
+
+  function readCssVariableValue(name) {
+    if (!name) return null;
+    try {
+      const computed = window.getComputedStyle(document.documentElement).getPropertyValue(name);
+      if (!computed) return null;
+      const value = computed.trim();
+      if (!value) return null;
+      if (value === 'transparent' || value === 'rgba(0, 0, 0, 0)' || value === 'rgba(0,0,0,0)') {
+        return null;
+      }
+      return value;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function getFirstCssVariableValue(names) {
+    if (!names || !names.length) return null;
+    for (let i = 0; i < names.length; i++) {
+      const value = readCssVariableValue(names[i]);
+      if (value) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  function getComputedBackgroundFromSelectors(selectors) {
+    if (!selectors || !selectors.length) return null;
+    for (let i = 0; i < selectors.length; i++) {
+      try {
+        const element = document.querySelector(selectors[i]);
+        if (!element) continue;
+        const bg = window.getComputedStyle(element).backgroundColor;
+        if (!bg) continue;
+        if (bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)' || bg === 'rgba(0,0,0,0)') {
+          continue;
+        }
+        return bg;
+      } catch (e) {
+        // ignore invalid selector
+      }
+    }
+    return null;
+  }
+
+  function isGitLabDarkModeActive() {
+    const html = document.documentElement;
+    if (html) {
+      const dataTheme = html.getAttribute('data-theme');
+      if (dataTheme) {
+        const lower = dataTheme.toLowerCase();
+        if (lower.includes('dark')) {
+          return true;
+        }
+        if (lower.includes('light')) {
+          return false;
+        }
+      }
+      if (html.classList) {
+        if (
+          html.classList.contains('gl-theme-dark') ||
+          html.classList.contains('gl-dark') ||
+          html.classList.contains('theme-dark')
+        ) {
+          return true;
+        }
+        if (
+          html.classList.contains('gl-theme-light') ||
+          html.classList.contains('gl-light') ||
+          html.classList.contains('theme-light')
+        ) {
+          return false;
+        }
+      }
+    }
+    const body = document.body;
+    if (body && body.classList) {
+      if (body.classList.contains('gl-theme-dark') || body.classList.contains('gl-dark')) {
+        return true;
+      }
+      if (body.classList.contains('gl-theme-light') || body.classList.contains('gl-light')) {
+        return false;
+      }
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return true;
+    }
+    return false;
+  }
+
+  function getGitLabWindowBackgroundColor(preferLightInDarkMode) {
+    const cacheKey = preferLightInDarkMode ? 'light' : 'default';
+    if (gitlabWindowBackgroundCache[cacheKey]) {
+      return gitlabWindowBackgroundCache[cacheKey];
+    }
+    const preferLight = preferLightInDarkMode && isGitLabDarkModeActive();
+    const variableOrder = preferLight
+      ? GITLAB_LIGHT_BG_VARS.concat(GITLAB_DARK_BG_VARS)
+      : GITLAB_DARK_BG_VARS.concat(GITLAB_LIGHT_BG_VARS);
+    let value = getFirstCssVariableValue(variableOrder);
+    if (!value) {
+      value = getComputedBackgroundFromSelectors(GITLAB_BG_SELECTORS);
+    }
+    if (!value) {
+      value = '#111827';
+    }
+    gitlabWindowBackgroundCache[cacheKey] = value;
+    return value;
+  }
+
+  function parseCssColorToRgb(value) {
+    if (!value || typeof value !== 'string') return null;
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed.startsWith('rgba') || trimmed.startsWith('rgb')) {
+      const match = trimmed.match(/rgba?\(([^)]+)\)/);
+      if (!match) return null;
+      const parts = match[1].split(',').map(function (part) {
+        return parseFloat(part.trim());
+      });
+      if (parts.length < 3 || Number.isNaN(parts[0]) || Number.isNaN(parts[1]) || Number.isNaN(parts[2])) {
+        return null;
+      }
+      return {
+        r: parts[0],
+        g: parts[1],
+        b: parts[2]
+      };
+    }
+    if (trimmed.startsWith('#')) {
+      const hex = trimmed.slice(1);
+      if (hex.length === 3) {
+        return {
+          r: parseInt(hex[0] + hex[0], 16),
+          g: parseInt(hex[1] + hex[1], 16),
+          b: parseInt(hex[2] + hex[2], 16)
+        };
+      }
+      if (hex.length === 6 || hex.length === 8) {
+        return {
+          r: parseInt(hex.slice(0, 2), 16),
+          g: parseInt(hex.slice(2, 4), 16),
+          b: parseInt(hex.slice(4, 6), 16)
+        };
+      }
+    }
+    return null;
+  }
+
+  function getContrastTextColor(bgColor, darkColor, lightColor) {
+    const rgb = parseCssColorToRgb(bgColor);
+    const fallbackDark = darkColor || '#0f172a';
+    const fallbackLight = lightColor || '#f8fafc';
+    if (!rgb) {
+      return fallbackLight;
+    }
+    const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+    return luminance > 0.55 ? fallbackDark : fallbackLight;
   }
 
   function getBoardListHeaderElement(boardListElem) {
@@ -1569,6 +1758,8 @@
   function injectProgressIntoIssueDetail(participantsElem, progressData) {
     if (!participantsElem || !progressData) return;
 
+    const windowBackground = getGitLabWindowBackgroundColor(true);
+    const textColor = getContrastTextColor(windowBackground);
     let container = participantsElem.nextElementSibling;
     if (!container || !container.classList.contains('ambient-progress-detail-badge')) {
       container = document.createElement('div');
@@ -1577,13 +1768,14 @@
         marginTop: '0.65rem',
         padding: '0.45rem 0.75rem',
         borderRadius: '10px',
-        border: '1px solid #1f2937',
-        background: '#0f172a'
+        border: '1px solid ' + textColor,
+        background: windowBackground
       });
       participantsElem.insertAdjacentElement('afterend', container);
     }
 
     container.style.display = showEnabled ? '' : 'none';
+    container.style.color = textColor;
     container.innerHTML = '';
 
     const row = document.createElement('div');
@@ -1594,7 +1786,12 @@
       fontSize: '12px'
     });
 
-    const barOuter = createProgressBarElements(progressData);
+    const barOuter = createProgressBarElements(progressData, {
+      textLayer: {color: textColor},
+      spentLabel: {color: textColor},
+      remainingLabel: {color: textColor},
+      centerLabel: {color: textColor}
+    });
     if (barOuter) {
       row.appendChild(barOuter);
       container.appendChild(row);
@@ -1787,6 +1984,8 @@
     const existing = document.getElementById('ambient-progress-toolbar');
     if (existing) return existing;
 
+    const windowBackground = getGitLabWindowBackgroundColor(true);
+
     const targetSelectors = ['.top-bar-container', '.top-bar-fixed'];
     let insertParent = null;
     for (let si = 0; si < targetSelectors.length; si++) {
@@ -1800,6 +1999,7 @@
       insertParent = document.body;
     }
 
+    const toolbarTextColor = getContrastTextColor(windowBackground);
     const bar = document.createElement('div');
     bar.id = 'ambient-progress-toolbar';
     applyStyles(bar, {
@@ -1810,7 +2010,7 @@
       height: '42px',
       marginLeft: 'auto',
       fontSize: '13px',
-      color: '#e9ecef'
+      color: toolbarTextColor
     });
 
     function makeSwitch(labelText, checked, onChange) {
@@ -1945,7 +2145,7 @@
     gearButton.textContent = '⚙';
     applyStyles(gearButton, {
       border: '1px solid #4b5563',
-      background: '#111827',
+      background: 'var(--super-sidebar-nav-item-current-bg)',
       color: '#e5e7eb',
       borderRadius: '999px',
       padding: '4px 10px',
@@ -1961,7 +2161,8 @@
       position: 'absolute',
       top: 'calc(100% + 6px)',
       right: '0',
-      background: '#111827',
+      background: windowBackground,
+      color: toolbarTextColor,
       border: '1px solid #2f374c',
       borderRadius: '8px',
       boxShadow: '0 10px 25px rgba(15, 23, 42, 0.35)',
@@ -2202,15 +2403,17 @@
 
   function createProjectConfigSection(hostConfig, projectSettings) {
     const section = document.createElement('div');
+    const panelBackground = getGitLabWindowBackgroundColor(true);
+    const panelTextColor = getContrastTextColor(panelBackground);
     applyStyles(section, {
       padding: '0.5rem 0',
       width: '100%',
       borderTop: '1px solid #2f374c',
       display: 'flex',
       flexDirection: 'column',
-      gap: '0.4rem'
+      gap: '0.4rem',
+      color: panelTextColor
     });
-
     const heading = document.createElement('div');
     heading.textContent = 'Projekt-Konfiguration';
     applyStyles(heading, {
@@ -2218,14 +2421,16 @@
       letterSpacing: '0.05em',
       textTransform: 'uppercase',
       opacity: '0.75',
-      fontWeight: '600'
+      fontWeight: '600',
+      color: panelTextColor
     });
 
     const pathInfo = document.createElement('div');
     pathInfo.textContent = 'Board: ' + (projectSettings.projectPath || 'unbekannt');
     applyStyles(pathInfo, {
       fontSize: '0.85rem',
-      opacity: '0.9'
+      opacity: '0.9',
+      color: panelTextColor
     });
 
     const currentId = document.createElement('div');
@@ -2237,7 +2442,7 @@
 
     applyStyles(currentId, {
       fontSize: '0.8rem',
-      color: '#d1d5db'
+      color: panelTextColor
     });
 
     const formRow = document.createElement('div');
@@ -2256,8 +2461,8 @@
       padding: '0.35rem 0.5rem',
       borderRadius: '6px',
       border: '1px solid #374151',
-      background: '#0f172a',
-      color: '#f8fafc',
+      background: panelBackground,
+      color: panelTextColor,
       fontSize: '0.85rem'
     });
     projectIdInputElement = input;
@@ -2289,7 +2494,8 @@
       letterSpacing: '0.05em',
       textTransform: 'uppercase',
       opacity: '0.75',
-      fontWeight: '600'
+      fontWeight: '600',
+      color: panelTextColor
     });
 
     const portalCurrent = document.createElement('div');
@@ -2300,7 +2506,7 @@
     updatePortalLabel(projectSettings.portalBaseUrl);
     applyStyles(portalCurrent, {
       fontSize: '0.8rem',
-      color: '#d1d5db'
+      color: panelTextColor
     });
 
     const portalRow = document.createElement('div');
@@ -2319,8 +2525,8 @@
       padding: '0.35rem 0.5rem',
       borderRadius: '6px',
       border: '1px solid #374151',
-      background: '#0f172a',
-      color: '#f8fafc',
+      background: panelBackground,
+      color: panelTextColor,
       fontSize: '0.85rem'
     });
     portalUrlInputElement = portalInput;
