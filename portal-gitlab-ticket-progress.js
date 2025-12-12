@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.4.13
+// @version      3.5.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.4.13';
+  const SCRIPT_VERSION = '3.5.0';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -287,8 +287,11 @@
     writeLastRefreshTimestamp(Date.now());
   }
 
-  function shouldPerformPortalRequest() {
+  function shouldPerformPortalRequest(hasCache = true) {
     if (forceRefreshMode) {
+      return true;
+    }
+    if (!hasCache) {
       return true;
     }
     const last = readLastRefreshTimestamp();
@@ -1538,7 +1541,7 @@
       return;
     }
 
-    if (!shouldPerformPortalRequest()) {
+    if (!shouldPerformPortalRequest(false)) {
       log('Portal-Request ausgelassen (letzte Aktualisierung < 1h) für Issue', issueIid);
       return;
     }
@@ -1741,6 +1744,33 @@
         'Issue',
         issueIid + ').'
       );
+      const url = buildPortalUrl(projectSettings, issueIid);
+      if (!url) {
+        warn(
+          'Keine Portal-Basis konfiguriert für',
+          projectSettings.projectPath,
+          '; Detail-Fortschritt wird nicht geladen.'
+        );
+        return;
+      }
+      if (!shouldPerformPortalRequest(false)) {
+        log('Detail-Request ausgelassen (letzte Aktualisierung < 1h) für Issue', issueIid);
+        return;
+      }
+      log('Ticket-Detail lädt Progress-Daten (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ') →', url);
+      loadProgressData(url, issueIid)
+        .then(function (progressData) {
+          if (!progressData) return;
+          setProgressCacheEntry(cacheKey, progressData);
+          injectProgressIntoIssueDetail(participantsElem, progressData);
+          participantsElem.dataset.ambientProgressIssueIid = issueIid;
+        })
+        .catch(function (err) {
+          error('Request-Fehler für Issue ' + issueIid + ' (Detailansicht):', err);
+          if (err && err.status) {
+            blockProjectRequests(projectSettings.projectKey, err.status);
+          }
+        });
       return;
     }
 
@@ -1802,6 +1832,13 @@
     const badges = document.querySelectorAll('.ambient-progress-detail-badge');
     for (let i = 0; i < badges.length; i++) {
       badges[i].style.display = showEnabled ? '' : 'none';
+    }
+  }
+
+  function resetProcessedFlags() {
+    const processedCards = document.querySelectorAll('[data-ambient-progress-processed="1"]');
+    for (let i = 0; i < processedCards.length; i++) {
+      processedCards[i].removeAttribute('data-ambient-progress-processed');
     }
   }
 
@@ -1959,6 +1996,7 @@
 
   function triggerManualProgressRefresh(hostConfig, projectSettings) {
     if (!hostConfig || !projectSettings) return;
+    resetProcessedFlags();
     forceRefreshMode = true;
     try {
       clearProjectRequestBlock(projectSettings.projectKey);
