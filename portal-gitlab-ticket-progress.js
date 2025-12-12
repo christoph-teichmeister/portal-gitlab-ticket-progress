@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.6.0
+// @version      3.6.1
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.6.0';
+  const SCRIPT_VERSION = '3.6.1';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -1814,9 +1814,7 @@
       container.className = 'ambient-progress-detail-badge';
       applyStyles(container, {
         marginTop: '0.65rem',
-        padding: '0.45rem 0.75rem',
-        borderRadius: '10px',
-        border: '1px solid ' + textColor,
+        padding: '0.45rem 0',
         background: windowBackground
       });
       participantsElem.insertAdjacentElement('afterend', container);
