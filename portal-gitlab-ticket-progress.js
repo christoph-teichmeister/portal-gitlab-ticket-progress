@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.4.9
+// @version      3.4.10
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.4.9';
+  const SCRIPT_VERSION = '3.4.10';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -57,6 +57,7 @@
   const LS_KEY_PROJECT_CONFIG = 'ambientProgressProjectConfigs';
   const LS_KEY_LAST_REFRESH = 'ambientProgressLastRefresh';
   const LS_KEY_PROGRESS_CACHE = 'ambientProgressCache';
+  const LS_KEY_LAST_BOARD_ID = 'ambientProgressLastBoardId';
 
   let debugEnabled = readBoolFromLocalStorage(LS_KEY_DEBUG, false);  // default: Debug aus
   let showEnabled = readBoolFromLocalStorage(LS_KEY_SHOW, true);    // default: Anzeigen an
@@ -367,6 +368,57 @@
     } catch (e) {
       // ignore
     }
+  }
+
+  function readLastBoardIdentifierFromStorage() {
+    try {
+      return window.localStorage.getItem(LS_KEY_LAST_BOARD_ID);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeLastBoardIdentifierToStorage(value) {
+    try {
+      if (value) {
+        window.localStorage.setItem(LS_KEY_LAST_BOARD_ID, value);
+      } else {
+        window.localStorage.removeItem(LS_KEY_LAST_BOARD_ID);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function getBoardIdentifierFromPath() {
+    const match = window.location.pathname.match(/\/-\/boards\/([^\/?]+)/);
+    if (match && match[1]) {
+      return match[1];
+    }
+    return null;
+  }
+
+  function getCurrentBoardIdentifier() {
+    const fromPath = getBoardIdentifierFromPath();
+    if (fromPath) {
+      writeLastBoardIdentifierToStorage(fromPath);
+      return fromPath;
+    }
+    const stored = readLastBoardIdentifierFromStorage();
+    return stored || 'default';
+  }
+
+  function buildProgressCacheKey(projectSettings, issueIid) {
+    if (!projectSettings || !issueIid) {
+      return null;
+    }
+    const projectIdentifier = projectSettings.projectKey || projectSettings.projectPath;
+    if (!projectIdentifier) {
+      return null;
+    }
+    const boardId = getCurrentBoardIdentifier();
+    const normalizedBoardId = boardId ? boardId : 'default';
+    return 'board:' + normalizedBoardId + '|' + projectIdentifier + ':' + String(issueIid);
   }
 
   function hydrateProgressCacheFromStorage() {
@@ -1242,7 +1294,11 @@
       warn('Kein projectId für', projectSettings.projectPath, '; progress wird nicht geladen.');
       return;
     }
-    const cacheKey = String(projectId) + ':' + String(issueIid);
+    const cacheKey = buildProgressCacheKey(projectSettings, issueIid);
+    if (!cacheKey) {
+      warn('Konnte Cache-Schlüssel nicht bestimmen für Issue', issueIid);
+      return;
+    }
 
     const url = buildPortalUrl(projectSettings, issueIid);
     if (!url) {
@@ -1456,7 +1512,11 @@
       return;
     }
 
-    const cacheKey = String(projectId) + ':' + String(issueIid);
+    const cacheKey = buildProgressCacheKey(projectSettings, issueIid);
+    if (!cacheKey) {
+      log('Detail-Cache: Kein Cache-Key möglich für Issue', issueIid);
+      return;
+    }
     const cached = getProgressCacheEntry(cacheKey);
     if (!cached) {
       log(
