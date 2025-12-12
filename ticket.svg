@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 16 16"
+     width="64"
+     height="64"
+     role="img"
+     aria-label="GitLab ticket icon">
+
+    <!-- Minimal GitLab-style ticket / issue icon -->
+    <g fill="none"
+       stroke="#ffffff"
+       stroke-width="1.4"
+       stroke-linecap="round"
+       stroke-linejoin="round">
+
+        <!-- Ticket outline -->
+        <path d="
+      M3 4
+      h10
+      v2
+      a1 1 0 0 1 0 4
+      v2
+      h-10
+      v-2
+      a1 1 0 0 1 0 -4
+      z"/>
+
+        <!-- Content lines -->
+        <path d="M6 7h4"/>
+        <path d="M6 9h3"/>
+
+    </g>
+</svg>
