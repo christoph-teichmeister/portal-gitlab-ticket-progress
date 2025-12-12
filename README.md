@@ -28,8 +28,7 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    Anzeige (Badges) standardmäßig an.
 7. Klicke in der GitLab-Topbar auf das Zahnrad, um die „Projekt-Konfiguration“ zu öffnen, und trage dort die
    Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Die Einstellung wird ausschließlich lokal im
-   Browser gespeichert (per Projekt) und verhindert, dass die Portal-Base-URL in der Repository-Historie landet; du
-   musst sie nur einmal hinterlegen.
+   Browser gespeichert (per Projekt). Du musst sie nur einmal hinterlegen.
 8. Wenn die Portal-Base-URL fehlt, blendet das Script einen kleinen Toast von oben rechts ein („Portal-Base URL fehlt –
    ⚙ → Projekt-Konfiguration öffnen und eintragen.“). Nach fünf Sekunden verschwindet der Hinweis wieder; du kannst
    ihn bei Bedarf erneut triggern, indem du das Zahnrad öffnest.
@@ -43,7 +42,6 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
   `Booked Hours`).
 - Fügt einen Button (`↗`) hinzu, der die entsprechende Issue-Detailseite im Portal öffnet.
 - Nutzt lokale Einstellungen (`localStorage`) für die Toolbar-Toggles (`portalProgressDebug`/`portalProgressShow`).
-- Beschränkt sich auf vorher konfigurierte Projekte/Boards (z. B. `ai/ai-portal` oder `havg-rz/aka-portal`).
 - Beobachtet das Board per `MutationObserver`, um neu geladene Karten automatisch zu erkennen.
 
 ## Konfiguration & Erweiterung
@@ -61,26 +59,22 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
 
 ## Lokale Controls
 
-- **Debug** (`portalProgressDebug`): schaltet Logging (`console.log`) für den Entwicklungsworkflow ein/aus. Standardmäßig
-  ist Debug aus.
-- **Anzeigen** (`portalProgressShow`): blendet alle Badges ein/aus. Bei eingeschaltetem Zustand löst das Skript ggf. einen
-  neuen Board-Scan aus.
+- **Debug** (`portalProgressDebug`): schaltet Logging (`console.log`) für den Entwicklungsworkflow ein/aus.
+  Standardmäßig ist Debug aus.
+- **Anzeigen** (`portalProgressShow`): blendet alle Badges ein/aus. Bei eingeschaltetem Zustand löst das Skript ggf.
+  einen neuen Board-Scan aus.
 - **Version**: im Einstellungen-Dropdown (⚙) steht oben ein Label „Version: X.X.X“, damit du direkt siehst, welche
   Skript-Version gerade aktiv ist.
 - **Cache leeren**: über den grünen Button im Einstellungen-Dropdown kannst du den Fortschritts-Cache löschen. Es
   wird sofort ein neuer Scan gestartet und du erhältst eine kurze Bestätigung über den Toast rechts oben. Cache
   leeren hebt auch einen Block auf, den ein fehlerhafter Portal-Request (403/404) vorbelegt, sodass neue Requests
   wieder erlaubt sind.
-- **Fehlerzustände**: Wenn ein Portal-Request z. B. mit 404 oder 403 antwortet, bekommst du sofort einen Toast mit dem
+- **Fehlerzustände**: Wenn ein Portal-Request z. B. mit 404 oder 403 antwortet, bekommst du sofort einen Toast mit dem
   Statuscode und das Script stoppt alle weiteren Anfragen, bis du über das ⚙ die Portal-Base-URL noch einmal speicherst.
 - **UI-Feedback**: Warnungen wie „Portal-Base URL fehlt …“ oder Bestätigungen wie „Cache geleert“ fliegen von oben
   rechts ein, bleiben fünf Sekunden sichtbar und fliegen wieder aus. So bleibt die Toolbar aufgeräumt.
-- **Einstellungen speichern**: Der Save-Button am Dropdown-Bottom ist zunächst deaktiviert und wird bei jeder Änderung
-  aktiv. Nach dem Speichern der Portal-Base-URL oder Projekt-ID lädt das Script die Seite neu, damit die neuen Einstellungen
-  sofort wirken.
-
-Die beiden Switches (Debug/Anzeigen) befinden sich direkt in der GitLab-Topbar (rechts außen) als stilisierte
-Schalter; die restlichen Einstellungen leben im Dropdown hinter dem ⚙ und bleiben beim Scrollen sichtbar.
+- **Einstellungen speichern**: Nach dem Speichern der Portal-Base-URL oder Projekt-ID lädt das Script die Seite neu,
+  damit die neuen Einstellungen sofort wirken.
 
 ## Hinweise
 
