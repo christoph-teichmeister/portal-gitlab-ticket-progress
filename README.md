@@ -89,6 +89,9 @@ Ausführungsoberfläche beschränkt sich auf den Code in diesem Repository.
   Fortschritts-Daten in `localStorage`, sodass ein einfacher Reload keine neuen Portal-Requests auslöst, solange die
   letzte Aktualisierung jünger als eine Stunde ist.
 - Blockiert weitere Requests nach Fehlern (403/404), bis du den Cache leerst oder die Portal-URL neu speicherst.
+- Beim ersten Request nach dem Speichern einer neuen Portal-Base-URL erscheint ein Tampermonkey-Popup, das dich um
+  Erlaubnis für den Zugriff auf diese URL bittet (`GM_xmlhttpRequest`). Gib dort „Allow“ oder „Ja“, damit das Skript
+  tatsächlich auf das Portal zugreifen darf.
 - Beobachtet das Board via `MutationObserver`, reagiert auf neue Karten/Listen und führt bei Bedarf neue Scans aus.
 - Zeigt im Dropdown eine Zeile mit dem Zeitstempel der letzten Portal-Anfrage und einen Button zum sofortigen
   Neuladen aller Tickets; der Button leert den lokalen Cache, setzt den Zeitstempel zurück und lädt die Seite neu,
