@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.4.2
+// @version      3.4.3
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -19,7 +19,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.4.2';
+  const SCRIPT_VERSION = '3.4.3';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -656,6 +656,10 @@
     const parts = path.split('/').filter(Boolean);
     if (parts.length < 2) return null;
     return parts[0] + '/' + parts[1];
+  }
+
+  function isMergeRequestPage() {
+    return /\/merge_requests\//.test(window.location.pathname);
   }
 
   function getProjectSettings(hostConfig) {
@@ -2263,6 +2267,10 @@
   function init() {
     log('Userscript gestartet, URL:', window.location.href);
 
+    if (isMergeRequestPage()) {
+      log('Merge-Request-Seite erkannt; kein Progress-Overlay.');
+      return;
+    }
     const hostConfig = getCurrentHostConfig();
     if (!hostConfig) {
       warn('Kein hostConfig – Script beendet sich.');
