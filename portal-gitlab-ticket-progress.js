@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.3.0
+// @version      3.4.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -19,7 +19,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.3.0';
+  const SCRIPT_VERSION = '3.4.0';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -47,18 +47,23 @@
   let portalUrlInputElement = null;
   let projectStatusElement = null;
   let portalStatusElement = null;
+  let lastRefreshLabelElement = null;
+  let manualRefreshButtonElement = null;
+  let forceRefreshMode = false;
 
   // Debug / Anzeige – gesteuert über Toolbar, persistiert in localStorage
   const LS_KEY_DEBUG = 'portalProgressDebug';
   const LS_KEY_SHOW = 'portalProgressShow';
   const LS_KEY_LIST_SELECTIONS = 'ambientProgressListSelections';
   const LS_KEY_PROJECT_CONFIG = 'ambientProgressProjectConfigs';
+  const LS_KEY_LAST_REFRESH = 'ambientProgressLastRefresh';
 
   let debugEnabled = readBoolFromLocalStorage(LS_KEY_DEBUG, false);  // default: Debug aus
   let showEnabled = readBoolFromLocalStorage(LS_KEY_SHOW, true);    // default: Anzeigen an
 
   const LOG_PREFIX = '[GitLab Progress]';
-  const PROGRESS_CACHE_TTL_MS = 5 * 60 * 1000;
+  const PROGRESS_CACHE_TTL_MS = 60 * 60 * 1000;
+  const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
   const progressCache = {}; // key: projectId + ':' + issueIid → {data, timestamp}
 
   function ensureToastElement() {
@@ -220,6 +225,81 @@
       explicit: Boolean(explicit)
     };
     writeListSelectionsState(state);
+  }
+
+  function readLastRefreshTimestamp() {
+    try {
+      const val = window.localStorage.getItem(LS_KEY_LAST_REFRESH);
+      if (!val) {
+        return null;
+      }
+      const parsed = parseInt(val, 10);
+      if (isNaN(parsed)) {
+        return null;
+      }
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeLastRefreshTimestamp(value) {
+    try {
+      if (value === null || value === undefined) {
+        window.localStorage.removeItem(LS_KEY_LAST_REFRESH);
+      } else {
+        window.localStorage.setItem(LS_KEY_LAST_REFRESH, String(value));
+      }
+    } catch (e) {
+      // ignore
+    }
+    updateLastRefreshLabel();
+  }
+
+  function updateLastRefreshLabel() {
+    if (!lastRefreshLabelElement) {
+      return;
+    }
+    const timestamp = readLastRefreshTimestamp();
+    const labelText = timestamp
+      ? 'Letzte Aktualisierung: ' + formatRefreshTimestamp(timestamp)
+      : 'Letzte Aktualisierung: –';
+    lastRefreshLabelElement.textContent = labelText;
+  }
+
+  function formatRefreshTimestamp(value) {
+    if (!value) {
+      return '–';
+    }
+    try {
+      const date = new Date(value);
+      return date.toLocaleString('de-DE', {
+        hour12: false
+      });
+    } catch (e) {
+      return '–';
+    }
+  }
+
+  function markPortalRefreshTimestamp() {
+    writeLastRefreshTimestamp(Date.now());
+  }
+
+  function shouldPerformPortalRequest(hasCache) {
+    if (forceRefreshMode) {
+      return true;
+    }
+    const last = readLastRefreshTimestamp();
+    if (!last) {
+      return true;
+    }
+    if (Date.now() - last >= REFRESH_INTERVAL_MS) {
+      return true;
+    }
+    if (!hasCache) {
+      return true;
+    }
+    return false;
   }
 
   function readProjectConfigsState() {
@@ -1066,18 +1146,19 @@
           reject({status: response.status});
           return;
         }
-          const progressData = parseProgressHtml(response.responseText);
-          if (!progressData) {
-            log(
-              'Konnte progress-Daten nicht aus HTML extrahieren (evtl. Login-Page oder keine Buchungen). Issue',
-              issueIid
-            );
-            resolve(null);
-            return;
-          }
-          log('Progress-Daten erhalten für Issue', issueIid, progressData);
-          resolve(progressData);
-        },
+        markPortalRefreshTimestamp();
+        const progressData = parseProgressHtml(response.responseText);
+        if (!progressData) {
+          log(
+            'Konnte progress-Daten nicht aus HTML extrahieren (evtl. Login-Page oder keine Buchungen). Issue',
+            issueIid
+          );
+          resolve(null);
+          return;
+        }
+        log('Progress-Daten erhalten für Issue', issueIid, progressData);
+        resolve(progressData);
+      },
         onerror: function (err) {
           reject(err);
         }
@@ -1120,6 +1201,11 @@
     }
 
     if (!showEnabled) {
+      return;
+    }
+
+    if (!shouldPerformPortalRequest(!!cached)) {
+      log('Portal-Request ausgelassen (letzte Aktualisierung < 1h) für Issue', issueIid);
       return;
     }
 
@@ -1303,6 +1389,11 @@
     if (cached) {
       injectProgressIntoIssueDetail(participantsElem, cached);
       participantsElem.dataset.ambientProgressIssueIid = issueIid;
+      return;
+    }
+
+    if (!shouldPerformPortalRequest(false)) {
+      log('Portal-Request für Issue-Detail ausgelassen (letzte Aktualisierung < 1h):', issueIid);
       return;
     }
 
@@ -1522,6 +1613,18 @@
     }
   }
 
+  function triggerManualProgressRefresh(hostConfig, projectSettings) {
+    if (!hostConfig || !projectSettings) return;
+    forceRefreshMode = true;
+    try {
+      clearProjectRequestBlock(projectSettings.projectKey);
+      scanBoard(hostConfig, projectSettings);
+      scanIssueDetail(hostConfig, projectSettings);
+    } finally {
+      forceRefreshMode = false;
+    }
+  }
+
   function createToolbar(hostConfig, projectSettings) {
     const existing = document.getElementById('ambient-progress-toolbar');
     if (existing) return existing;
@@ -1720,6 +1823,47 @@
       paddingBottom: '0.2rem'
     });
     dropdown.appendChild(versionLabel);
+
+    const timestampRow = document.createElement('div');
+    applyStyles(timestampRow, {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '0.5rem',
+      paddingBottom: '0.35rem'
+    });
+
+    const timestampLabel = document.createElement('div');
+    applyStyles(timestampLabel, {
+      fontSize: '0.75rem',
+      letterSpacing: '0.02em',
+      opacity: '0.75'
+    });
+    lastRefreshLabelElement = timestampLabel;
+    updateLastRefreshLabel();
+    timestampRow.appendChild(timestampLabel);
+
+    if (projectSettings) {
+      const refreshButton = document.createElement('button');
+      refreshButton.type = 'button';
+      refreshButton.textContent = 'Jetzt aktualisieren';
+      applyStyles(refreshButton, {
+        background: '#2563eb',
+        border: 'none',
+        borderRadius: '6px',
+        padding: '0.25rem 0.7rem',
+        fontSize: '0.7rem',
+        color: '#fff',
+        cursor: 'pointer'
+      });
+      refreshButton.addEventListener('click', function () {
+        triggerManualProgressRefresh(hostConfig, projectSettings);
+      });
+      manualRefreshButtonElement = refreshButton;
+      timestampRow.appendChild(refreshButton);
+    }
+
+    dropdown.appendChild(timestampRow);
 
     dropdown.appendChild(togglesContainer);
     if (projectSettings) {
