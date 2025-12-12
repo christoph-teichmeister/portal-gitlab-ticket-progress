@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.6.4
+// @version      3.6.5
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,8 +18,8 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.6.4';
-  const TOOLBAR_ICON_DATA_URL = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiAgICAgdmlld0JveD0iMCAwIDE2IDE2IgogICAgIHdpZHRoPSI2NCIKICAgICBoZWlnaHQ9IjY0IgogICAgIHJvbGU9ImltZyIKICAgICBhcmlhLWxhYmVsPSJHaXRMYWIgdGlja2V0IGljb24iPgoKICAgIDwhLS0gTWluaW1hbCBHaXRMYWItc3R5bGUgdGlja2V0IC8gaXNzdWUgaWNvbiAtLT4KICAgIDxnIGZpbGw9Im5vbmUiCiAgICAgICBzdHJva2U9IiNmZmZmZmYiCiAgICAgICBzdHJva2Utd2lkdGg9IjEuNCIKICAgICAgIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIKICAgICAgIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgoKICAgICAgICA8IS0tIFRpY2tldCBvdXRsaW5lIC0tPgogICAgICAgIDxwYXRoIGQ9IgogICAgICBNMyA0CiAgICAgIGgxMAogICAgICB2MgogICAgICBhMSAxIDAgMCAxIDAgNAogICAgICB2MgogICAgICBoLTEwCiAgICAgIHYtMgogICAgICBhMSAxIDAgMCAxIDAgLTQKICAgICAgeiIvPgoKICAgICAgICA8IS0tIENvbnRlbnQgbGluZXMgLS0+CiAgICAgICAgPHBhdGggZD0iTTYgN2g0Ii8+CiAgICAgICAgPHBhdGggZD0iTTYgOWgzIi8+CgogICAgPC9nPgo8L3N2Zz4K';
+  const SCRIPT_VERSION = '3.6.5';
+  const TOOLBAR_ICON_DATA_URL = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiAgICAgdmlld0JveD0iMCAwIDE2IDE2IgogICAgIHdpZHRoPSI2NCIKICAgICBoZWlnaHQ9IjY0IgogICAgIHJvbGU9ImltZyIKICAgICBhcmlhLWxhYmVsPSJHaXRMYWIgdGlja2V0IGljb24iPgoKICAgIDwhLS0gTWluaW1hbCBHaXRMYWItc3R5bGUgdGlja2V0IC8gaXNzdWUgaWNvbiAtLT4KICAgIDxnIGZpbGw9Im5vbmUiCiAgICAgICBzdHJva2U9IiNmZmZmZmYiCiAgICAgICBzdHJva2Utd2lkdGg9IjEuMCIKICAgICAgIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIKICAgICAgIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgoKICAgICAgICA8IS0tIFRpY2tldCBvdXRsaW5lIC0tPgogICAgICAgIDxwYXRoIGQ9IgogICAgICBNMyA0CiAgICAgIGgxMAogICAgICB2MgogICAgICBhMSAxIDAgMCAxIDAgNAogICAgICB2MgogICAgICBoLTEwCiAgICAgIHYtMgogICAgICBhMSAxIDAgMCAxIDAgLTQKICAgICAgeiIvPgoKICAgICAgICA8IS0tIENvbnRlbnQgbGluZXMgLS0+CiAgICAgICAgPHBhdGggZD0iTTYgN2g0Ii8+CiAgICAgICAgPHBhdGggZD0iTTYgOWgzIi8+CgogICAgPC9nPgo8L3N2Zz4K';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -2245,6 +2245,7 @@
     togglesContainer.appendChild(debugToggle);
 
     const gearWrapper = document.createElement('div');
+    gearWrapper.classList.add('gl-disclosure-dropdown', 'super-sidebar-new-menu-dropdown', 'gl-new-dropdown');
     applyStyles(gearWrapper, {
       position: 'relative',
       display: 'inline-flex',
@@ -2254,26 +2255,35 @@
     const gearButton = document.createElement('button');
     gearButton.type = 'button';
     gearButton.setAttribute('aria-label', 'Progress-Einstellungen');
+    gearButton.setAttribute('data-testid', 'base-dropdown-toggle');
     const gearIcon = document.createElement('img');
     gearIcon.src = TOOLBAR_ICON_DATA_URL;
     gearIcon.alt = '';
+    gearIcon.classList.add('gl-button-icon', 'gl-icon', 's16', 'gl-fill-current');
     applyStyles(gearIcon, {
       width: '20px',
       height: '20px',
       display: 'block'
     });
+    gearButton.classList.add(
+      'btn',
+      'gl-button',
+      'btn-default',
+      'btn-md',
+      'btn-default-tertiary',
+      'gl-new-dropdown-toggle',
+      'gl-new-dropdown-icon-only',
+      'btn-icon',
+      'gl-new-dropdown-toggle-no-caret'
+    );
     applyStyles(gearButton, {
-      border: '1px solid #4b5563',
-      background: 'var(--super-sidebar-nav-item-current-bg)',
-      color: '#e5e7eb',
-      borderRadius: '999px',
-      padding: '6px',
-      cursor: 'pointer',
+      padding: '0.35rem',
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
       minWidth: '38px',
-      minHeight: '38px'
+      minHeight: '38px',
+      cursor: 'pointer'
     });
     gearButton.appendChild(gearIcon);
 
