@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.6.2
+// @version      3.6.3
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.6.2';
+  const SCRIPT_VERSION = '3.6.3';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -2342,42 +2342,6 @@
       dropdown.appendChild(projectConfigSection);
     }
 
-    const actionsRow = document.createElement('div');
-    applyStyles(actionsRow, {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingTop: '0.35rem',
-      width: '100%'
-    });
-    const clearCacheButton = document.createElement('button');
-    clearCacheButton.type = 'button';
-    clearCacheButton.textContent = 'Cache leeren';
-    applyStyles(clearCacheButton, {
-      background: '#10b981',
-      border: 'none',
-      borderRadius: '6px',
-      color: '#fff',
-      padding: '0.35rem 0.85rem',
-      fontSize: '12px',
-      cursor: 'pointer',
-      width: '100%'
-    });
-    clearCacheButton.addEventListener('click', function () {
-      clearProgressCache();
-      const hostConfig = getCurrentHostConfig();
-      const projectSettings = hostConfig && getProjectSettings(hostConfig);
-      if (hostConfig && projectSettings) {
-        triggerManualProgressRefresh(hostConfig, projectSettings);
-      }
-      showToast({text: 'Cache geleert', variant: 'success'});
-      resetPortalWarningCooldown();
-      setTimeout(function () {
-        refreshPortalBaseWarning(projectSettings);
-      }, 1400);
-    });
-    actionsRow.appendChild(clearCacheButton);
-    dropdown.appendChild(actionsRow);
     const saveRow = document.createElement('div');
     applyStyles(saveRow, {
       display: 'flex',
