@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.5.0
+// @version      3.6.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.5.0';
+  const SCRIPT_VERSION = '3.6.0';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -65,6 +65,7 @@
   const LOG_PREFIX = '[GitLab Progress]';
   const PROGRESS_CACHE_TTL_MS = 60 * 60 * 1000;
   const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
+  const PROJECT_BLOCK_COOLDOWN_MS = 5 * 60 * 1000;
   const progressCache = {}; // key: projectId + ':' + issueIid → {data, timestamp}
   hydrateProgressCacheFromStorage();
 
@@ -141,12 +142,22 @@
   }
 
   function isProjectRequestBlocked(projectKey) {
-    return !!(projectKey && blockedProjectRequests[projectKey]);
+    if (!projectKey) return false;
+    const entry = blockedProjectRequests[projectKey];
+    if (!entry) return false;
+    if (entry.blockedAt && Date.now() - entry.blockedAt > PROJECT_BLOCK_COOLDOWN_MS) {
+      delete blockedProjectRequests[projectKey];
+      return false;
+    }
+    return true;
   }
 
   function blockProjectRequests(projectKey, status) {
     if (!projectKey || blockedProjectRequests[projectKey]) return;
-    blockedProjectRequests[projectKey] = true;
+    blockedProjectRequests[projectKey] = {
+      status: status || null,
+      blockedAt: Date.now()
+    };
     showToast({
       text: 'Portal-Requests blockiert (Status ' + status + ') – bitte Portal-Base URL prüfen.',
       variant: 'warning'
@@ -736,7 +747,12 @@
     const path = window.location.pathname;
     const parts = path.split('/').filter(Boolean);
     if (parts.length < 2) return null;
-    return parts[0] + '/' + parts[1];
+    const cutoff = parts.indexOf('-');
+    const relevantSegments = cutoff === -1 ? parts : parts.slice(0, cutoff);
+    if (relevantSegments.length < 2) {
+      return null;
+    }
+    return relevantSegments.join('/');
   }
 
   function isMergeRequestPage() {
@@ -1092,7 +1108,7 @@
 
   function sumHourNumbersFromText(text) {
     if (!text) return null;
-    var matches = text.match(/\b\d{1,2}(?:[.,]\d{1,2})?(?![\d.,])/g);
+    var matches = text.match(/\b\d+(?:[.,]\d+)?(?![\d.,])/g);
     if (!matches || matches.length === 0) return null;
     var sum = 0;
     var found = false;
@@ -1550,6 +1566,7 @@
 
     loadProgressData(url, issueIid)
       .then(function (progressData) {
+        clearProjectRequestBlock(projectKey);
         if (!progressData) return;
         setProgressCacheEntry(cacheKey, progressData);
         injectProgressIntoCard(cardElem, progressData);
@@ -1760,6 +1777,7 @@
       log('Ticket-Detail lädt Progress-Daten (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ') →', url);
       loadProgressData(url, issueIid)
         .then(function (progressData) {
+          clearProjectRequestBlock(projectSettings.projectKey);
           if (!progressData) return;
           setProgressCacheEntry(cacheKey, progressData);
           injectProgressIntoIssueDetail(participantsElem, progressData);
