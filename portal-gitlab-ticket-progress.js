@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.4.0
+// @version      3.4.1
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -19,7 +19,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.4.0';
+  const SCRIPT_VERSION = '3.4.1';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -57,6 +57,7 @@
   const LS_KEY_LIST_SELECTIONS = 'ambientProgressListSelections';
   const LS_KEY_PROJECT_CONFIG = 'ambientProgressProjectConfigs';
   const LS_KEY_LAST_REFRESH = 'ambientProgressLastRefresh';
+  const LS_KEY_PROGRESS_CACHE = 'ambientProgressCache';
 
   let debugEnabled = readBoolFromLocalStorage(LS_KEY_DEBUG, false);  // default: Debug aus
   let showEnabled = readBoolFromLocalStorage(LS_KEY_SHOW, true);    // default: Anzeigen an
@@ -65,6 +66,7 @@
   const PROGRESS_CACHE_TTL_MS = 60 * 60 * 1000;
   const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
   const progressCache = {}; // key: projectId + ':' + issueIid → {data, timestamp}
+  hydrateProgressCacheFromStorage();
 
   function ensureToastElement() {
     if (toastElement) return toastElement;
@@ -285,7 +287,7 @@
     writeLastRefreshTimestamp(Date.now());
   }
 
-  function shouldPerformPortalRequest(hasCache) {
+  function shouldPerformPortalRequest() {
     if (forceRefreshMode) {
       return true;
     }
@@ -294,9 +296,6 @@
       return true;
     }
     if (Date.now() - last >= REFRESH_INTERVAL_MS) {
-      return true;
-    }
-    if (!hasCache) {
       return true;
     }
     return false;
@@ -337,6 +336,58 @@
     const state = readProjectConfigsState();
     state[projectKey] = Object.assign({}, state[projectKey] || {}, data || {});
     writeProjectConfigsState(state);
+  }
+
+  function readProgressCacheState() {
+    try {
+      const raw = window.localStorage.getItem(LS_KEY_PROGRESS_CACHE);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeProgressCacheState(state) {
+    try {
+      const snapshot = {};
+      for (const key in state) {
+        if (!Object.prototype.hasOwnProperty.call(state, key)) continue;
+        const entry = state[key];
+        if (!entry || typeof entry !== 'object') continue;
+        const timestamp = Number(entry.timestamp);
+        if (!timestamp || !entry.data) continue;
+        snapshot[key] = {
+          timestamp,
+          data: entry.data
+        };
+      }
+      window.localStorage.setItem(LS_KEY_PROGRESS_CACHE, JSON.stringify(snapshot));
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function hydrateProgressCacheFromStorage() {
+    const stored = readProgressCacheState();
+    if (!stored) return;
+    const now = Date.now();
+    for (const key in stored) {
+      if (!Object.prototype.hasOwnProperty.call(stored, key)) continue;
+      const entry = stored[key];
+      if (!entry || typeof entry !== 'object') continue;
+      const timestamp = Number(entry.timestamp);
+      if (!timestamp || now - timestamp > PROGRESS_CACHE_TTL_MS) {
+        continue;
+      }
+      progressCache[key] = {
+        data: entry.data,
+        timestamp: timestamp
+      };
+    }
+    writeProgressCacheState(progressCache);
   }
 
   let checkboxStylesInjected = false;
@@ -564,6 +615,7 @@
     if (!entry) return null;
     if (Date.now() - entry.timestamp > PROGRESS_CACHE_TTL_MS) {
       delete progressCache[cacheKey];
+      writeProgressCacheState(progressCache);
       return null;
     }
     return entry.data;
@@ -574,12 +626,18 @@
       data,
       timestamp: Date.now()
     };
+    writeProgressCacheState(progressCache);
   }
 
   function clearProgressCache() {
     Object.keys(progressCache).forEach(function (key) {
       delete progressCache[key];
     });
+    try {
+      window.localStorage.removeItem(LS_KEY_PROGRESS_CACHE);
+    } catch (e) {
+      // ignore
+    }
   }
 
   function getCurrentHostConfig() {
@@ -1204,7 +1262,7 @@
       return;
     }
 
-    if (!shouldPerformPortalRequest(!!cached)) {
+    if (!shouldPerformPortalRequest()) {
       log('Portal-Request ausgelassen (letzte Aktualisierung < 1h) für Issue', issueIid);
       return;
     }
@@ -1392,7 +1450,7 @@
       return;
     }
 
-    if (!shouldPerformPortalRequest(false)) {
+    if (!shouldPerformPortalRequest()) {
       log('Portal-Request für Issue-Detail ausgelassen (letzte Aktualisierung < 1h):', issueIid);
       return;
     }
@@ -1896,12 +1954,8 @@
       clearProgressCache();
       const hostConfig = getCurrentHostConfig();
       const projectSettings = hostConfig && getProjectSettings(hostConfig);
-      if (projectSettings) {
-        clearProjectRequestBlock(projectSettings.projectKey);
-      }
       if (hostConfig && projectSettings) {
-        scanBoard(hostConfig, projectSettings);
-        scanIssueDetail(hostConfig, projectSettings);
+        triggerManualProgressRefresh(hostConfig, projectSettings);
       }
       showToast({text: 'Cache geleert', variant: 'success'});
       resetPortalWarningCooldown();

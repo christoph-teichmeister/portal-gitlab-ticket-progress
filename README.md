@@ -85,8 +85,10 @@ Ausführungsoberfläche beschränkt sich auf den Code in diesem Repository.
   Over-/Booked-Hours-Fallback) sowie einen `↗`-Button zum entsprechenden Portal-Ticket enthält.
 - Zeigt die gleichen Progressdaten direkt im Issue-Detail unterhalb der Teilnehmer-Liste an, sofern die Ansicht
   geladen ist.
-- Lädt die Daten über `GM_xmlhttpRequest` aus dem Portal, cached sie lokal (60-min TTL) und blockiert weitere
-  Requests nach Fehlern (403/404), bis du den Cache leerst oder die Portal-URL neu speicherst.
+- Lädt die Daten über `GM_xmlhttpRequest` aus dem Portal, cached sie lokal (60-min TTL) und merkt sich Zeitstempel +
+  Fortschritts-Daten in `localStorage`, sodass ein einfacher Reload keine neuen Portal-Requests auslöst, solange die
+  letzte Aktualisierung jünger als eine Stunde ist.
+- Blockiert weitere Requests nach Fehlern (403/404), bis du den Cache leerst oder die Portal-URL neu speicherst.
 - Beobachtet das Board via `MutationObserver`, reagiert auf neue Karten/Listen und führt bei Bedarf neue Scans aus.
 - Zeigt im Dropdown eine Zeile mit dem Zeitstempel der letzten Portal-Anfrage und einen Button zum sofortigen
   Neuladen aller Tickets, falls du doch eine frische Runde brauchst.
