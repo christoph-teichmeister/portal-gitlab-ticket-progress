@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.6.7
+// @version      3.6.8
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.6.7';
+  const SCRIPT_VERSION = '3.6.8';
   const TOOLBAR_ICON_DATA_URL = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiAgICAgdmlld0JveD0iMCAwIDE2IDE2IgogICAgIHdpZHRoPSI2NCIKICAgICBoZWlnaHQ9IjY0IgogICAgIHJvbGU9ImltZyIKICAgICBhcmlhLWxhYmVsPSJHaXRMYWIgdGlja2V0IGljb24iPgoKICAgIDwhLS0gTWluaW1hbCBHaXRMYWItc3R5bGUgdGlja2V0IC8gaXNzdWUgaWNvbiAtLT4KICAgIDxnIGZpbGw9Im5vbmUiCiAgICAgICBzdHJva2U9ImN1cnJlbnRDb2xvciIKICAgICAgIHN0cm9rZS13aWR0aD0iMS4wIgogICAgICAgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIgogICAgICAgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+CgogICAgICAgIDwhLS0gVGlja2V0IG91dGxpbmUgLS0+CiAgICAgICAgPHBhdGggZD0iCiAgICAgIE0zIDQKICAgICAgaDEwCiAgICAgIHYyCiAgICAgIGExIDEgMCAwIDEgMCA0CiAgICAgIHYyCiAgICAgIGgtMTAKICAgICAgdi0yCiAgICAgIGExIDEgMCAwIDEgMCAtNAogICAgICB6Ii8+CgogICAgICAgIDwhLS0gQ29udGVudCBsaW5lcyAtLT4KICAgICAgICA8cGF0aCBkPSJNNiA3aDQiLz4KICAgICAgICA8cGF0aCBkPSJNNiA5aDMiLz4KCiAgICA8L2c+Cjwvc3ZnPgo=';
   const HOST_CONFIG = {};
 
@@ -2271,11 +2271,12 @@
     gearIcon.src = TOOLBAR_ICON_DATA_URL;
     gearIcon.alt = '';
     gearIcon.classList.add('gl-button-icon', 'gl-icon', 's16', 'gl-fill-current');
+    const gearIconColor = isGitLabDarkModeActive() ? '#ececef' : '#28272d';
     applyStyles(gearIcon, {
       width: '20px',
       height: '20px',
       display: 'block',
-      color: 'var(--gl-button-default-tertiary-foreground-color-default)'
+      color: gearIconColor
     });
     gearButton.classList.add(
       'btn',
