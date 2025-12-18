@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.6.12
+// @version      3.6.13
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.6.12';
+  const SCRIPT_VERSION = '3.6.13';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const HOST_CONFIG = {};
 
@@ -951,29 +951,42 @@
         return false;
       }
     }
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return true;
+    const computedBg = getComputedBackgroundFromSelectors(GITLAB_BG_SELECTORS);
+    if (computedBg) {
+      const rgb = parseCssColorToRgb(computedBg);
+      if (rgb) {
+        const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+        const isDark = luminance <= 0.55;
+        log('isGitLabDarkModeActive', {computedBg, luminance: luminance.toFixed(3), isDark});
+        return isDark;
+      }
     }
     return false;
   }
 
   function getGitLabWindowBackgroundColor(preferLightInDarkMode) {
     const cacheKey = preferLightInDarkMode ? 'light' : 'default';
+
     if (gitlabWindowBackgroundCache[cacheKey]) {
       return gitlabWindowBackgroundCache[cacheKey];
     }
+
     const isDarkMode = isGitLabDarkModeActive();
     const preferLight = isDarkMode ? Boolean(preferLightInDarkMode) : true;
+
     const variableOrder = preferLight
       ? GITLAB_LIGHT_BG_VARS.concat(GITLAB_DARK_BG_VARS)
       : GITLAB_DARK_BG_VARS.concat(GITLAB_LIGHT_BG_VARS);
+
     let value = getFirstCssVariableValue(variableOrder);
     if (!value) {
       value = getComputedBackgroundFromSelectors(GITLAB_BG_SELECTORS);
     }
+
     if (!value) {
       value = '#111827';
     }
+
     gitlabWindowBackgroundCache[cacheKey] = value;
     return value;
   }
@@ -1032,15 +1045,20 @@
 
   function getContrastTextColor(bgColor, darkColor, lightColor) {
     const rgb = parseCssColorToRgb(bgColor);
+
     const fallbackDark = darkColor || '#0f172a';
     const fallbackLight = lightColor || '#f8fafc';
+
     if (!rgb) {
       log('getContrastTextColor', {bgColor, choice: 'fallback', result: fallbackLight});
       return fallbackLight;
     }
+
     const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
     const chosen = luminance > 0.55 ? fallbackDark : fallbackLight;
+
     log('getContrastTextColor', {bgColor, luminance: luminance.toFixed(3), choice: chosen === fallbackDark ? 'dark' : 'light', result: chosen});
+
     return chosen;
   }
 
