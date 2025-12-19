@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.6.15
+// @version      3.6.16
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.6.15';
+  const SCRIPT_VERSION = '3.6.16';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const HOST_CONFIG = {};
 
@@ -814,7 +814,7 @@
     return cfg || {projects: {}};
   }
 
-  // /ai/ai-portal/-/boards → "ai/ai-portal"
+  // /company/some-project/-/boards → "company/some-project"
   function getGitLabProjectPathFromLocation() {
     const path = window.location.pathname;
     const parts = path.split('/').filter(Boolean);
@@ -953,9 +953,11 @@
       if (dataTheme) {
         const lower = dataTheme.toLowerCase();
         if (lower.includes('dark')) {
+          log('isGitLabDarkModeActive', {source: 'data-theme', value: dataTheme, result: true});
           return true;
         }
         if (lower.includes('light')) {
+          log('isGitLabDarkModeActive', {source: 'data-theme', value: dataTheme, result: false});
           return false;
         }
       }
@@ -965,6 +967,7 @@
           html.classList.contains('gl-dark') ||
           html.classList.contains('theme-dark')
         ) {
+          log('isGitLabDarkModeActive', {source: 'html-class', class: 'dark', result: true});
           return true;
         }
         if (
@@ -972,10 +975,12 @@
           html.classList.contains('gl-light') ||
           html.classList.contains('theme-light')
         ) {
+          log('isGitLabDarkModeActive', {source: 'html-class', class: 'light', result: false});
           return false;
         }
       }
     }
+
     const body = document.body;
     if (body && body.classList) {
       if (body.classList.contains('gl-theme-dark') || body.classList.contains('gl-dark')) {
@@ -985,6 +990,7 @@
         return false;
       }
     }
+
     const themeBg = readCssVariableValue(GITLAB_THEME_BG_VAR);
     if (themeBg) {
       const rgb = parseCssColorToRgb(themeBg);
@@ -995,6 +1001,7 @@
         return isDark;
       }
     }
+
     const computedBg = getComputedBackgroundFromSelectors(GITLAB_BG_SELECTORS);
     if (computedBg) {
       const rgb = parseCssColorToRgb(computedBg);
@@ -1005,7 +1012,13 @@
         return isDark;
       }
     }
+
+    log('isGitLabDarkModeActive', {source: 'default', result: false});
     return false;
+  }
+
+  function getToolbarForegroundColor() {
+    return isGitLabDarkModeActive() ? '#ececef' : '#28272d';
   }
 
   function getGitLabWindowBackgroundColor(preferLightInDarkMode) {
@@ -2205,7 +2218,7 @@
       insertParent = document.body;
     }
 
-    const toolbarTextColor = getContrastTextColor(windowBackground);
+    const toolbarTextColor = getToolbarForegroundColor();
     const bar = document.createElement('div');
     bar.id = 'ambient-progress-toolbar';
     applyStyles(bar, {
@@ -2354,7 +2367,7 @@
     gearIcon.innerHTML = TOOLBAR_ICON_SVG;
     gearIcon.setAttribute('aria-hidden', 'true');
     gearIcon.classList.add('gl-button-icon', 'gl-icon', 's16', 'gl-fill-current');
-    const gearIconColor = isGitLabDarkModeActive() ? '#ececef' : '#28272d';
+    const gearIconColor = toolbarTextColor;
     applyStyles(gearIcon, {
       width: '20px',
       height: '20px',
@@ -2608,7 +2621,7 @@
   function createProjectConfigSection(hostConfig, projectSettings) {
     const section = document.createElement('div');
     const panelBackground = getGitLabWindowBackgroundColor(true);
-    const panelTextColor = getContrastTextColor(panelBackground);
+    const panelTextColor = getToolbarForegroundColor();
     applyStyles(section, {
       padding: '0.5rem 0',
       width: '100%',
