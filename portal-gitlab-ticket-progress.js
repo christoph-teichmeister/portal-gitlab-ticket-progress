@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.6.14
+// @version      3.6.15
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.6.14';
+  const SCRIPT_VERSION = '3.6.15';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const HOST_CONFIG = {};
 
@@ -344,6 +344,39 @@
       return true;
     }
     return false;
+  }
+
+  function getProgressCacheAgeMs() {
+    const lastRefresh = readLastRefreshTimestamp();
+    if (lastRefresh) {
+      return Date.now() - lastRefresh;
+    }
+    let latestTimestamp = 0;
+    for (const key in progressCache) {
+      if (!Object.prototype.hasOwnProperty.call(progressCache, key)) {
+        continue;
+      }
+      const entry = progressCache[key];
+      if (!entry) {
+        continue;
+      }
+      const entryTimestamp = Number(entry.timestamp);
+      if (!entryTimestamp) {
+        continue;
+      }
+      if (entryTimestamp > latestTimestamp) {
+        latestTimestamp = entryTimestamp;
+      }
+    }
+    if (latestTimestamp) {
+      return Date.now() - latestTimestamp;
+    }
+    return null;
+  }
+
+  function isProgressCacheStale() {
+    const age = getProgressCacheAgeMs();
+    return age !== null && age > PROGRESS_CACHE_TTL_MS;
   }
 
   function readProjectConfigsState() {
@@ -2747,6 +2780,11 @@
 
     log('hostConfig:', hostConfig);
     log('projectSettings:', projectSettings);
+
+    if (isProgressCacheStale()) {
+      log('Progress-Cache ist älter als ' + PROGRESS_CACHE_TTL_MS + 'ms – Cache wird geleert und Daten werden neu geladen.');
+      clearProgressCache();
+    }
 
     createToolbar(hostConfig, projectSettings);
     applyShowFlagToAllBadges();
