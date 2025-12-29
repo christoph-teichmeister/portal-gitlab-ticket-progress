@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.6.16
+// @version      3.6.17
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.6.16';
+  const SCRIPT_VERSION = '3.6.17';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const HOST_CONFIG = {};
 
@@ -674,7 +674,11 @@
         background: colors.over
       });
       barOuter.appendChild(overBar);
-      appendCenterText('Over: ' + progressData.over);
+      let centerText = 'Over: ' + progressData.over;
+      if (progressData.booked) {
+        centerText += ' (' + (progressData.bookedLabel || 'Booked Hours') + ': ' + progressData.booked + ')';
+      }
+      appendCenterText(centerText);
     } else {
       const spentNum = extractHourNumber(progressData.spent);
       const remainingNum = extractHourNumber(progressData.remaining);
@@ -1302,16 +1306,26 @@
       var parser = new DOMParser();
       var doc = parser.parseFromString(htmlText, 'text/html');
 
+      function attachBookedInfo(result, cached) {
+        var booked = cached || parseBookedHours(doc);
+        if (booked) {
+          result.booked = booked.value;
+          result.bookedLabel = booked.label || 'Booked Hours';
+        }
+        return result;
+      }
+
       function fallbackBooked() {
         var booked = parseBookedHours(doc);
         if (!booked) return null;
-        return {
-          spent: null,
-          remaining: null,
-          over: null,
-          booked: booked.value,
-          bookedLabel: booked.label || 'Booked Hours'
-        };
+        return attachBookedInfo(
+          {
+            spent: null,
+            remaining: null,
+            over: null
+          },
+          booked
+        );
       }
 
       var progressDiv = doc.querySelector('div.progress') || doc.querySelector('div.Progress');
@@ -1347,18 +1361,14 @@
         var single = texts[0];
         if (/^-/.test(single)) {
           var overText = single.replace(/^-+/, '');
-          return {spent: null, remaining: null, over: overText};
+          return attachBookedInfo({spent: null, remaining: null, over: overText});
         }
         // sonst: Einzelwert = spent
-        return {spent: single, remaining: null, over: null};
+        return attachBookedInfo({spent: single, remaining: null, over: null});
       }
 
       // Normalfall: mind. zwei Werte → erster = spent, zweiter = remaining
-      return {
-        spent: texts[0],
-        remaining: texts[1],
-        over: null
-      };
+      return attachBookedInfo({spent: texts[0], remaining: texts[1], over: null});
     } catch (e) {
       error('Fehler beim Parsen des Progress-HTML:', e);
       return null;
