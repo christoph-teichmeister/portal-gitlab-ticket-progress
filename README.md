@@ -150,12 +150,12 @@ Ausführungsoberfläche beschränkt sich auf den Code in diesem Repository.
 
 ## Automatische Update-Benachrichtigung
 
-- Das Skript fragt maximal einmal pro Stunde die Release-Metadaten dieses Repositories über die öffentliche GitHub-API
--  ab, indem es die aktuelle `portal-gitlab-ticket-progress.js` per Raw-URL lädt und dort die Zeile mit `// @version`
--  ausliest. Die Versionsnummer und die URL (aktuell die Raw-Datei) landen im LocalStorage unter `ambientProgressReleaseInfo`
--  und ersetzen sich selbst, sobald eine neue Version erkannt wird.
-- Sobald eine neuere Version verfügbar ist, zeigt das Zahnrad in der Toolbar einen kleinen roten Punkt und im Dropdown
-  taucht eine Zeile auf, die auf die neue Version hinweist. Ein „Script ansehen“-Link öffnet die Raw-Datei auf GitHub
-  und der Text erinnert daran, das Tampermonkey-Dashboard zu öffnen, um das Skript zu aktualisieren.
-- Die Badge verschwindet wieder, sobald keine neuere Version mehr vorliegt oder die aktuell installierte Version
-  mindestens so hoch ist wie die letzte Release-Version.
+- Das Skript fragt maximal einmal pro Stunde die aktuelle `portal-gitlab-ticket-progress.js` per Raw-URL ab, liest dort
+  die Zeile mit `// @version` aus und speichert die Versionsnummer zusammen mit der Raw-URL unter
+  `ambientProgressReleaseInfo`, sodass die Badge dann erscheint, wenn eine neue Version erkannt wurde.
+- Sobald eine neue Version verfügbar ist, bekommt das Zahnrad einen roten Punkt, und im Dropdown taucht eine Zeile mit
+  `⚠️ Neue Version ... verfügbar` auf. Unterhalb der Nachricht trennt eine feine Linie den Link „Script ansehen“, der zur
+  Repository-Startseite auf GitHub führt, und erinnert daran, das Tampermonkey-Dashboard zu öffnen, um das Skript zu
+  aktualisieren.
+- Die Badge verschwindet wieder, sobald keine neuere Version vorliegt oder die aktuell installierte Version mindestens so
+  hoch ist wie die zuletzt gelesene Version.

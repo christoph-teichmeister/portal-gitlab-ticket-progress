@@ -73,6 +73,7 @@
   const RELEASE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
   const RAW_SCRIPT_URL =
     'https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/portal-gitlab-ticket-progress.js';
+  const REPO_URL = 'https://github.com/christoph-teichmeister/portal-gitlab-ticket-progress';
 
   let latestReleaseInfo = null;
   let releaseNotificationElements = {
@@ -299,7 +300,7 @@
         return null;
       }
       return {
-        version: parsed.version || '',
+        version: normalizeVersionValue(parsed.version),
         htmlUrl: parsed.htmlUrl || RAW_SCRIPT_URL,
         checkedAt: timestamp
       };
@@ -342,11 +343,26 @@
     });
   }
 
-  function formatVersionLabel(value) {
+  function normalizeVersionValue(value) {
     if (!value) {
       return '';
     }
-    return String(value).trim().replace(/^v/i, '');
+    let text = String(value);
+    const commentIndex = text.indexOf('//');
+    if (commentIndex >= 0) {
+      text = text.slice(0, commentIndex);
+    }
+    text = text.trim();
+    const firstToken = text.split(/\s+/)[0];
+    return firstToken ? firstToken.trim() : '';
+  }
+
+  function formatVersionLabel(value) {
+    const normalized = normalizeVersionValue(value);
+    if (!normalized) {
+      return '';
+    }
+    return normalized.replace(/^v/i, '');
   }
 
   function isRemoteVersionGreater(remoteVersion, currentVersion) {
@@ -374,28 +390,33 @@
     if (!elements.badge || !elements.messageRow || !elements.messageText || !elements.actionLink) {
       return;
     }
-    const hasUpdate =
+    const hasRemoteUpdate =
       info &&
       typeof info.version === 'string' &&
       isRemoteVersionGreater(info.version, SCRIPT_VERSION);
-    if (hasUpdate) {
+    log('Release UI update: cachedVersion=', info && info.version ? info.version : '(none)', 'remoteNewer=', hasRemoteUpdate);
+    if (hasRemoteUpdate) {
       elements.badge.style.display = 'block';
       elements.messageRow.style.display = 'flex';
-      const displayVersion = formatVersionLabel(info.version) || info.version;
+      if (elements.divider) {
+        elements.divider.style.display = 'block';
+      }
+      const displayVersion =
+        (info && info.version ? formatVersionLabel(info.version) : formatVersionLabel(SCRIPT_VERSION)) ||
+        formatVersionLabel(SCRIPT_VERSION);
       elements.messageText.textContent =
-        'Neue Version ' +
+        '⚠️ Neue Version ' +
         displayVersion +
         ' verfügbar - öffne das Tampermonkey-Dashboard, um das Script zu aktualisieren.';
-      if (info.htmlUrl) {
-        elements.actionLink.href = info.htmlUrl;
-        elements.actionLink.style.display = 'inline-flex';
-      } else {
-        elements.actionLink.style.display = 'none';
-      }
+      elements.actionLink.href = REPO_URL;
+      elements.actionLink.style.display = 'inline-flex';
     } else {
       elements.badge.style.display = 'none';
       elements.messageRow.style.display = 'none';
       elements.actionLink.style.display = 'none';
+      if (elements.divider) {
+        elements.divider.style.display = 'none';
+      }
     }
   }
 
@@ -403,37 +424,29 @@
     try {
       GM_xmlhttpRequest({
         method: 'GET',
-        url: GITHUB_LATEST_RELEASE_URL,
-        headers: {
-          Accept: 'application/vnd.github.v3+json'
-        },
+        url: RAW_SCRIPT_URL,
         timeout: 30 * 1000,
         onload: function (response) {
           if (response.status !== 200) {
             warn('Release-Check meldet HTTP ' + response.status);
             return;
           }
-          let payload;
-          try {
-            payload = JSON.parse(response.responseText);
-          } catch (e) {
-            warn('Release-Check konnte JSON nicht parsen', e);
-            return;
-          }
-          if (!payload) {
-            return;
-          }
-          const versionMatch = response.responseText.match(/\/\/\s*@version\s+([^\s]+)/);
+          const versionMatch = response.responseText.match(/\/\/\s*@version\s+([^\\s]+)/);
           if (!versionMatch || versionMatch.length < 2) {
             warn('Release-Check konnte Version nicht finden');
             return;
           }
-          const remoteVersion = versionMatch[1];
+          const parsedVersion = normalizeVersionValue(versionMatch[1]);
+          if (!parsedVersion) {
+            warn('Release-Check konnte die Versionsnummer nicht bereinigen');
+            return;
+          }
           latestReleaseInfo = {
-            version: String(remoteVersion),
+            version: String(parsedVersion),
             htmlUrl: RAW_SCRIPT_URL,
             checkedAt: Date.now()
           };
+          log('Release-Check: remote version', latestReleaseInfo.version);
           writeReleaseInfoToStorage(latestReleaseInfo);
           updateReleaseNotificationUI(latestReleaseInfo);
         },
@@ -446,12 +459,13 @@
     }
   }
 
-  function scheduleReleaseCheck(force) {
+  function scheduleReleaseCheck() {
     const cached = getCachedReleaseInfo();
     if (cached) {
       updateReleaseNotificationUI(cached);
+      log('Release check: using cached version', cached.version, 'lastChecked=', cached.checkedAt);
     }
-    if (!force && cached && Date.now() - cached.checkedAt < RELEASE_CHECK_INTERVAL_MS) {
+    if (cached && Date.now() - cached.checkedAt < RELEASE_CHECK_INTERVAL_MS) {
       return;
     }
     fetchLatestReleaseInfo();
@@ -2725,9 +2739,20 @@
 
     releaseNotificationRow.appendChild(releaseNotificationText);
     releaseNotificationRow.appendChild(releaseNotificationLink);
+    const releaseDivider = document.createElement('div');
+    applyStyles(releaseDivider, {
+      width: '100%',
+      height: '1px',
+      background: 'rgba(255, 255, 255, 0.1)',
+      borderRadius: '2px',
+      margin: '0.35rem 0'
+    });
+    releaseDivider.style.display = 'none';
+    releaseNotificationRow.appendChild(releaseDivider);
     releaseNotificationElements.messageRow = releaseNotificationRow;
     releaseNotificationElements.messageText = releaseNotificationText;
     releaseNotificationElements.actionLink = releaseNotificationLink;
+    releaseNotificationElements.divider = releaseDivider;
     dropdown.appendChild(releaseNotificationRow);
 
     dropdown.appendChild(togglesContainer);
