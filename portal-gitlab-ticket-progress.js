@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      3.6.17
+// @version      4.0.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '3.6.17';
+  const SCRIPT_VERSION = '4.0.0';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const HOST_CONFIG = {};
 
@@ -65,9 +65,22 @@
   const LS_KEY_LAST_REFRESH = 'ambientProgressLastRefresh';
   const LS_KEY_PROGRESS_CACHE = 'ambientProgressCache';
   const LS_KEY_LAST_BOARD_ID = 'ambientProgressLastBoardId';
+  const LS_KEY_RELEASE_INFO = 'ambientProgressReleaseInfo';
 
   let debugEnabled = readBoolFromLocalStorage(LS_KEY_DEBUG, false);  // default: Debug aus
   let showEnabled = readBoolFromLocalStorage(LS_KEY_SHOW, true);    // default: Anzeigen an
+
+  const RELEASE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+  const RAW_SCRIPT_URL =
+    'https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/portal-gitlab-ticket-progress.js';
+
+  let latestReleaseInfo = null;
+  let releaseNotificationElements = {
+    badge: null,
+    messageRow: null,
+    messageText: null,
+    actionLink: null
+  };
 
   const LOG_PREFIX = '[GitLab Progress]';
   const PROGRESS_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -269,6 +282,179 @@
       explicit: Boolean(explicit)
     };
     writeListSelectionsState(state);
+  }
+
+  function readReleaseInfoFromStorage() {
+    try {
+      const raw = window.localStorage.getItem(LS_KEY_RELEASE_INFO);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') {
+        return null;
+      }
+      const timestamp = Number(parsed.checkedAt);
+      if (isNaN(timestamp)) {
+        return null;
+      }
+      return {
+        version: parsed.version || '',
+        htmlUrl: parsed.htmlUrl || RAW_SCRIPT_URL,
+        checkedAt: timestamp
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeReleaseInfoToStorage(info) {
+    try {
+      if (!info || !info.version) {
+        window.localStorage.removeItem(LS_KEY_RELEASE_INFO);
+        return;
+      }
+      window.localStorage.setItem(LS_KEY_RELEASE_INFO, JSON.stringify(info));
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function getCachedReleaseInfo() {
+    if (latestReleaseInfo !== null) {
+      return latestReleaseInfo;
+    }
+    latestReleaseInfo = readReleaseInfoFromStorage();
+    return latestReleaseInfo;
+  }
+
+  function parseVersionSegments(value) {
+    if (!value) {
+      return [];
+    }
+    const normalized = String(value).trim().replace(/^v/i, '');
+    if (!normalized) {
+      return [];
+    }
+    return normalized.split('.').map(function (segment) {
+      const numeric = parseInt(segment, 10);
+      return isNaN(numeric) ? 0 : numeric;
+    });
+  }
+
+  function formatVersionLabel(value) {
+    if (!value) {
+      return '';
+    }
+    return String(value).trim().replace(/^v/i, '');
+  }
+
+  function isRemoteVersionGreater(remoteVersion, currentVersion) {
+    if (!remoteVersion) {
+      return false;
+    }
+    const remoteParts = parseVersionSegments(remoteVersion);
+    const currentParts = parseVersionSegments(currentVersion);
+    const length = Math.max(remoteParts.length, currentParts.length);
+    for (let i = 0; i < length; i += 1) {
+      const remoteValue = remoteParts[i] || 0;
+      const currentValue = currentParts[i] || 0;
+      if (remoteValue > currentValue) {
+        return true;
+      }
+      if (remoteValue < currentValue) {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  function updateReleaseNotificationUI(info) {
+    const elements = releaseNotificationElements;
+    if (!elements.badge || !elements.messageRow || !elements.messageText || !elements.actionLink) {
+      return;
+    }
+    const hasUpdate =
+      info &&
+      typeof info.version === 'string' &&
+      isRemoteVersionGreater(info.version, SCRIPT_VERSION);
+    if (hasUpdate) {
+      elements.badge.style.display = 'block';
+      elements.messageRow.style.display = 'flex';
+      const displayVersion = formatVersionLabel(info.version) || info.version;
+      elements.messageText.textContent =
+        'Neue Version ' +
+        displayVersion +
+        ' verfügbar - öffne das Tampermonkey-Dashboard, um das Script zu aktualisieren.';
+      if (info.htmlUrl) {
+        elements.actionLink.href = info.htmlUrl;
+        elements.actionLink.style.display = 'inline-flex';
+      } else {
+        elements.actionLink.style.display = 'none';
+      }
+    } else {
+      elements.badge.style.display = 'none';
+      elements.messageRow.style.display = 'none';
+      elements.actionLink.style.display = 'none';
+    }
+  }
+
+  function fetchLatestReleaseInfo() {
+    try {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: GITHUB_LATEST_RELEASE_URL,
+        headers: {
+          Accept: 'application/vnd.github.v3+json'
+        },
+        timeout: 30 * 1000,
+        onload: function (response) {
+          if (response.status !== 200) {
+            warn('Release-Check meldet HTTP ' + response.status);
+            return;
+          }
+          let payload;
+          try {
+            payload = JSON.parse(response.responseText);
+          } catch (e) {
+            warn('Release-Check konnte JSON nicht parsen', e);
+            return;
+          }
+          if (!payload) {
+            return;
+          }
+          const versionMatch = response.responseText.match(/\/\/\s*@version\s+([^\s]+)/);
+          if (!versionMatch || versionMatch.length < 2) {
+            warn('Release-Check konnte Version nicht finden');
+            return;
+          }
+          const remoteVersion = versionMatch[1];
+          latestReleaseInfo = {
+            version: String(remoteVersion),
+            htmlUrl: RAW_SCRIPT_URL,
+            checkedAt: Date.now()
+          };
+          writeReleaseInfoToStorage(latestReleaseInfo);
+          updateReleaseNotificationUI(latestReleaseInfo);
+        },
+        onerror: function () {
+          warn('Release-Check konnte nicht ausgeführt werden (Netzwerkfehler).');
+        }
+      });
+    } catch (e) {
+      warn('Release-Check konnte nicht gestartet werden', e);
+    }
+  }
+
+  function scheduleReleaseCheck(force) {
+    const cached = getCachedReleaseInfo();
+    if (cached) {
+      updateReleaseNotificationUI(cached);
+    }
+    if (!force && cached && Date.now() - cached.checkedAt < RELEASE_CHECK_INTERVAL_MS) {
+      return;
+    }
+    fetchLatestReleaseInfo();
   }
 
   function readLastRefreshTimestamp() {
@@ -2415,9 +2601,27 @@
       justifyContent: 'center',
       minWidth: '38px',
       minHeight: '38px',
-      cursor: 'pointer'
+      cursor: 'pointer',
+      position: 'relative',
+      overflow: 'visible'
     });
     gearButton.appendChild(gearIcon);
+    const releaseBadge = document.createElement('span');
+    releaseBadge.setAttribute('aria-hidden', 'true');
+    applyStyles(releaseBadge, {
+      position: 'absolute',
+      top: '4px',
+      right: '4px',
+      width: '10px',
+      height: '10px',
+      borderRadius: '50%',
+      background: '#ef4444',
+      boxShadow: '0 0 0 2px ' + windowBackground,
+      display: 'none',
+      pointerEvents: 'none'
+    });
+    gearButton.appendChild(releaseBadge);
+    releaseNotificationElements.badge = releaseBadge;
 
     const dropdown = document.createElement('div');
     applyStyles(dropdown, {
@@ -2487,6 +2691,44 @@
     }
 
     dropdown.appendChild(timestampRow);
+
+    const releaseNotificationRow = document.createElement('div');
+    applyStyles(releaseNotificationRow, {
+      display: 'none',
+      flexDirection: 'column',
+      gap: '0.25rem',
+      padding: '0.35rem 0',
+      borderTop: '1px solid #2f374c',
+      width: '100%'
+    });
+
+    const releaseNotificationText = document.createElement('div');
+    applyStyles(releaseNotificationText, {
+      fontSize: '0.78rem',
+      lineHeight: '1.35',
+      opacity: '0.9',
+      color: toolbarTextColor
+    });
+
+    const releaseNotificationLink = document.createElement('a');
+    releaseNotificationLink.textContent = 'Release ansehen';
+    releaseNotificationLink.setAttribute('target', '_blank');
+    releaseNotificationLink.setAttribute('rel', 'noreferrer noopener');
+    applyStyles(releaseNotificationLink, {
+      fontSize: '0.76rem',
+      fontWeight: '600',
+      color: '#60a5fa',
+      textDecoration: 'underline',
+      width: 'fit-content'
+    });
+    releaseNotificationLink.style.display = 'none';
+
+    releaseNotificationRow.appendChild(releaseNotificationText);
+    releaseNotificationRow.appendChild(releaseNotificationLink);
+    releaseNotificationElements.messageRow = releaseNotificationRow;
+    releaseNotificationElements.messageText = releaseNotificationText;
+    releaseNotificationElements.actionLink = releaseNotificationLink;
+    dropdown.appendChild(releaseNotificationRow);
 
     dropdown.appendChild(togglesContainer);
     if (projectSettings) {
@@ -2623,6 +2865,7 @@
       updateDropdownVisibility();
     });
 
+    updateReleaseNotificationUI(getCachedReleaseInfo());
     insertParent.appendChild(bar);
     refreshPortalBaseWarning(projectSettings);
     return bar;
@@ -2810,6 +3053,7 @@
     }
 
     createToolbar(hostConfig, projectSettings);
+    scheduleReleaseCheck();
     applyShowFlagToAllBadges();
     applyShowFlagToDetailBadges();
 
