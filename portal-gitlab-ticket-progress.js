@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      4.0.0
-// @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z.B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
+// @version      4.0.1
+// @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
 // @grant        GM_xmlhttpRequest
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '4.0.0';
+  const SCRIPT_VERSION = '4.0.1';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const HOST_CONFIG = {};
 
@@ -67,8 +67,8 @@
   const LS_KEY_LAST_BOARD_ID = 'ambientProgressLastBoardId';
   const LS_KEY_RELEASE_INFO = 'ambientProgressReleaseInfo';
 
-  let debugEnabled = readBoolFromLocalStorage(LS_KEY_DEBUG, false);  // default: Debug aus
-  let showEnabled = readBoolFromLocalStorage(LS_KEY_SHOW, true);    // default: Anzeigen an
+  let debugEnabled = readBoolFromLocalStorage(LS_KEY_DEBUG, false);  // Default: Debug aus
+  let showEnabled = readBoolFromLocalStorage(LS_KEY_SHOW, true);    // Default: Anzeigen an
 
   const RELEASE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
   const RAW_SCRIPT_URL =
@@ -144,10 +144,6 @@
     toastHideTimer = setTimeout(function () {
       hideToast();
     }, duration);
-  }
-
-  function resetPortalWarningCooldown() {
-    lastPortalWarningAt = 0;
   }
 
   function showPortalWarningToast() {
@@ -505,10 +501,9 @@
       return;
     }
     const timestamp = readLastRefreshTimestamp();
-    const labelText = timestamp
+    lastRefreshLabelElement.textContent = timestamp
       ? 'Letzte Aktualisierung: ' + formatRefreshTimestamp(timestamp)
-      : 'Letzte Aktualisierung: –';
-    lastRefreshLabelElement.textContent = labelText;
+      : 'Letzte Aktualisierung: -';
   }
 
   function formatRefreshTimestamp(value) {
@@ -540,10 +535,8 @@
     if (!last) {
       return true;
     }
-    if (Date.now() - last >= REFRESH_INTERVAL_MS) {
-      return true;
-    }
-    return false;
+    return Date.now() - last >= REFRESH_INTERVAL_MS;
+
   }
 
   function getProgressCacheAgeMs() {
@@ -1335,12 +1328,12 @@
     const header = headerOverride || getBoardListHeaderElement(boardListElem);
     if (!header) return null;
     try {
-      var labelSpan = header.querySelector('.board-title-text .gl-label-text');
+      const labelSpan = header.querySelector('.board-title-text .gl-label-text');
       if (labelSpan && labelSpan.textContent) {
         return labelSpan.textContent.replace(/\s+/g, ' ').trim();
       }
 
-      var h2 = header.querySelector('.board-title-text');
+      const h2 = header.querySelector('.board-title-text');
       if (h2 && h2.textContent) {
         return h2.textContent.replace(/\s+/g, ' ').trim();
       }
@@ -1353,13 +1346,13 @@
   function getIssueIidFromCard(cardElem) {
     if (!cardElem) return null;
 
-    var iid = cardElem.getAttribute('data-item-iid');
+    const iid = cardElem.getAttribute('data-item-iid');
     if (iid) return iid;
 
     try {
-      var numberSpan = cardElem.querySelector('.board-card-number span');
+      const numberSpan = cardElem.querySelector('.board-card-number span');
       if (numberSpan && numberSpan.textContent) {
-        var m = numberSpan.textContent.match(/#(\d+)/);
+        const m = numberSpan.textContent.match(/#(\d+)/);
         if (m) return m[1];
       }
     } catch (e) {
@@ -1412,25 +1405,25 @@
   // Zahl aus "16.25h" / "72,25h" extrahieren
   function extractHourNumber(text) {
     if (!text) return null;
-    var norm = String(text).replace(',', '.');
-    var m = norm.match(/-?[\d.]+/);
+    const norm = String(text).replace(',', '.');
+    const m = norm.match(/-?[\d.]+/);
     if (!m) return null;
-    var v = parseFloat(m[0]);
+    const v = parseFloat(m[0]);
     if (isNaN(v)) return null;
     return v;
   }
 
   function formatBookedHoursDisplay(value) {
     if (value === null || value === undefined) return null;
-    var hours;
+    let hours;
     if (typeof value === 'number' && !isNaN(value)) {
       hours = value;
     } else {
       hours = extractHourNumber(value);
     }
     if (hours === null) return null;
-    var normalized = Number(hours);
-    var normalizedStr = normalized.toString();
+    const normalized = Number(hours);
+    let normalizedStr = normalized.toString();
     if (normalizedStr.indexOf('.') !== -1) {
       normalizedStr = normalizedStr.replace(/\.?0+$/, '');
     }
@@ -1447,13 +1440,13 @@
 
   function sumHourNumbersFromText(text) {
     if (!text) return null;
-    var matches = text.match(/\b\d+(?:[.,]\d+)?(?![\d.,])/g);
+    const matches = text.match(/\b\d+(?:[.,]\d+)?(?![\d.,])/g);
     if (!matches || matches.length === 0) return null;
-    var sum = 0;
-    var found = false;
-    for (var i = 0; i < matches.length; i++) {
-      var candidate = matches[i].replace(',', '.');
-      var num = parseFloat(candidate);
+    let sum = 0;
+    let found = false;
+    for (let i = 0; i < matches.length; i++) {
+      const candidate = matches[i].replace(',', '.');
+      const num = parseFloat(candidate);
       if (isNaN(num)) continue;
       sum += num;
       found = true;
@@ -1469,12 +1462,12 @@
 
   function sumHourNumbersFromDirectTextNodes(el) {
     if (!el) return null;
-    var sum = 0;
-    var found = false;
-    for (var i = 0; i < el.childNodes.length; i++) {
-      var node = el.childNodes[i];
+    let sum = 0;
+    let found = false;
+    for (let i = 0; i < el.childNodes.length; i++) {
+      const node = el.childNodes[i];
       if (node.nodeType !== Node.TEXT_NODE) continue;
-      var value = sumHourNumbersFromText(node.textContent);
+      const value = sumHourNumbersFromText(node.textContent);
       if (value !== null) {
         sum += value;
         found = true;
@@ -1485,7 +1478,7 @@
 
   function extractHourValueFromElement(el) {
     if (!el) return null;
-    var directSum = sumHourNumbersFromDirectTextNodes(el);
+    const directSum = sumHourNumbersFromDirectTextNodes(el);
     if (directSum !== null) return directSum;
     return sumHourNumbersFromElement(el);
   }
@@ -1503,11 +1496,11 @@
 
   function parseProgressHtml(htmlText) {
     try {
-      var parser = new DOMParser();
-      var doc = parser.parseFromString(htmlText, 'text/html');
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlText, 'text/html');
 
       function attachBookedInfo(result, cached) {
-        var booked = cached || parseBookedHours(doc);
+        const booked = cached || parseBookedHours(doc);
         if (booked) {
           result.booked = booked.value;
           result.bookedLabel = booked.label || 'Booked Hours';
@@ -1516,7 +1509,7 @@
       }
 
       function fallbackBooked() {
-        var booked = parseBookedHours(doc);
+        const booked = parseBookedHours(doc);
         if (!booked) return null;
         return attachBookedInfo(
           {
@@ -1528,13 +1521,13 @@
         );
       }
 
-      var progressDiv = doc.querySelector('div.progress') || doc.querySelector('div.Progress');
+      const progressDiv = doc.querySelector('div.progress') || doc.querySelector('div.Progress');
       if (!progressDiv) {
         if (debugEnabled) log('parseProgressHtml: Kein div.progress/Progress gefunden → Fallback Booked Hours.');
         return fallbackBooked();
       }
 
-      var innerDivs = progressDiv.querySelectorAll('div.progress-bar');
+      let innerDivs = progressDiv.querySelectorAll('div.progress-bar');
       if (!innerDivs || innerDivs.length === 0) {
         innerDivs = progressDiv.querySelectorAll('div');
       }
@@ -1543,24 +1536,24 @@
         return fallbackBooked();
       }
 
-      var texts = [];
-      for (var i = 0; i < innerDivs.length; i++) {
-        var t = innerDivs[i].textContent;
-        if (!t) continue;
-        t = t.replace(/\s+/g, ' ').trim();
-        if (!t) continue;
-        texts.push(t);
+      const texts = [];
+      for (let i = 0; i < innerDivs.length; i++) {
+        let content = innerDivs[i].textContent;
+        if (!content) continue;
+        content = content.replace(/\s+/g, ' ').trim();
+        if (!content) continue;
+        texts.push(content);
       }
       if (texts.length === 0) {
         if (debugEnabled) log('parseProgressHtml: Keine nichtleeren Textinhalte → Fallback Booked Hours.');
         return fallbackBooked();
       }
 
-      // Over-Fall: ein Wert, z.B. "-72.25h"
+      // Over-Fall: ein Wert, z. B. "-72.25h"
       if (texts.length === 1) {
-        var single = texts[0];
+        const single = texts[0];
         if (/^-/.test(single)) {
-          var overText = single.replace(/^-+/, '');
+          const overText = single.replace(/^-+/, '');
           return attachBookedInfo({spent: null, remaining: null, over: overText});
         }
         // sonst: Einzelwert = spent
@@ -1578,10 +1571,10 @@
   // Fallback: "Booked Hours" auslesen, wenn es keine Progress-Bar gibt
   function parseBookedHours(doc) {
     try {
-      var inlineMatch = parseInlineBookedHours(doc);
+      const inlineMatch = parseInlineBookedHours(doc);
       if (inlineMatch) return inlineMatch;
 
-      var rowMatch = parseBookedHoursFromTableRows(doc);
+      const rowMatch = parseBookedHoursFromTableRows(doc);
       if (rowMatch) return rowMatch;
 
       return parseBookedHoursFromCandidates(doc);
@@ -1592,19 +1585,19 @@
   }
 
   function parseInlineBookedHours(doc) {
-    var candidates = doc.querySelectorAll('th, td, div, span, p, label');
-    for (var i = 0; i < candidates.length; i++) {
-      var el = candidates[i];
-      var text = normalizeWhitespace(el.textContent);
+    const candidates = doc.querySelectorAll('th, td, div, span, p, label');
+    for (let i = 0; i < candidates.length; i++) {
+      const el = candidates[i];
+      const text = normalizeWhitespace(el.textContent);
       if (!text) continue;
 
-      var mInline = text.match(/(Gebuchte\s+Stunden|Booked\s+Hours)\s*:\s*(.+)$/i);
+      const mInline = text.match(/(Gebuchte\s+Stunden|Booked\s+Hours)\s*:\s*(.+)$/i);
       if (mInline && mInline[2]) {
-        var inlineVal = mInline[2].trim();
-        var inlineLabel = mInline[1] ? mInline[1].trim() : null;
-        var label = detectBookedLabel(inlineLabel);
+        const inlineVal = mInline[2].trim();
+        const inlineLabel = mInline[1] ? mInline[1].trim() : null;
+        const label = detectBookedLabel(inlineLabel);
         if (inlineVal) {
-          var formattedInline = formatBookedHoursDisplay(inlineVal);
+          const formattedInline = formatBookedHoursDisplay(inlineVal);
           if (formattedInline) {
             if (debugEnabled) log('parseBookedHours: Wert inline gefunden für "' + (label || 'Booked Hours') + '":', formattedInline);
             return {value: formattedInline, label: label || 'Booked Hours'};
@@ -1617,24 +1610,24 @@
   }
 
   function parseBookedHoursFromTableRows(doc) {
-    var rows = doc.querySelectorAll('tr');
-    for (var i = 0; i < rows.length; i++) {
-      var row = rows[i];
-      var cells = Array.prototype.slice.call(row.querySelectorAll('th, td'));
+    const rows = doc.querySelectorAll('tr');
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const cells = Array.prototype.slice.call(row.querySelectorAll('th, td'));
       if (!cells || cells.length === 0) continue;
 
-      for (var j = 0; j < cells.length; j++) {
-        var cell = cells[j];
-        var cellText = normalizeWhitespace(cell.textContent);
+      for (let j = 0; j < cells.length; j++) {
+        const cell = cells[j];
+        const cellText = normalizeWhitespace(cell.textContent);
         if (!cellText) continue;
-        var label = detectBookedLabel(cellText);
+        const label = detectBookedLabel(cellText);
         if (!label) continue;
 
-        for (var k = j + 1; k < cells.length; k++) {
-          var candidateCell = cells[k];
-          var value = extractHourValueFromElement(candidateCell);
+        for (let k = j + 1; k < cells.length; k++) {
+          const candidateCell = cells[k];
+          const value = extractHourValueFromElement(candidateCell);
           if (value !== null) {
-            var formatted = formatBookedHoursDisplay(value);
+            const formatted = formatBookedHoursDisplay(value);
             if (formatted) {
               if (debugEnabled) log('parseBookedHours: Wert aus Tabellenzeile gefunden für "' + label + '":', formatted);
               return {value: formatted, label: label};
@@ -1647,27 +1640,27 @@
   }
 
   function parseBookedHoursFromCandidates(doc) {
-    var candidates = doc.querySelectorAll('th, td, div, span, p, label');
-    for (var i = 0; i < candidates.length; i++) {
-      var el = candidates[i];
-      var text = normalizeWhitespace(el.textContent);
+    const candidates = doc.querySelectorAll('th, td, div, span, p, label');
+    for (let i = 0; i < candidates.length; i++) {
+      const el = candidates[i];
+      const text = normalizeWhitespace(el.textContent);
       if (!text) continue;
 
-      var label = detectBookedLabel(text);
+      const label = detectBookedLabel(text);
       if (!label) continue;
 
-      var candidateEl = null;
-      var candidateVal = null;
+      let candidateEl = null;
+      let candidateVal = null;
 
       // direktes nextElementSibling
-      var next = el.nextElementSibling;
+      const next = el.nextElementSibling;
       if (next && next.textContent) {
         candidateEl = next;
       }
 
       // TH → passendes TD
       if (!candidateEl && el.tagName === 'TH' && el.parentElement) {
-        var td = el.parentElement.querySelector('td');
+        const td = el.parentElement.querySelector('td');
         if (td && td.textContent) {
           candidateEl = td;
         }
@@ -1675,10 +1668,10 @@
 
       // generischer: nächstes Geschwister-Element im selben Parent
       if (!candidateEl && el.parentElement) {
-        var siblings = el.parentElement.children;
-        for (var j = 0; j < siblings.length - 1; j++) {
+        const siblings = el.parentElement.children;
+        for (let j = 0; j < siblings.length - 1; j++) {
           if (siblings[j] === el) {
-            var sib = siblings[j + 1];
+            const sib = siblings[j + 1];
             if (sib && sib.textContent) {
               candidateEl = sib;
             }
@@ -1688,16 +1681,16 @@
       }
 
       if (candidateEl) {
-        var summed = sumHourNumbersFromElement(candidateEl);
+        const summed = sumHourNumbersFromElement(candidateEl);
         if (summed !== null) {
-          var formattedSum = formatBookedHoursDisplay(summed);
+          const formattedSum = formatBookedHoursDisplay(summed);
           if (formattedSum) {
             if (debugEnabled) log('parseBookedHours: Summe der Werte neben "' + label + '" gefunden:', formattedSum);
             return {value: formattedSum, label: label};
           }
         }
         candidateVal = normalizeWhitespace(candidateEl.textContent);
-        var formattedAdjacent = formatBookedHoursDisplay(candidateVal);
+        const formattedAdjacent = formatBookedHoursDisplay(candidateVal);
         if (formattedAdjacent) {
           if (debugEnabled) log('parseBookedHours: Wert neben "' + label + '" gefunden:', formattedAdjacent);
           return {value: formattedAdjacent, label: label};
@@ -2223,13 +2216,6 @@
     }
   }
 
-  function resetProcessedFlags() {
-    const processedCards = document.querySelectorAll('[data-ambient-progress-processed="1"]');
-    for (let i = 0; i < processedCards.length; i++) {
-      processedCards[i].removeAttribute('data-ambient-progress-processed');
-    }
-  }
-
   function ensureListSelectionCheckbox(
     header,
     listName,
@@ -2382,19 +2368,6 @@
     const baseUrl = getPortalBaseUrl(projectSettings);
     if (!baseUrl) {
       showPortalWarningToast();
-    }
-  }
-
-  function triggerManualProgressRefresh(hostConfig, projectSettings) {
-    if (!hostConfig || !projectSettings) return;
-    resetProcessedFlags();
-    forceRefreshMode = true;
-    try {
-      clearProjectRequestBlock(projectSettings.projectKey);
-      scanBoard(hostConfig, projectSettings);
-      scanIssueDetail(hostConfig, projectSettings);
-    } finally {
-      forceRefreshMode = false;
     }
   }
 
@@ -2577,14 +2550,13 @@
     gearIcon.innerHTML = TOOLBAR_ICON_SVG;
     gearIcon.setAttribute('aria-hidden', 'true');
     gearIcon.classList.add('gl-button-icon', 'gl-icon', 's16', 'gl-fill-current');
-    const gearIconColor = toolbarTextColor;
     applyStyles(gearIcon, {
       width: '20px',
       height: '20px',
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
-      color: gearIconColor
+      color: toolbarTextColor
     });
     const gearIconSvg = gearIcon.querySelector('svg');
     if (gearIconSvg) {
@@ -3098,8 +3070,7 @@
       tryInitialScan();
     }
 
-    const root = document.querySelector('.boards-app');
-    let observerTarget = root;
+    let observerTarget = document.querySelector('.boards-app');
     if (!observerTarget) {
       log('Keine .boards-app gefunden; MutationObserver wird auf document.body gestartet.');
       observerTarget = document.body;
