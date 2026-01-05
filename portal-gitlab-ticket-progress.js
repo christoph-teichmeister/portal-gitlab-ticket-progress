@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      4.0.7
+// @version      4.0.8
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '4.0.7';
+  const SCRIPT_VERSION = '4.0.8';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const HOST_CONFIG = {};
 
@@ -226,14 +226,6 @@
       return val === '1';
     } catch (e) {
       return defaultValue;
-    }
-  }
-
-  function writeBoolToLocalStorage(key, value) {
-    try {
-      window.localStorage.setItem(key, value ? '1' : '0');
-    } catch (e) {
-      // ignore
     }
   }
 
@@ -1070,6 +1062,16 @@
       (storedProjectConfig && storedProjectConfig.projectId) || base.projectId || null;
     const portalBaseUrl =
       (storedProjectConfig && storedProjectConfig.portalBaseUrl) || base.portalBaseUrl || null;
+    const fallbackShow = readBoolFromLocalStorage(LS_KEY_SHOW, true);
+    const fallbackDebug = readBoolFromLocalStorage(LS_KEY_DEBUG, false);
+    const showEnabled =
+      storedProjectConfig && typeof storedProjectConfig.showEnabled === 'boolean'
+        ? storedProjectConfig.showEnabled
+        : fallbackShow;
+    const debugEnabled =
+      storedProjectConfig && typeof storedProjectConfig.debugEnabled === 'boolean'
+        ? storedProjectConfig.debugEnabled
+        : fallbackDebug;
 
     return Object.assign({}, base, {
       projectPath,
@@ -1077,7 +1079,9 @@
       projectId,
       allowedListLookup: initialLookup,
       listFilterMode,
-      portalBaseUrl
+      portalBaseUrl,
+      showEnabled: showEnabled,
+      debugEnabled: debugEnabled
     });
   }
 
@@ -2431,6 +2435,14 @@
       color: toolbarTextColor
     });
 
+    function persistProjectFlag(field, value) {
+      if (!projectSettings || !projectSettings.projectKey) return;
+      projectSettings[field] = value;
+      const payload = {};
+      payload[field] = value;
+      writeProjectConfigEntry(projectSettings.projectKey, payload);
+    }
+
     function makeSwitch(labelText, checked, onChange) {
       const wrapper = document.createElement('div');
       applyStyles(wrapper, {
@@ -2526,7 +2538,7 @@
 
     const showToggle = makeSwitch('Anzeigen', showEnabled, function (val) {
       showEnabled = val;
-      writeBoolToLocalStorage(LS_KEY_SHOW, showEnabled);
+      persistProjectFlag('showEnabled', showEnabled);
       log('Anzeigen geändert auf:', showEnabled);
       applyShowFlagToAllBadges();
       applyShowFlagToDetailBadges();
@@ -2543,7 +2555,7 @@
 
     const debugToggle = makeSwitch('Debug', debugEnabled, function (val) {
       debugEnabled = val;
-      writeBoolToLocalStorage(LS_KEY_DEBUG, debugEnabled);
+      persistProjectFlag('debugEnabled', debugEnabled);
       console.log(LOG_PREFIX, 'Debug geändert auf:', debugEnabled);
     });
 
@@ -3055,6 +3067,13 @@
     if (!projectSettings) {
       warn('Keine projectSettings – Script beendet sich.');
       return;
+    }
+
+    if (typeof projectSettings.showEnabled === 'boolean') {
+      showEnabled = projectSettings.showEnabled;
+    }
+    if (typeof projectSettings.debugEnabled === 'boolean') {
+      debugEnabled = projectSettings.debugEnabled;
     }
 
     log('hostConfig:', hostConfig);

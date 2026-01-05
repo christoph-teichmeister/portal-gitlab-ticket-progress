@@ -25,7 +25,8 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    liefert Tampermonkey neue Versionen direkt aus diesem Repo.
 6. Über die Debug/Anzeige-Toggles in der GitLab-Topbar kannst du das Verhalten bei Bedarf ein- oder ausschalten. Die
    Toggles hängen direkt rechts vom oberen Menü und bleiben beim Scrollen sichtbar; Debug ist standardmäßig aus, die
-   Anzeige (Badges) standardmäßig an.
+   Anzeige (Badges) standardmäßig an. Jede Projekt-Ansicht merkt sich ihre eigene Konfiguration (die Werte werden pro
+   Projekt lokal gespeichert).
 7. Klicke in der GitLab-Topbar auf das Zahnrad, um die „Projekt-Konfiguration“ zu öffnen, und trage dort die
    Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Die Einstellung wird ausschließlich lokal im
    Browser gespeichert (per Projekt). Du musst sie nur einmal hinterlegen.
@@ -122,9 +123,11 @@ Ausführungsoberfläche beschränkt sich auf den Code in diesem Repository.
 
 ## Lokale Controls
 
-- **Debug** (`portalProgressDebug`): aktiviert `console.log` und zeigt zusätzliche Informationen im Browser-Console-Log.
+- **Debug** (`portalProgressDebug`): aktiviert `console.log` und zeigt zusätzliche Informationen im Browser-Console-Log; die
+  Einstellung wird pro Projekt in `ambientProgressProjectConfigs` gespeichert (ältere Werte unter `portalProgressDebug`
+  dienen nur noch als Upgrade-Fallback).
 - **Anzeigen** (`portalProgressShow`): blendet die Badges und Detail-Widgets ein/aus; beim Aktivieren wird das Board
-  erneut gescannt, beim Deaktivieren werden die Badges lediglich ausgeblendet.
+  erneut gescannt, beim Deaktivieren werden die Badges lediglich ausgeblendet; die Sichtbarkeit bleibt pro Projekt erhalten.
 - **Listen-Checkboxes**: Aktivierte Listen werden im Cache gespeichert; sobald du eine Spalte per Checkbox erlaubst oder
   deaktivierst, wechselt das Script in den expliziten Modus und speichert die Auswahl unter dem Projektschlüssel.
 - **Cache leeren**: Entfernt alle gespeicherten Progress-Daten, hebt eventuell gesetzte Request-Blocks und triggert
