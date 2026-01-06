@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      4.1.5
+// @version      4.1.6
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '4.1.5';
+  const SCRIPT_VERSION = '4.1.6';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const HOST_CONFIG = {};
 
@@ -50,6 +50,8 @@
   let lastRefreshLabelElement = null;
   let manualRefreshButtonElement = null;
   let forceRefreshMode = false;
+  let toolbarInitialProjectIdValue = '';
+  let toolbarInitialPortalUrlValue = '';
   const DETAIL_RETRY_INTERVAL_MS = 700;
   const DETAIL_RETRY_MAX_ATTEMPTS = 3;
   const detailRetryState = {
@@ -2793,7 +2795,7 @@
 
     dropdown.appendChild(togglesContainer);
     if (projectSettings) {
-      const projectConfigSection = createProjectConfigSection(hostConfig, projectSettings);
+      const projectConfigSection = createProjectConfigSection(hostConfig, projectSettings, updateSaveButtonState);
       dropdown.appendChild(projectConfigSection);
     }
 
@@ -2807,7 +2809,7 @@
     const saveButton = document.createElement('button');
     saveButton.type = 'button';
     saveButton.textContent = 'Einstellungen speichern';
-    applyStyles(saveButton, {
+    const saveButtonBaseStyles = {
       background: '#2563eb',
       border: 'none',
       borderRadius: '6px',
@@ -2817,8 +2819,47 @@
       cursor: 'pointer',
       width: '100%',
       transition: 'background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease',
-      boxShadow: '0 6px 18px rgba(37, 99, 235, 0.25)'
+      boxShadow: '0 6px 18px rgba(37, 99, 235, 0.25)',
+      transform: 'translateY(0)'
+    };
+    const saveButtonDisabledStyles = {
+      background: '#4b5563',
+      boxShadow: 'none',
+      cursor: 'not-allowed',
+      color: '#e5e7eb',
+      transform: 'translateY(0)'
+    };
+    const saveButtonHoverStyles = {
+      background: '#1d4ed8',
+      boxShadow: '0 10px 24px rgba(37, 99, 235, 0.35)',
+      transform: 'translateY(-1px)'
+    };
+    applyStyles(saveButton, saveButtonBaseStyles);
+
+    function updateSaveButtonState() {
+      const projectValue = projectIdInputElement ? (projectIdInputElement.value || '').trim() : '';
+      const portalValue = portalUrlInputElement ? (portalUrlInputElement.value || '').trim() : '';
+      const hasChanges =
+        projectValue !== toolbarInitialProjectIdValue ||
+        portalValue !== toolbarInitialPortalUrlValue;
+      const enabled = hasChanges;
+      saveButton.disabled = !enabled;
+      const styleToApply = enabled
+        ? saveButtonBaseStyles
+        : mergeStyles(saveButtonBaseStyles, saveButtonDisabledStyles);
+      applyStyles(saveButton, styleToApply);
+    }
+
+    saveButton.addEventListener('mouseenter', function () {
+      if (saveButton.disabled) {
+        return;
+      }
+      applyStyles(saveButton, mergeStyles(saveButtonBaseStyles, saveButtonHoverStyles));
     });
+    saveButton.addEventListener('mouseleave', function () {
+      updateSaveButtonState();
+    });
+
     saveButton.addEventListener('click', function () {
       if (!projectSettings || !projectIdInputElement || !portalUrlInputElement) {
         return;
@@ -2872,11 +2913,7 @@
       }, 100);
     });
     saveRow.appendChild(saveButton);
-    attachHoverEffect(saveButton, {
-      background: '#1d4ed8',
-      boxShadow: '0 10px 24px rgba(37, 99, 235, 0.35)',
-      transform: 'translateY(-1px)'
-    });
+    updateSaveButtonState();
     dropdown.appendChild(saveRow);
     gearWrapper.appendChild(gearButton);
     gearWrapper.appendChild(dropdown);
@@ -2913,10 +2950,12 @@
     return bar;
   }
 
-  function createProjectConfigSection(hostConfig, projectSettings) {
+  function createProjectConfigSection(hostConfig, projectSettings, onValuesChanged) {
     const section = document.createElement('div');
     const panelBackground = getGitLabWindowBackgroundColor(true);
     const panelTextColor = getToolbarForegroundColor();
+    toolbarInitialProjectIdValue = String(projectSettings.projectId || '').trim();
+    toolbarInitialPortalUrlValue = String(projectSettings.portalBaseUrl || '').trim();
     applyStyles(section, {
       padding: '0.5rem 0',
       width: '100%',
@@ -2990,6 +3029,16 @@
 
     input.addEventListener('input', function () {
       status.textContent = '';
+      if (typeof onValuesChanged === 'function') {
+        onValuesChanged();
+      }
+    });
+
+    input.addEventListener('input', function () {
+      status.textContent = '';
+      if (typeof onValuesChanged === 'function') {
+        onValuesChanged();
+      }
     });
 
     formRow.appendChild(input);
@@ -3053,6 +3102,16 @@
 
     portalInput.addEventListener('input', function () {
       portalStatus.textContent = '';
+      if (typeof onValuesChanged === 'function') {
+        onValuesChanged();
+      }
+    });
+
+    portalInput.addEventListener('input', function () {
+      portalStatus.textContent = '';
+      if (typeof onValuesChanged === 'function') {
+        onValuesChanged();
+      }
     });
 
     portalRow.appendChild(portalInput);
