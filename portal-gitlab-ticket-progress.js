@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      4.1.1
+// @version      4.1.2
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '4.1.1';
+  const SCRIPT_VERSION = '4.1.2';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const HOST_CONFIG = {};
 
@@ -73,14 +73,13 @@
   const RELEASE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
   const RAW_SCRIPT_URL =
     'https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/portal-gitlab-ticket-progress.js';
-  const REPO_URL = 'https://github.com/christoph-teichmeister/portal-gitlab-ticket-progress';
 
   let latestReleaseInfo = null;
   let releaseNotificationElements = {
     badge: null,
     messageRow: null,
     messageText: null,
-    actionLink: null
+    divider: null
   };
 
   const LOG_PREFIX = '[GitLab Progress]';
@@ -379,7 +378,7 @@
 
   function updateReleaseNotificationUI(info) {
     const elements = releaseNotificationElements;
-    if (!elements.badge || !elements.messageRow || !elements.messageText || !elements.actionLink) {
+    if (!elements.badge || !elements.messageRow || !elements.messageText || !elements.divider) {
       return;
     }
     const hasRemoteUpdate =
@@ -390,9 +389,6 @@
     if (hasRemoteUpdate) {
       elements.badge.style.display = 'block';
       elements.messageRow.style.display = 'flex';
-      if (elements.divider) {
-        elements.divider.style.display = 'block';
-      }
       const displayVersion =
         (info && info.version ? formatVersionLabel(info.version) : formatVersionLabel(SCRIPT_VERSION)) ||
         formatVersionLabel(SCRIPT_VERSION);
@@ -400,15 +396,11 @@
         '⚠️ Neue Version ' +
         displayVersion +
         ' verfügbar - öffne das Tampermonkey-Dashboard, um das Script zu aktualisieren.';
-      elements.actionLink.href = REPO_URL;
-      elements.actionLink.style.display = 'inline-flex';
+      elements.divider.style.display = 'block';
     } else {
       elements.badge.style.display = 'none';
       elements.messageRow.style.display = 'none';
-      elements.actionLink.style.display = 'none';
-      if (elements.divider) {
-        elements.divider.style.display = 'none';
-      }
+      elements.divider.style.display = 'none';
     }
   }
 
@@ -2756,35 +2748,20 @@
       color: toolbarTextColor
     });
 
-    const releaseNotificationLink = document.createElement('a');
-    releaseNotificationLink.textContent = 'Release ansehen';
-    releaseNotificationLink.setAttribute('target', '_blank');
-    releaseNotificationLink.setAttribute('rel', 'noreferrer noopener');
-    applyStyles(releaseNotificationLink, {
-      fontSize: '0.76rem',
-      fontWeight: '600',
-      color: '#60a5fa',
-      textDecoration: 'underline',
-      width: 'fit-content'
-    });
-    releaseNotificationLink.style.display = 'none';
-
     releaseNotificationRow.appendChild(releaseNotificationText);
-    releaseNotificationRow.appendChild(releaseNotificationLink);
-    const releaseDivider = document.createElement('div');
-    applyStyles(releaseDivider, {
+    const releaseNotificationDivider = document.createElement('div');
+    applyStyles(releaseNotificationDivider, {
       width: '100%',
       height: '1px',
       background: 'rgba(255, 255, 255, 0.1)',
       borderRadius: '2px',
       margin: '0.35rem 0'
     });
-    releaseDivider.style.display = 'none';
-    releaseNotificationRow.appendChild(releaseDivider);
+    releaseNotificationDivider.style.display = 'none';
+    releaseNotificationRow.appendChild(releaseNotificationDivider);
     releaseNotificationElements.messageRow = releaseNotificationRow;
     releaseNotificationElements.messageText = releaseNotificationText;
-    releaseNotificationElements.actionLink = releaseNotificationLink;
-    releaseNotificationElements.divider = releaseDivider;
+    releaseNotificationElements.divider = releaseNotificationDivider;
     dropdown.appendChild(releaseNotificationRow);
 
     dropdown.appendChild(togglesContainer);
