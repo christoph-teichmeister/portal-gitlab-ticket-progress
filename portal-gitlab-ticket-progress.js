@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      4.1.0
+// @version      4.1.1
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '4.1.0';
+  const SCRIPT_VERSION = '4.1.1';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const HOST_CONFIG = {};
 
@@ -936,6 +936,39 @@
     return barOuter;
   }
 
+  const PORTAL_LINK_BUTTON_DEFAULT_STYLES = {
+    border: '1px solid #4b5563',
+    background: '#111827',
+    color: '#e5e7eb',
+    borderRadius: '999px',
+    padding: '2px 8px',
+    fontSize: '11px',
+    cursor: 'pointer',
+    flex: '0 0 auto',
+    position: 'relative',
+    zIndex: '25'
+  };
+
+  function createPortalLinkButton(url, overrides) {
+    if (!url) return null;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '↗';
+    button.title = 'Im Portal öffnen';
+    button.setAttribute('aria-label', 'Ticket im Portal öffnen');
+    applyStyles(button, mergeStyles(PORTAL_LINK_BUTTON_DEFAULT_STYLES, overrides));
+    button.addEventListener(
+      'click',
+      function (ev) {
+        ev.stopPropagation();
+        ev.preventDefault();
+        window.open(url, '_blank', 'noopener,noreferrer');
+      },
+      true
+    );
+    return button;
+  }
+
   function createAllowedListLookup(listNames) {
     const lookup = {};
     if (!listNames || !listNames.length) {
@@ -1795,32 +1828,11 @@
 
     const url = cardElem.getAttribute('data-ambient-progress-url');
 
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = '↗';
-    btn.title = 'Im Portal öffnen';
-    applyStyles(btn, {
-      border: '1px solid #4b5563',
-      background: '#111827',
-      color: '#e5e7eb',
-      borderRadius: '999px',
-      padding: '2px 8px',
-      fontSize: '11px',
-      cursor: 'pointer',
-      flex: '0 0 auto',
-      position: 'relative',
-      zIndex: '25'
-    });
-
-    btn.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      ev.preventDefault();
-      if (url) {
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
-    }, true);
     row.appendChild(barOuter);
-    row.appendChild(btn);
+    const portalButton = createPortalLinkButton(url);
+    if (portalButton) {
+      row.appendChild(portalButton);
+    }
     container.appendChild(row);
   }
 
@@ -2145,6 +2157,7 @@
         );
         return;
       }
+      detailWrapperElem.setAttribute('data-ambient-progress-url', url);
       if (!shouldPerformPortalRequest(false)) {
         log('Detail-Request ausgelassen (letzte Aktualisierung < 1h) für Issue', issueIid);
         return;
@@ -2155,7 +2168,7 @@
           clearProjectRequestBlock(projectSettings.projectKey);
           if (!progressData) return;
           setProgressCacheEntry(cacheKey, progressData);
-          injectProgressIntoIssueDetail(detailWrapperElem, progressData);
+          injectProgressIntoIssueDetail(detailWrapperElem, progressData, url);
           detailWrapperElem.dataset.ambientProgressIssueIid = issueIid;
         })
         .catch(function (err) {
@@ -2174,11 +2187,16 @@
       issueIid + ').'
     );
 
-    injectProgressIntoIssueDetail(detailWrapperElem, cached);
+    const url = buildPortalUrl(projectSettings, issueIid);
+    if (url) {
+      detailWrapperElem.setAttribute('data-ambient-progress-url', url);
+    }
+
+    injectProgressIntoIssueDetail(detailWrapperElem, cached, url);
     detailWrapperElem.dataset.ambientProgressIssueIid = issueIid;
   }
 
-  function injectProgressIntoIssueDetail(detailWrapperElem, progressData) {
+  function injectProgressIntoIssueDetail(detailWrapperElem, progressData, portalUrl) {
     if (!detailWrapperElem || !progressData) return;
 
     const windowBackground = getGitLabWindowBackgroundColor(true);
@@ -2210,12 +2228,18 @@
     const row = document.createElement('div');
     applyStyles(row, {
       display: 'flex',
-      flexDirection: 'column',
+      alignItems: 'center',
       gap: '0.35rem',
-      fontSize: '12px'
+      fontSize: '12px',
+      flexWrap: 'wrap',
+      width: '100%'
     });
 
     const barOuter = createProgressBarElements(progressData, {
+      bar: {
+        flex: '1 1 auto',
+        minWidth: '0'
+      },
       textLayer: {color: textColor},
       spentLabel: {color: textColor},
       remainingLabel: {color: textColor},
@@ -2223,6 +2247,14 @@
     });
     if (barOuter) {
       row.appendChild(barOuter);
+    }
+
+    const portalButton = createPortalLinkButton(portalUrl);
+    if (portalButton) {
+      row.appendChild(portalButton);
+    }
+
+    if (row.children.length) {
       container.appendChild(row);
     }
   }
