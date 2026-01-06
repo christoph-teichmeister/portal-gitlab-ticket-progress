@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      4.1.3
+// @version      4.1.4
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '4.1.3';
+  const SCRIPT_VERSION = '4.1.4';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const HOST_CONFIG = {};
 
@@ -2671,11 +2671,15 @@
       border: '1px solid #2f374c',
       borderRadius: '8px',
       boxShadow: '0 10px 25px rgba(15, 23, 42, 0.35)',
-      display: 'none',
+      display: 'flex',
       flexDirection: 'column',
       zIndex: '150',
       gap: '0',
-      padding: '0.75rem'
+      padding: '0.75rem',
+      opacity: '0',
+      transform: 'translateY(-8px) scale(0.97)',
+      pointerEvents: 'none',
+      transition: 'opacity 0.2s ease, transform 0.2s ease'
     });
 
     const versionLabel = document.createElement('div');
@@ -2851,7 +2855,10 @@
     let dropdownLocked = false;
 
     function updateDropdownVisibility() {
-      dropdown.style.display = dropdownLocked ? 'flex' : 'none';
+      const isOpen = dropdownLocked;
+      dropdown.style.opacity = isOpen ? '1' : '0';
+      dropdown.style.transform = isOpen ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.97)';
+      dropdown.style.pointerEvents = isOpen ? 'auto' : 'none';
     }
 
     gearButton.addEventListener('click', function () {
