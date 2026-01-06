@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      4.1.4
+// @version      4.1.5
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '4.1.4';
+  const SCRIPT_VERSION = '4.1.5';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const HOST_CONFIG = {};
 
@@ -761,6 +761,22 @@
         element.style[key] = styles[key];
       }
     }
+  }
+
+  function attachHoverEffect(element, hoverStyles) {
+    if (!element || !hoverStyles) return;
+    const baseStyles = {};
+    for (const key in hoverStyles) {
+      if (Object.prototype.hasOwnProperty.call(hoverStyles, key)) {
+        baseStyles[key] = element.style[key] || '';
+      }
+    }
+    element.addEventListener('mouseenter', function () {
+      applyStyles(element, hoverStyles);
+    });
+    element.addEventListener('mouseleave', function () {
+      applyStyles(element, baseStyles);
+    });
   }
 
   function createTextSpan(text, styles) {
@@ -2723,12 +2739,19 @@
         padding: '0.25rem 0.7rem',
         fontSize: '0.7rem',
         color: '#fff',
-        cursor: 'pointer'
+        cursor: 'pointer',
+        transition: 'background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease',
+        boxShadow: '0 4px 10px rgba(37, 99, 235, 0.25)'
       });
       refreshButton.addEventListener('click', function () {
         clearCacheAndReload(hostConfig, projectSettings);
       });
       manualRefreshButtonElement = refreshButton;
+      attachHoverEffect(refreshButton, {
+        background: '#1d4ed8',
+        boxShadow: '0 6px 18px rgba(37, 99, 235, 0.35)',
+        transform: 'translateY(-1px)'
+      });
       timestampRow.appendChild(refreshButton);
     }
 
@@ -2792,7 +2815,9 @@
       color: '#fff',
       fontSize: '12px',
       cursor: 'pointer',
-      width: '100%'
+      width: '100%',
+      transition: 'background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease',
+      boxShadow: '0 6px 18px rgba(37, 99, 235, 0.25)'
     });
     saveButton.addEventListener('click', function () {
       if (!projectSettings || !projectIdInputElement || !portalUrlInputElement) {
@@ -2847,6 +2872,11 @@
       }, 100);
     });
     saveRow.appendChild(saveButton);
+    attachHoverEffect(saveButton, {
+      background: '#1d4ed8',
+      boxShadow: '0 10px 24px rgba(37, 99, 235, 0.35)',
+      transform: 'translateY(-1px)'
+    });
     dropdown.appendChild(saveRow);
     gearWrapper.appendChild(gearButton);
     gearWrapper.appendChild(dropdown);
