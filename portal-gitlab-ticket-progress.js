@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://ambient-innovation.com/
-// @version      4.1.6
+// @version      4.1.7
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.ambient-innovation.com/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '4.1.6';
+  const SCRIPT_VERSION = '4.1.7';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const HOST_CONFIG = {};
 
@@ -1981,7 +1981,6 @@
     if (!boardLists.length) return;
 
     const allowedLookup = projectSettings.allowedListLookup || {};
-    const listFilterMode = projectSettings.listFilterMode || 'auto';
     const hasAllowedFilters = Object.keys(allowedLookup).length > 0;
 
     for (let li = 0; li < boardLists.length; li++) {
@@ -2003,28 +2002,25 @@
       }
 
       let isAllowed = false;
-      if (!listNameLower) {
-        isAllowed = false;
-      } else if (listFilterMode === 'explicit') {
+      if (listNameLower && hasAllowedFilters) {
         isAllowed = Boolean(allowedLookup[listNameLower]);
-      } else {
-        isAllowed = hasAllowedFilters ? Boolean(allowedLookup[listNameLower]) : true;
       }
 
       log('Liste #' + li + ' Name:', '"' + displayListName + '"', '→ allowed:', isAllowed);
-      if (!isAllowed) continue;
 
       const cards = boardListElem.querySelectorAll('li[data-testid="board-card"].board-card');
-      log('  → Karten in erlaubter Liste "' + displayListName + '":', cards.length);
+      if (isAllowed) {
+        log('  → Karten in erlaubter Liste "' + displayListName + '":', cards.length);
+      }
 
       for (let k = 0; k < cards.length; k++) {
         const cardElem = cards[k];
+        const badge = cardElem.querySelector('.ambient-progress-badge');
+        if (badge) {
+          badge.style.display = isAllowed && showEnabled ? '' : 'none';
+        }
 
-        if (!showEnabled) {
-          const badge = cardElem.querySelector('.ambient-progress-badge');
-          if (badge) {
-            badge.style.display = 'none';
-          }
+        if (!isAllowed || !showEnabled) {
           continue;
         }
 
