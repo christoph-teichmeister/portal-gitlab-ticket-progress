@@ -1,6 +1,6 @@
 # Portal GitLab Ticket Progress
 
-Dieses Tampermonkey-Skript ergänzt die GitLab-Issue-Boards auf `gitlab.ambient-innovation.com` mit einer eingebetteten
+Dieses Tampermonkey-Skript ergänzt die GitLab-Issue-Boards auf `gitlab.beyonder.de` mit einer eingebetteten
 Fortschrittsanzeige aus dem Portal. Es liest die dort gebuchten Stunden und zeigt sie als Progressbar in
 ausgewählten Spalten an, inklusive eines Buttons, der direkt ins Portal führt.
 
@@ -20,7 +20,7 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
 
    Die URL verweist auf dieselbe `portal-gitlab-ticket-progress.js`, die in diesem Repo liegt.
 4. Tampermonkey zeigt Name/Version/Berechtigungen und du bestätigst mit "Installieren". Das Script wird auf
-   `https://gitlab.ambient-innovation.com/*/*/-/boards*` aktiv.
+   `https://gitlab.beyonder.de/*/*/-/boards*` aktiv.
 5. Die `@updateURL`/`@downloadURL` im Skriptkopf halten alles automatisch aktuell – nach der einmaligen Installation
    liefert Tampermonkey neue Versionen direkt aus diesem Repo.
 6. Über die Debug/Anzeige-Toggles in der GitLab-Topbar kannst du das Verhalten bei Bedarf ein- oder ausschalten. Die
