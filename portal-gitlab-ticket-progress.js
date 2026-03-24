@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      4.1.10
+// @version      4.1.11
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '4.1.10';
+  const SCRIPT_VERSION = '4.1.11';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const HOST_CONFIG = {};
 
@@ -946,6 +946,38 @@
     return barOuter;
   }
 
+  function getThemeAwareBarStyles(options) {
+    var opts = options || {};
+    var isDark = isGitLabDarkModeActive();
+    var barBackground = isDark ? '#1f2937' : '#E5EAF0';
+    var textColor = getContrastTextColor(PROGRESS_BAR_DEFAULTS.colors.neutral);
+
+    var barStyle = { background: barBackground };
+    if (opts.barOverrides) {
+      Object.assign(barStyle, opts.barOverrides);
+    }
+
+    var labelBase = { color: textColor, fontWeight: '500' };
+    var centerBase = { color: textColor, fontWeight: '600', margin: '0 auto' };
+
+    if (opts.fontSize) {
+      labelBase.fontSize = opts.fontSize;
+      centerBase.fontSize = opts.fontSize;
+    }
+
+    return {
+      barBackground: barBackground,
+      textColor: textColor,
+      styles: {
+        bar: barStyle,
+        textLayer: { color: textColor },
+        spentLabel: Object.assign({}, labelBase),
+        remainingLabel: Object.assign({}, labelBase),
+        centerLabel: Object.assign({}, centerBase)
+      }
+    };
+  }
+
   const PORTAL_LINK_BUTTON_DEFAULT_STYLES = {
     border: '1px solid #4b5563',
     background: '#111827',
@@ -1779,7 +1811,6 @@
         marginBottom: '6px',
         fontSize: '12px',
         lineHeight: '1.2',
-        color: '#2E3440',
         position: 'relative',
         zIndex: '20'
       });
@@ -1806,35 +1837,12 @@
       gap: '6px'
     });
 
-    const barOuter = createProgressBarElements(progressData, {
-      bar: {
-        height: '18px',
-        borderRadius: '999px',
-        overflow: 'hidden',
-        background: '#E5EAF0',
-        flex: '1 1 auto'
-      },
-      textLayer: {
-        padding: '0 6px',
-        color: '#2E3440'
-      },
-      spentLabel: {
-        color: '#2E3440',
-        fontWeight: '500',
-        fontSize: '11px'
-      },
-      remainingLabel: {
-        color: '#2E3440',
-        fontWeight: '500',
-        fontSize: '11px'
-      },
-      centerLabel: {
-        margin: '0 auto',
-        color: '#2E3440',
-        fontWeight: '600',
-        fontSize: '11px'
-      }
+    const theme = getThemeAwareBarStyles({
+      fontSize: '11px',
+      barOverrides: { height: '18px', borderRadius: '999px', overflow: 'hidden', flex: '1 1 auto' }
     });
+    container.style.color = theme.textColor;
+    const barOuter = createProgressBarElements(progressData, theme.styles);
 
     const url = cardElem.getAttribute('data-ambient-progress-url');
 
@@ -2206,7 +2214,10 @@
     if (!detailWrapperElem || !progressData) return;
 
     const windowBackground = getGitLabWindowBackgroundColor(true);
-    const textColor = getContrastTextColor(windowBackground);
+    const theme = getThemeAwareBarStyles({
+      barOverrides: { flex: '1 1 auto', minWidth: '0' }
+    });
+    const textColor = theme.textColor;
     let container = detailWrapperElem.querySelector('.ambient-progress-detail-badge');
     if (!container) {
       container = document.createElement('div');
@@ -2241,16 +2252,7 @@
       width: '100%'
     });
 
-    const barOuter = createProgressBarElements(progressData, {
-      bar: {
-        flex: '1 1 auto',
-        minWidth: '0'
-      },
-      textLayer: {color: textColor},
-      spentLabel: {color: textColor},
-      remainingLabel: {color: textColor},
-      centerLabel: {color: textColor}
-    });
+    const barOuter = createProgressBarElements(progressData, theme.styles);
     if (barOuter) {
       row.appendChild(barOuter);
     }
