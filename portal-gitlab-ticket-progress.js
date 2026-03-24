@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      4.1.11
+// @version      4.2.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*
@@ -18,8 +18,9 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '4.1.11';
+  const SCRIPT_VERSION = '4.2.0';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
+  const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   const HOST_CONFIG = {};
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
@@ -1011,6 +1012,29 @@
     return button;
   }
 
+  function createTimesheetButton(url, overrides) {
+    if (!url) return null;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.innerHTML = TIMESHEET_ICON_SVG;
+    button.title = 'Timesheet erstellen';
+    button.setAttribute('aria-label', 'Timesheet im Portal erstellen');
+    applyStyles(button, mergeStyles(PORTAL_LINK_BUTTON_DEFAULT_STYLES, overrides));
+    button.style.display = 'inline-flex';
+    button.style.alignItems = 'center';
+    button.style.justifyContent = 'center';
+    button.addEventListener(
+      'click',
+      function (ev) {
+        ev.stopPropagation();
+        ev.preventDefault();
+        window.open(url, '_blank', 'noopener,noreferrer');
+      },
+      true
+    );
+    return button;
+  }
+
   function createAllowedListLookup(listNames) {
     const lookup = {};
     if (!listNames || !listNames.length) {
@@ -1495,6 +1519,24 @@
     );
   }
 
+  function buildTimesheetUrl(projectSettings, issueIid) {
+    if (!projectSettings || !issueIid) {
+      return null;
+    }
+    const projectId = projectSettings.projectId;
+    const base = getPortalBaseUrl(projectSettings);
+    if (!projectId || !base) {
+      return null;
+    }
+    return (
+      base +
+      '/management/timesheet/create/?project_id=' +
+      encodeURIComponent(String(projectId)) +
+      '&booking_tag=%23' +
+      encodeURIComponent(String(issueIid))
+    );
+  }
+
   // Zahl aus "16.25h" / "72,25h" extrahieren
   function extractHourNumber(text) {
     if (!text) return null;
@@ -1846,6 +1888,11 @@
 
     const url = cardElem.getAttribute('data-ambient-progress-url');
 
+    const timesheetUrl = cardElem.getAttribute('data-ambient-timesheet-url');
+    const timesheetButton = createTimesheetButton(timesheetUrl);
+    if (timesheetButton) {
+      row.appendChild(timesheetButton);
+    }
     row.appendChild(barOuter);
     const portalButton = createPortalLinkButton(url);
     if (portalButton) {
@@ -1930,6 +1977,10 @@
       return;
     }
     cardElem.setAttribute('data-ambient-progress-url', url);
+    const timesheetUrl = buildTimesheetUrl(projectSettings, issueIid);
+    if (timesheetUrl) {
+      cardElem.setAttribute('data-ambient-timesheet-url', timesheetUrl);
+    }
 
     const cached = getProgressCacheEntry(cacheKey);
     if (cached) {
@@ -2182,7 +2233,7 @@
           clearProjectRequestBlock(projectSettings.projectKey);
           if (!progressData) return;
           setProgressCacheEntry(cacheKey, progressData);
-          injectProgressIntoIssueDetail(detailWrapperElem, progressData, url);
+          injectProgressIntoIssueDetail(detailWrapperElem, progressData, url, buildTimesheetUrl(projectSettings, issueIid));
           detailWrapperElem.dataset.ambientProgressIssueIid = issueIid;
         })
         .catch(function (err) {
@@ -2206,11 +2257,11 @@
       detailWrapperElem.setAttribute('data-ambient-progress-url', url);
     }
 
-    injectProgressIntoIssueDetail(detailWrapperElem, cached, url);
+    injectProgressIntoIssueDetail(detailWrapperElem, cached, url, buildTimesheetUrl(projectSettings, issueIid));
     detailWrapperElem.dataset.ambientProgressIssueIid = issueIid;
   }
 
-  function injectProgressIntoIssueDetail(detailWrapperElem, progressData, portalUrl) {
+  function injectProgressIntoIssueDetail(detailWrapperElem, progressData, portalUrl, timesheetUrl) {
     if (!detailWrapperElem || !progressData) return;
 
     const windowBackground = getGitLabWindowBackgroundColor(true);
@@ -2251,6 +2302,11 @@
       flexWrap: 'wrap',
       width: '100%'
     });
+
+    const tsButton = createTimesheetButton(timesheetUrl);
+    if (tsButton) {
+      row.appendChild(tsButton);
+    }
 
     const barOuter = createProgressBarElements(progressData, theme.styles);
     if (barOuter) {
