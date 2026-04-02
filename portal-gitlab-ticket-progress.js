@@ -136,7 +136,11 @@
 
   function showToast(options) {
     if (!options || !options.text) return;
-    const {text, variant = 'info', duration = TOAST_DEFAULT_DURATION_MS} = options;
+    const {
+      text,
+      variant = 'info',
+      duration = TOAST_DEFAULT_DURATION_MS
+    } = options;
     const el = ensureToastElement();
     const variantStyles = TOAST_VARIANTS[variant] || TOAST_VARIANTS.info;
     applyStyles(el, {
@@ -960,13 +964,13 @@
     var barBackground = isDark ? '#1f2937' : '#E5EAF0';
     var textColor = getContrastTextColor(PROGRESS_BAR_DEFAULTS.colors.neutral);
 
-    var barStyle = { background: barBackground };
+    var barStyle = {background: barBackground};
     if (opts.barOverrides) {
       Object.assign(barStyle, opts.barOverrides);
     }
 
-    var labelBase = { color: textColor, fontWeight: '500' };
-    var centerBase = { color: textColor, fontWeight: '600', margin: '0 auto' };
+    var labelBase = {color: textColor, fontWeight: '500'};
+    var centerBase = {color: textColor, fontWeight: '600', margin: '0 auto'};
 
     if (opts.fontSize) {
       labelBase.fontSize = opts.fontSize;
@@ -978,7 +982,7 @@
       textColor: textColor,
       styles: {
         bar: barStyle,
-        textLayer: { color: textColor },
+        textLayer: {color: textColor},
         spentLabel: Object.assign({}, labelBase),
         remainingLabel: Object.assign({}, labelBase),
         centerLabel: Object.assign({}, centerBase)
@@ -1274,11 +1278,19 @@
       if (dataTheme) {
         const lower = dataTheme.toLowerCase();
         if (lower.includes('dark')) {
-          log('isGitLabDarkModeActive', {source: 'data-theme', value: dataTheme, result: true});
+          log('isGitLabDarkModeActive', {
+            source: 'data-theme',
+            value: dataTheme,
+            result: true
+          });
           return true;
         }
         if (lower.includes('light')) {
-          log('isGitLabDarkModeActive', {source: 'data-theme', value: dataTheme, result: false});
+          log('isGitLabDarkModeActive', {
+            source: 'data-theme',
+            value: dataTheme,
+            result: false
+          });
           return false;
         }
       }
@@ -1288,7 +1300,11 @@
           html.classList.contains('gl-dark') ||
           html.classList.contains('theme-dark')
         ) {
-          log('isGitLabDarkModeActive', {source: 'html-class', class: 'dark', result: true});
+          log('isGitLabDarkModeActive', {
+            source: 'html-class',
+            class: 'dark',
+            result: true
+          });
           return true;
         }
         if (
@@ -1296,7 +1312,11 @@
           html.classList.contains('gl-light') ||
           html.classList.contains('theme-light')
         ) {
-          log('isGitLabDarkModeActive', {source: 'html-class', class: 'light', result: false});
+          log('isGitLabDarkModeActive', {
+            source: 'html-class',
+            class: 'light',
+            result: false
+          });
           return false;
         }
       }
@@ -1318,7 +1338,12 @@
       if (rgb) {
         const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
         const isDark = luminance <= 0.55;
-        log('isGitLabDarkModeActive', {source: 'theme-var', themeBg, luminance: luminance.toFixed(3), isDark});
+        log('isGitLabDarkModeActive', {
+          source: 'theme-var',
+          themeBg,
+          luminance: luminance.toFixed(3),
+          isDark
+        });
         return isDark;
       }
     }
@@ -1329,7 +1354,11 @@
       if (rgb) {
         const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
         const isDark = luminance <= 0.55;
-        log('isGitLabDarkModeActive', {computedBg, luminance: luminance.toFixed(3), isDark});
+        log('isGitLabDarkModeActive', {
+          computedBg,
+          luminance: luminance.toFixed(3),
+          isDark
+        });
         return isDark;
       }
     }
@@ -1431,14 +1460,23 @@
     const fallbackLight = lightColor || '#f8fafc';
 
     if (!rgb) {
-      log('getContrastTextColor', {bgColor, choice: 'fallback', result: fallbackLight});
+      log('getContrastTextColor', {
+        bgColor,
+        choice: 'fallback',
+        result: fallbackLight
+      });
       return fallbackLight;
     }
 
     const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
     const chosen = luminance > 0.55 ? fallbackDark : fallbackLight;
 
-    log('getContrastTextColor', {bgColor, luminance: luminance.toFixed(3), choice: chosen === fallbackDark ? 'dark' : 'light', result: chosen});
+    log('getContrastTextColor', {
+      bgColor,
+      luminance: luminance.toFixed(3),
+      choice: chosen === fallbackDark ? 'dark' : 'light',
+      result: chosen
+    });
 
     return chosen;
   }
@@ -1696,14 +1734,22 @@
         const single = texts[0];
         if (/^-/.test(single)) {
           const overText = single.replace(/^-+/, '');
-          return attachBookedInfo({spent: null, remaining: null, over: overText});
+          return attachBookedInfo({
+            spent: null,
+            remaining: null,
+            over: overText
+          });
         }
         // sonst: Einzelwert = spent
         return attachBookedInfo({spent: single, remaining: null, over: null});
       }
 
       // Normalfall: mind. zwei Werte → erster = spent, zweiter = remaining
-      return attachBookedInfo({spent: texts[0], remaining: texts[1], over: null});
+      return attachBookedInfo({
+        spent: texts[0],
+        remaining: texts[1],
+        over: null
+      });
     } catch (e) {
       error('Fehler beim Parsen des Progress-HTML:', e);
       return null;
@@ -1888,7 +1934,12 @@
 
     const theme = getThemeAwareBarStyles({
       fontSize: '11px',
-      barOverrides: { height: '18px', borderRadius: '999px', overflow: 'hidden', flex: '1 1 auto' }
+      barOverrides: {
+        height: '18px',
+        borderRadius: '999px',
+        overflow: 'hidden',
+        flex: '1 1 auto'
+      }
     });
     container.style.color = theme.textColor;
     const barOuter = createProgressBarElements(progressData, theme.styles);
@@ -1926,27 +1977,27 @@
         url: url,
         headers: {},
         withCredentials: true,
-      onload: function (response) {
-        if (debugEnabled) {
-          log('Response-Status für Issue', issueIid, ':', response.status);
-        }
-        if (response.status !== 200) {
-          warn('Antwort != 200 für Issue', issueIid, 'Status:', response.status);
-          reject({status: response.status});
-          return;
-        }
-        const progressData = parseProgressHtml(response.responseText);
-        if (!progressData) {
-          log(
-            'Konnte progress-Daten nicht aus HTML extrahieren (evtl. Login-Page oder keine Buchungen). Issue',
-            issueIid
-          );
-          resolve(null);
-          return;
-        }
-        log('Progress-Daten erhalten für Issue', issueIid, progressData);
-        resolve(progressData);
-      },
+        onload: function (response) {
+          if (debugEnabled) {
+            log('Response-Status für Issue', issueIid, ':', response.status);
+          }
+          if (response.status !== 200) {
+            warn('Antwort != 200 für Issue', issueIid, 'Status:', response.status);
+            reject({status: response.status});
+            return;
+          }
+          const progressData = parseProgressHtml(response.responseText);
+          if (!progressData) {
+            log(
+              'Konnte progress-Daten nicht aus HTML extrahieren (evtl. Login-Page oder keine Buchungen). Issue',
+              issueIid
+            );
+            resolve(null);
+            return;
+          }
+          log('Progress-Daten erhalten für Issue', issueIid, progressData);
+          resolve(progressData);
+        },
         onerror: function (err) {
           reject(err);
         }
@@ -2201,7 +2252,7 @@
 
     const windowBackground = getGitLabWindowBackgroundColor(true);
     const theme = getThemeAwareBarStyles({
-      barOverrides: { flex: '1 1 auto', minWidth: '0' }
+      barOverrides: {flex: '1 1 auto', minWidth: '0'}
     });
     const textColor = theme.textColor;
 
@@ -2213,9 +2264,10 @@
       container = document.createElement('div');
       container.className = 'ambient-progress-mr-badge';
       applyStyles(container, {
-        marginBottom: '0.6rem',
-        padding: '0.45rem 0',
-        borderRadius: '10px',
+        padding: '1rem 0',
+        borderBottomStyle: "solid",
+        borderBottomWidth: "1px",
+        borderColor: "var(--gl-border-color-subtle)",
         background: windowBackground
       });
       parent.insertBefore(container, assigneeBlock);
@@ -2483,7 +2535,7 @@
 
     const windowBackground = getGitLabWindowBackgroundColor(true);
     const theme = getThemeAwareBarStyles({
-      barOverrides: { flex: '1 1 auto', minWidth: '0' }
+      barOverrides: {flex: '1 1 auto', minWidth: '0'}
     });
     const textColor = theme.textColor;
     let container = detailWrapperElem.querySelector('.ambient-progress-detail-badge');
