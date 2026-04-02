@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      4.2.1
+// @version      4.3.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
   // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '4.2.1';
+  const SCRIPT_VERSION = '4.3.0';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   const HOST_CONFIG = {};
@@ -56,6 +56,13 @@
   const DETAIL_RETRY_INTERVAL_MS = 700;
   const DETAIL_RETRY_MAX_ATTEMPTS = 3;
   const detailRetryState = {
+    timer: null,
+    attempts: 0
+  };
+
+  const MR_RETRY_INTERVAL_MS = 700;
+  const MR_RETRY_MAX_ATTEMPTS = 3;
+  const mrRetryState = {
     timer: null,
     attempts: 0
   };
@@ -2148,6 +2155,216 @@
     }
   }
 
+  function resetMRRetryState() {
+    mrRetryState.attempts = 0;
+    if (mrRetryState.timer) {
+      clearTimeout(mrRetryState.timer);
+      mrRetryState.timer = null;
+    }
+  }
+
+  function scheduleMRRetry(hostConfig, projectSettings) {
+    if (!hostConfig || !projectSettings) return;
+    if (mrRetryState.attempts >= MR_RETRY_MAX_ATTEMPTS) {
+      return;
+    }
+    if (mrRetryState.timer) {
+      return;
+    }
+    mrRetryState.attempts += 1;
+    mrRetryState.timer = setTimeout(function () {
+      mrRetryState.timer = null;
+      log('MR-Progress-Block noch nicht vorhanden – erneuter Versuch #' + mrRetryState.attempts);
+      scanMergeRequestPage(hostConfig, projectSettings);
+    }, MR_RETRY_INTERVAL_MS);
+  }
+
+  function getIssueIidFromMRTitle() {
+    const titleEl = document.querySelector('h1[data-testid="title-content"]');
+    if (!titleEl) return null;
+
+    // Priorität 1: <a data-iid="..."> Link im Titel
+    const issueLink = titleEl.querySelector('a[data-iid]');
+    if (issueLink) {
+      const iid = issueLink.getAttribute('data-iid');
+      if (iid) return iid;
+    }
+
+    // Priorität 2: Text-Pattern "#<ID>" im Titel
+    const text = titleEl.textContent || '';
+    const match = text.match(/#(\d+)/);
+    return match ? match[1] : null;
+  }
+
+  function injectProgressIntoMRDetail(assigneeBlock, progressData, portalUrl, timesheetUrl) {
+    if (!assigneeBlock || !progressData) return;
+
+    const windowBackground = getGitLabWindowBackgroundColor(true);
+    const theme = getThemeAwareBarStyles({
+      barOverrides: { flex: '1 1 auto', minWidth: '0' }
+    });
+    const textColor = theme.textColor;
+
+    const parent = assigneeBlock.parentElement;
+    if (!parent) return;
+
+    let container = parent.querySelector('.ambient-progress-mr-badge');
+    if (!container) {
+      container = document.createElement('div');
+      container.className = 'ambient-progress-mr-badge';
+      applyStyles(container, {
+        marginBottom: '0.6rem',
+        padding: '0.45rem 0',
+        borderRadius: '10px',
+        background: windowBackground
+      });
+      parent.insertBefore(container, assigneeBlock);
+    }
+
+    container.style.display = showEnabled ? '' : 'none';
+    container.style.color = textColor;
+    container.innerHTML = '';
+
+    const row = document.createElement('div');
+    applyStyles(row, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.35rem',
+      fontSize: '12px',
+      flexWrap: 'wrap',
+      width: '100%'
+    });
+
+    const tsButton = createTimesheetButton(timesheetUrl);
+    if (tsButton) {
+      row.appendChild(tsButton);
+    }
+
+    const barOuter = createProgressBarElements(progressData, theme.styles);
+    if (barOuter) {
+      row.appendChild(barOuter);
+    }
+
+    const portalButton = createPortalLinkButton(portalUrl);
+    if (portalButton) {
+      row.appendChild(portalButton);
+    }
+
+    if (row.children.length) {
+      container.appendChild(row);
+    }
+  }
+
+  function fetchAndDisplayProgressForMRDetail(hostConfig, projectSettings, issueIid, assigneeBlock) {
+    if (!issueIid || !assigneeBlock) return;
+
+    const projectId = projectSettings.projectId;
+    if (!projectId) {
+      warn('Kein projectId für', projectSettings.projectPath, '; MR-Detail-Progress wird nicht geladen.');
+      return;
+    }
+
+    const cacheKey = buildProgressCacheKey(projectSettings, issueIid);
+    if (!cacheKey) {
+      log('MR-Detail-Cache: Kein Cache-Key möglich für Issue', issueIid);
+      return;
+    }
+
+    const cached = findProgressCacheEntryForIssue(projectSettings, issueIid);
+    if (!cached) {
+      log(
+        'Kein Cache-Eintrag für MR-Detail gefunden (Projekt',
+        projectSettings.projectPath + ',',
+        'Issue',
+        issueIid + ').'
+      );
+      const url = buildPortalUrl(projectSettings, issueIid);
+      if (!url) {
+        warn(
+          'Keine Portal-Basis konfiguriert für',
+          projectSettings.projectPath,
+          '; MR-Detail-Fortschritt wird nicht geladen.'
+        );
+        return;
+      }
+      assigneeBlock.setAttribute('data-ambient-progress-url', url);
+      if (!shouldPerformPortalRequest(false)) {
+        log('MR-Detail-Request ausgelassen (letzte Aktualisierung < 1h) für Issue', issueIid);
+        return;
+      }
+      log('MR-Detail lädt Progress-Daten (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ') →', url);
+      loadProgressData(url, issueIid)
+        .then(function (progressData) {
+          clearProjectRequestBlock(projectSettings.projectKey);
+          if (!progressData) return;
+          setProgressCacheEntry(cacheKey, progressData);
+          injectProgressIntoMRDetail(assigneeBlock, progressData, url, buildTimesheetUrl(projectSettings, issueIid));
+          const parent = assigneeBlock.parentElement;
+          if (parent) {
+            parent.dataset.ambientProgressMrIssueIid = issueIid;
+          }
+        })
+        .catch(function (err) {
+          error('Request-Fehler für MR-Issue ' + issueIid + ':', err);
+          if (err && err.status) {
+            blockProjectRequests(projectSettings.projectKey, err.status);
+          }
+        });
+      return;
+    }
+
+    log(
+      'MR-Detail liest Cache (Projekt',
+      projectSettings.projectPath + ',',
+      'Issue',
+      issueIid + ').'
+    );
+
+    const url = buildPortalUrl(projectSettings, issueIid);
+    if (url) {
+      assigneeBlock.setAttribute('data-ambient-progress-url', url);
+    }
+
+    injectProgressIntoMRDetail(assigneeBlock, cached, url, buildTimesheetUrl(projectSettings, issueIid));
+    const parent = assigneeBlock.parentElement;
+    if (parent) {
+      parent.dataset.ambientProgressMrIssueIid = issueIid;
+    }
+  }
+
+  function scanMergeRequestPage(hostConfig, projectSettings) {
+    if (!hostConfig || !projectSettings) {
+      log('scanMergeRequestPage übersprungen (Host/Project fehlt).');
+      return;
+    }
+    if (!showEnabled) {
+      log('scanMergeRequestPage übersprungen (Anzeigen-Toggle aus).');
+      return;
+    }
+
+    const issueIid = getIssueIidFromMRTitle();
+    if (!issueIid) {
+      log('scanMergeRequestPage: Keine Issue-IID im MR-Titel gefunden.');
+      return;
+    }
+
+    const assigneeBlock = document.querySelector('[data-testid="assignee-block-container"]');
+    if (!assigneeBlock) {
+      log('scanMergeRequestPage: Assignee-Block nicht gefunden, retry...');
+      scheduleMRRetry(hostConfig, projectSettings);
+      return;
+    }
+
+    resetMRRetryState();
+
+    const parent = assigneeBlock.parentElement;
+    if (parent && parent.dataset.ambientProgressMrIssueIid === issueIid) {
+      return;
+    }
+
+    fetchAndDisplayProgressForMRDetail(hostConfig, projectSettings, issueIid, assigneeBlock);
+  }
+
   function getIssueIidFromDetailView(detailElem) {
     const fromShow = parseIssueIidFromShowParam();
     if (fromShow) return fromShow;
@@ -2324,7 +2541,7 @@
   }
 
   function applyShowFlagToDetailBadges() {
-    const badges = document.querySelectorAll('.ambient-progress-detail-badge');
+    const badges = document.querySelectorAll('.ambient-progress-detail-badge, .ambient-progress-mr-badge');
     for (let i = 0; i < badges.length; i++) {
       badges[i].style.display = showEnabled ? '' : 'none';
     }
@@ -3170,9 +3387,67 @@
     log('Userscript gestartet, URL:', window.location.href);
 
     if (isMergeRequestPage()) {
-      log('Merge-Request-Seite erkannt; kein Progress-Overlay.');
+      log('Merge-Request-Seite erkannt; starte MR-Progress-Injection.');
+      const hostConfig = getCurrentHostConfig();
+      if (!hostConfig) {
+        warn('Kein hostConfig – Script beendet sich.');
+        return;
+      }
+      const projectSettings = getProjectSettings(hostConfig);
+      if (!projectSettings) {
+        warn('Keine projectSettings – Script beendet sich.');
+        return;
+      }
+
+      if (typeof projectSettings.showEnabled === 'boolean') {
+        showEnabled = projectSettings.showEnabled;
+      }
+      if (typeof projectSettings.debugEnabled === 'boolean') {
+        debugEnabled = projectSettings.debugEnabled;
+      }
+
+      log('hostConfig:', hostConfig);
+      log('projectSettings:', projectSettings);
+
+      applyShowFlagToDetailBadges();
+
+      let mrInitialScanDone = false;
+
+      function tryMRInitialScan() {
+        if (mrInitialScanDone) return;
+        mrInitialScanDone = true;
+        log('Initialer scanMergeRequestPage()-Aufruf');
+        scanMergeRequestPage(hostConfig, projectSettings);
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', tryMRInitialScan);
+      } else {
+        tryMRInitialScan();
+      }
+
+      const mrObserver = new MutationObserver(function (mutations) {
+        let relevantChange = false;
+        for (let i = 0; i < mutations.length; i++) {
+          if (mutations[i].addedNodes && mutations[i].addedNodes.length) {
+            relevantChange = true;
+            break;
+          }
+        }
+        if (relevantChange) {
+          log('MutationObserver (MR) → scanMergeRequestPage()');
+          scanMergeRequestPage(hostConfig, projectSettings);
+        }
+      });
+
+      mrObserver.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+
       return;
     }
+
     const hostConfig = getCurrentHostConfig();
     if (!hostConfig) {
       warn('Kein hostConfig – Script beendet sich.');
