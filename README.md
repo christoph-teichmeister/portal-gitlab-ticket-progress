@@ -9,9 +9,18 @@ ausgewählten Spalten an, inklusive eines Buttons, der direkt ins Portal führt.
 Die Datei `portal-gitlab-ticket-progress.js` in diesem Repository ist das volle Tampermonkey-Skript; Tampermonkey lädt
 sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automatisch die neueste Version bekommen.
 
+### Pre-Installation:
+
+1. Tampermonkey Script
+   installieren: [Chrome Web Store](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=en&pli=1)
+   oder [Firefox](https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/)
+2. [User Scripts erlauben](https://www.tampermonkey.net/faq.php?q=Q209)
+
+### Installationsschritte:
+
 1. Öffne das Tampermonkey-Dashboard (Icon in der Erweiterungsleiste → "Dashboard").
-2. Klicke auf "Utilities" / "Hilfsmittel" und wähle "Import from URL" / "Von URL importieren", statt ein neues Skript
-   anzulegen.
+2. Klicke auf "Utilities" / "Hilfsmittel" im Dashboard (NICHT im Dropdown Menü des Icons der Erweiterungsleiste!) und
+   wähle "Import from URL" / "Von URL importieren", statt ein neues Skript anzulegen.
 3. Gib die RAW-URL ein:
 
    ```text
@@ -19,8 +28,8 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    ```
 
    Die URL verweist auf dieselbe `portal-gitlab-ticket-progress.js`, die in diesem Repo liegt.
-4. Tampermonkey zeigt Name/Version/Berechtigungen und du bestätigst mit "Installieren". Das Script wird auf
-   `https://gitlab.beyonder.de/*/*/-/boards*` aktiv.
+4. Tampermonkey zeigt Name/Version/Berechtigungen und du bestätigst mit "Installieren".Das Script wird auf
+   `https://gitlab.*/*` aktiv.
 5. Die `@updateURL`/`@downloadURL` im Skriptkopf halten alles automatisch aktuell – nach der einmaligen Installation
    liefert Tampermonkey neue Versionen direkt aus diesem Repo.
 6. Über die Debug/Anzeige-Toggles in der GitLab-Topbar kannst du das Verhalten bei Bedarf ein- oder ausschalten. Die
@@ -31,133 +40,16 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Die Einstellung wird ausschließlich lokal im
    Browser gespeichert (per Projekt). Du musst sie nur einmal hinterlegen.
 8. Wenn die Portal-Base-URL fehlt, blendet das Script einen kleinen Toast von oben rechts ein („Portal-Base URL fehlt –
-   ⚙ → Projekt-Konfiguration öffnen und eintragen.“). Nach fünf Sekunden verschwindet der Hinweis wieder; du kannst
+   ⚙ → Projekt-Konfiguration öffnen und eintragen.”). Nach fünf Sekunden verschwindet der Hinweis wieder; du kannst
    ihn bei Bedarf erneut triggern, indem du das Zahnrad öffnest.
 
-## Sicherheitsaspekte
+## Dokumentation
 
-Dieses Repository ist so aufgebaut, dass das hier gehostete Userscript sicher als automatisch aktualisierbares
-Tampermonkey-Skript verwendet werden kann. Die Aktualisierung ist aus folgenden Gründen als sicher einzustufen:
+Weitere Details zur Nutzung und Konfiguration:
 
-### Kontrollierte Quelle
-
-Das Script wird ausschließlich über dieses GitHub-Repository bereitgestellt und über `raw.githubusercontent.com`
-ausgeliefert. Nur berechtigte Maintainer mit Schreibrechten können Änderungen vornehmen. Es werden keine externen oder
-dynamischen Codes zur Laufzeit nachgeladen.
-
-### Strenge Zugriffskontrollen
-
-Das Repository nutzt die integrierten Sicherheitsmechanismen von GitHub:
-
-* Verpflichtende Zwei-Faktor-Authentifizierung für Maintainer
-* Eingeschränkte Schreibrechte
-* Branch-Protection-Regeln, die ungeprüfte oder versehentliche Direkt-Commits verhindern
-
-Damit ist sichergestellt, dass nur authentisierte und autorisierte Änderungen veröffentlicht werden.
-
-### Transparente, nachvollziehbare Updates
-
-Jede Änderung am Userscript erfordert:
-
-* Einen expliziten Commit
-* Sichtbare Diffs
-* Eine Versionsanhebung im Skript-Header
-
-Dadurch entsteht ein klarer Audit-Trail, und jede Änderung ist vor Auslieferung überprüfbar.
-
-### HTTPS-Auslieferung
-
-Installation und Updates erfolgen ausschließlich über HTTPS auf dem GitHub-Raw-Host. Das verhindert Manipulationen
-während der Übertragung und stellt die Integrität des ausgelieferten Codes sicher.
-
-### Keine Drittanbieter-Abhängigkeiten
-
-Das Script nutzt keine externen CDNs, keine Remote-Imports und keine dynamisch geladenen Abhängigkeiten. Die gesamte
-Ausführungsoberfläche beschränkt sich auf den Code in diesem Repository.
-
-## Wesentliche Features
-
-- Platziert eine Toolbar rechts in der GitLab-Topbar, zeigt dort Versionslabel, `Anzeigen`- und `Debug`-Toggles,
-  einen Gear-Button sowie die „Cache leeren“- und „Einstellungen speichern“-Actions.
-- Fügt pro Board-Spalte eine Checkbox direkt neben dem Spalten-Titel ein, damit du die Listen zur Progress-Anzeige
-  ein- oder ausschaltest. Die Auswahl wird lokal gespeichert (haftet an den Projekt-Keys) und aktiviert den
-  expliziten Modus, wenn du manuell eingreifst.
-- Fügt pro Board-Karte ein Overlay-Badge ein, das eine farbige Progressbar, `spent`/`remaining`-Labels (oder
-  Over-/Booked-Hours-Fallback) sowie einen `↗`-Button zum entsprechenden Portal-Ticket enthält. Booked-Hours-Fallbacks
-  nutzen einen deutlich blauen Balken, damit sie sich besser von den normalen Fortschrittsdaten abheben.
-- Zeigt die gleichen Progressdaten direkt im Issue-Detail unterhalb der Teilnehmer-Liste an, sofern auf dem Ticket
-  bereits Daten im Cache liegen. Das Detail-Widget versucht weder einen zusätzlichen Board-Scan noch einen erneuten
-  Portal-Request, sondern greift ausschließlich auf die zuletzt geladenen Werte zurück, die durch ein Board-Scan oder
-  eine manuelle Aktualisierung (Cache leeren / Jetzt aktualisieren) gespeichert wurden. Beim Detail greift das Script
-  auf den passenden Board-Cache zu und nutzt zur Not den zuletzt gefundenen Board-Eintrag, damit auch direkte
-  Detailseiten (ohne Board-URL) dieselben Daten wiederverwenden können.
-- Passt die Hintergrundfarbe der Toolbar-Dropdowns, Projekt-Konfiguration und Detail-Widgets an das aktuell gesetzte
-  GitLab-Farbschema an (bei Dark Mode wird die dort hinterlegte Light-Mode-Farbe priorisiert) und stellt automatisch
-  kontrastreiche Schriftfarben bereit, damit sich die Overlays nahtlos und gut lesbar in die Oberfläche einfügen.
-- Lädt die Daten über `GM_xmlhttpRequest` aus dem Portal, cached sie lokal (60-min TTL) und merkt sich Zeitstempel +
-  Fortschritts-Daten in `localStorage`, sodass ein einfacher Reload keine neuen Portal-Requests auslöst, solange die
-  letzte Aktualisierung jünger als eine Stunde ist. Die Cache-Einträge werden pro Board getrennt gespeichert, damit
-  jede Board-Ansicht ihre eigenen Fortschrittsdaten nutzen darf. Beim Laden prüft das Skript außerdem, ob der
-  hinterlegte Cache älter als 60 Minuten ist, und leert ihn automatisch, damit direkt nach einem Reload frische
-  Daten vom Portal abgefragt werden.
-- Blockiert weitere Requests nach Fehlern (403/404), bis du den Cache leerst oder die Portal-URL neu speicherst.
-- Beim ersten Request nach dem Speichern einer neuen Portal-Base-URL erscheint ein Tampermonkey-Popup, das dich um
-  Erlaubnis für den Zugriff auf diese URL bittet (`GM_xmlhttpRequest`). Gib dort „Allow“ oder „Ja“, damit das Skript
-  tatsächlich auf das Portal zugreifen darf.
-- Beobachtet das Board via `MutationObserver`, reagiert auf neue Karten/Listen und führt bei Bedarf neue Scans aus.
-- Zeigt im Dropdown eine Zeile mit dem Zeitstempel der letzten Portal-Anfrage und einen Button zum sofortigen
-  Neuladen aller Tickets; der Button löscht den lokalen Cache, setzt den Zeitstempel zurück und lädt die Seite neu,
-  damit wirklich alle Tickets erneut vom Portal angefragt werden.
-
-## Konfiguration & Erweiterung
-
-- Die Projekte (Projektpfad, Projekt-ID, voreingestellte Listen) können initial im `HOST_CONFIG` stehen. Das
-  Script liest diesen Sockel und überschreibt ihn mit den lokal gespeicherten Einträgen aus `ambientProgressProjectConfigs`
-  bzw. `ambientProgressListSelections`, sobald du die Projekt-ID/Portal-Base-URL oder die Listenauswahl änderst.
-- Der Gear-Dropdown bietet ein Formular für Projekt-ID und Portal-Base-URL; Werte werden normalisiert (`https://`-Prefix,
-  Trailing-Slash entfernt), in LocalStorage gespeichert und mit einem Reload sofort aktiv („Einstellungen speichern“).
-- Die Portal-URL besteht aus der Base + `/management/project/{projectId}/booking-label/#` + IID; ohne gültige Projekt-ID
-  oder Base wird kein Request abgesendet und es erscheint ein gelber Toast.
-- Das Parsing der Portal-Seite schaut zuerst nach `div.progress`-Elementen mit `progress-bar`, dann nach Inline- oder
-  Tabellenwerten zu „Booked Hours“, um `spent`/`remaining`/`over` sinnvoll abzuleiten.
-
-## Lokale Controls
-
-- **Debug** (`portalProgressDebug`): aktiviert `console.log` und zeigt zusätzliche Informationen im Browser-Console-Log; die
-  Einstellung wird pro Projekt in `ambientProgressProjectConfigs` gespeichert (ältere Werte unter `portalProgressDebug`
-  dienen nur noch als Upgrade-Fallback).
-- **Anzeigen** (`portalProgressShow`): blendet die Badges und Detail-Widgets ein/aus; beim Aktivieren wird das Board
-  erneut gescannt, beim Deaktivieren werden die Badges lediglich ausgeblendet; die Sichtbarkeit bleibt pro Projekt erhalten.
-- **Listen-Checkboxes**: Aktivierte Listen werden im Cache gespeichert; sobald du eine Spalte per Checkbox erlaubst oder
-  deaktivierst, wechselt das Script in den expliziten Modus und speichert die Auswahl unter dem Projektschlüssel.
-- **Cache leeren**: Entfernt alle gespeicherten Progress-Daten, hebt eventuell gesetzte Request-Blocks und triggert
-  neue Scans sowie einen grünen Toast („Cache geleert“).
-- **Fehlerzustände & Portal-Hinweise**: Hilfreiche Toasts warnen bei fehlender Portal-Base, 403/404-Block(-Wiederholung) oder
-  dem erfolgreichen Speichern von Einstellungen; die Warnung zu fehlender Base meldet sich maximal alle zwei Minuten.
-- **Einstellungen speichern**: Nach erfolgreichem Speichern der Projekt-ID bzw. Portal-Base-URL siehst du ein Erfolgstoast
-  und die Seite lädt sich neu, damit die neuen Werte sofort greifen.
-- **Letzte Aktualisierung**: Die Dropdown-Zeile zeigt den Zeitpunkt der letzten erfolgreichen Portal-Anfrage; der
-  Button `Jetzt aktualisieren` leert den lokalen Cache, setzt den Zeitstempel zurück und lädt die Seite neu, damit
-  wirklich alle Tickets nochmals vom Portal abgefragt werden.
-
-## Hinweise
-
-- Das Skript ist auf `merge_requests`-Seiten komplett deaktiviert, damit die Detailansichten dort nicht durch die Board-Scans geblockt werden.
-- Das Skript geht davon aus, dass eine Session beim Portal existiert (`withCredentials: true`). Werden nicht alle Daten
-  geladen, liegt es meist an einem fehlenden Login, einer falschen Base-URL oder einem blockierten Request nach einem
-  403/404.
-- Die Render-Logik nutzt ausschließlich DOM-Manipulation; Badges werden mit `z-index: 20` platziert, weil sie sonst
-  von GitLab-Elementen überdeckt wären.
-- MutationObserver beobachten das Board und triggern bei frisch geladenen Listen oder Karten neue Scans; Ähnliche
-  Mechanismen sorgen dafür, dass Issue-Detailansichten (Teilnehmer-Sektion) synchron mit den Board-Badges bleiben.
-
-## Automatische Update-Benachrichtigung
-
-- Das Skript fragt maximal einmal pro Stunde die aktuelle `portal-gitlab-ticket-progress.js` per Raw-URL ab, liest dort
-  die Zeile mit `// @version` aus und speichert die Versionsnummer zusammen mit der Raw-URL unter
-  `ambientProgressReleaseInfo`, sodass die Badge dann erscheint, wenn eine neue Version erkannt wurde.
-- Sobald eine neue Version verfügbar ist, bekommt das Zahnrad einen roten Punkt, und im Dropdown taucht eine Zeile mit
-  `⚠️ Neue Version ... verfügbar` auf, die dich daran erinnert, das Tampermonkey-Dashboard zu öffnen, damit du das Script
-  dort aktualisieren kannst.
-- Die Badge verschwindet wieder, sobald keine neuere Version vorliegt oder die aktuell installierte Version mindestens so
-  hoch ist wie die zuletzt gelesene Version.
+- [Sicherheitsaspekte](docs/SECURITY.md) – Warum dieses Script sicher ist
+- [Wesentliche Features](docs/FEATURES.md) – Alle Funktionen im Überblick
+- [Konfiguration & Erweiterung](docs/CONFIGURATION.md) – Technische Konfigurationsdetails
+- [Lokale Controls](docs/CONTROLS.md) – Bedienung der Toggles und Einstellungen
+- [Hinweise](docs/NOTES.md) – Wichtige Besonderheiten und Limitationen
+- [Automatische Update-Benachrichtigung](docs/AUTO-UPDATE.md) – Wie das Script aktualisiert wird
