@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      4.3.2
+// @version      4.3.3
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @include       https://gitlab*/*/-/*
@@ -18,7 +18,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '4.3.2';
+  const SCRIPT_VERSION = '4.3.3';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   const HOST_CONFIG = {};
@@ -2938,6 +2938,7 @@
     const gearButton = document.createElement('button');
     gearButton.type = 'button';
     gearButton.setAttribute('aria-label', 'Progress-Einstellungen');
+    gearButton.setAttribute('title', 'Einstellungen');
     gearButton.setAttribute('data-testid', 'base-dropdown-toggle');
     const gearIcon = document.createElement('span');
     gearIcon.innerHTML = TOOLBAR_ICON_SVG;
@@ -3476,51 +3477,87 @@
     applyShowFlagToAllBadges();
     applyShowFlagToDetailBadges();
 
-    let initialScanDone = false;
+    if (isMR) {
+      let mrInitialScanDone = false;
 
-    function tryInitialScan() {
-      if (initialScanDone) return;
-      initialScanDone = true;
-      log('Initialer scanBoard()-Aufruf');
-      scanBoard(hostConfig, projectSettings);
-      scanIssueDetail(hostConfig, projectSettings);
-    }
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', tryInitialScan);
-    } else {
-      tryInitialScan();
-    }
-
-    let observerTarget = document.querySelector('.boards-app');
-    if (!observerTarget) {
-      log('Keine .boards-app gefunden; MutationObserver wird auf document.body gestartet.');
-      observerTarget = document.body;
-      if (!observerTarget) {
-        log('document.body nicht verfügbar; MutationObserver wird nicht gestartet.');
-        return;
+      function tryMRInitialScan() {
+        if (mrInitialScanDone) return;
+        mrInitialScanDone = true;
+        log('Initialer scanMergeRequestPage()-Aufruf');
+        scanMergeRequestPage(hostConfig, projectSettings);
       }
-    }
 
-    const observer = new MutationObserver(function (mutations) {
-      let relevantChange = false;
-      for (let i = 0; i < mutations.length; i++) {
-        if (mutations[i].addedNodes && mutations[i].addedNodes.length) {
-          relevantChange = true;
-          break;
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', tryMRInitialScan);
+      } else {
+        tryMRInitialScan();
+      }
+
+      const mrObserver = new MutationObserver(function (mutations) {
+        let relevantChange = false;
+        for (let i = 0; i < mutations.length; i++) {
+          if (mutations[i].addedNodes && mutations[i].addedNodes.length) {
+            relevantChange = true;
+            break;
+          }
         }
-      }
-      if (relevantChange) {
-        log('MutationObserver → scanBoard()/scanIssueDetail()');
+        if (relevantChange) {
+          log('MutationObserver (MR) → scanMergeRequestPage()');
+          scanMergeRequestPage(hostConfig, projectSettings);
+        }
+      });
+
+      mrObserver.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    } else {
+      let initialScanDone = false;
+
+      function tryInitialScan() {
+        if (initialScanDone) return;
+        initialScanDone = true;
+        log('Initialer scanBoard()-Aufruf');
         scanBoard(hostConfig, projectSettings);
         scanIssueDetail(hostConfig, projectSettings);
       }
-    });
 
-    observer.observe(observerTarget, {
-      childList: true,
-      subtree: true
-    });
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', tryInitialScan);
+      } else {
+        tryInitialScan();
+      }
+
+      let observerTarget = document.querySelector('.boards-app');
+      if (!observerTarget) {
+        log('Keine .boards-app gefunden; MutationObserver wird auf document.body gestartet.');
+        observerTarget = document.body;
+        if (!observerTarget) {
+          log('document.body nicht verfügbar; MutationObserver wird nicht gestartet.');
+          return;
+        }
+      }
+
+      const observer = new MutationObserver(function (mutations) {
+        let relevantChange = false;
+        for (let i = 0; i < mutations.length; i++) {
+          if (mutations[i].addedNodes && mutations[i].addedNodes.length) {
+            relevantChange = true;
+            break;
+          }
+        }
+        if (relevantChange) {
+          log('MutationObserver → scanBoard()/scanIssueDetail()');
+          scanBoard(hostConfig, projectSettings);
+          scanIssueDetail(hostConfig, projectSettings);
+        }
+      });
+
+      observer.observe(observerTarget, {
+        childList: true,
+        subtree: true
+      });
+    }
   }
 
   init();
