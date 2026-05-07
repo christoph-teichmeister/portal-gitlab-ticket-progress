@@ -28,8 +28,8 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    ```
 
    Die URL verweist auf dieselbe `portal-gitlab-ticket-progress.js`, die in diesem Repo liegt.
-4. Tampermonkey zeigt Name/Version/Berechtigungen und du bestätigst mit "Installieren".Das Script wird auf
-   `https://gitlab.*/*` aktiv.
+4. Tampermonkey zeigt Name/Version/Berechtigungen und du bestätigst mit "Installieren". Das Script wird auf
+   `https://gitlab*/*/-/*` aktiv (boards, work_items, merge_requests, etc.).
 5. Die `@updateURL`/`@downloadURL` im Skriptkopf halten alles automatisch aktuell – nach der einmaligen Installation
    liefert Tampermonkey neue Versionen direkt aus diesem Repo.
 6. Über die Debug/Anzeige-Toggles in der GitLab-Topbar kannst du das Verhalten bei Bedarf ein- oder ausschalten. Die
