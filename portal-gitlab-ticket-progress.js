@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      4.4.0
+// @version      5.0.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @include      https://gitlab*/*/-/*
@@ -1594,11 +1594,11 @@
     );
   }
 
-  function buildTimesheetUrl(projectSettings, issueIid) {
+  function buildTimesheetUrl(projectSettings, issueIid, overrideProjectId) {
     if (!projectSettings || !issueIid) {
       return null;
     }
-    const projectId = projectSettings.projectId;
+    const projectId = overrideProjectId || projectSettings.projectId;
     const base = getPortalBaseUrl(projectSettings);
     if (!projectId || !base) {
       return null;
@@ -2000,11 +2000,9 @@
 
       const url = cardElem.getAttribute('data-ambient-progress-url');
       const timesheetUrl = cardElem.getAttribute('data-ambient-timesheet-url');
-      if (!progressData.notFound) {
-        const timesheetButton = createTimesheetButton(timesheetUrl);
-        if (timesheetButton) {
-          row.appendChild(timesheetButton);
-        }
+      const timesheetButton = createTimesheetButton(timesheetUrl);
+      if (timesheetButton) {
+        row.appendChild(timesheetButton);
       }
       row.appendChild(barOuter);
       const portalButton = createPortalLinkButton(url);
@@ -2033,6 +2031,12 @@
       });
 
       const barOuter2 = createProgressBarElements(progressData2, theme2Styles);
+
+      const timesheetUrl2 = cardElem.getAttribute('data-ambient-timesheet-url-2');
+      const timesheetButton2 = createTimesheetButton(timesheetUrl2);
+      if (timesheetButton2) {
+        row2.appendChild(timesheetButton2);
+      }
       row2.appendChild(barOuter2);
 
       const url2 = cardElem.getAttribute('data-ambient-progress-url-2');
@@ -2136,6 +2140,10 @@
       url2 = buildPortalUrl(projectSettings, issueIid, projectSettings.projectId2);
       if (url2) {
         cardElem.setAttribute('data-ambient-progress-url-2', url2);
+      }
+      const timesheetUrl2 = buildTimesheetUrl(projectSettings, issueIid, projectSettings.projectId2);
+      if (timesheetUrl2) {
+        cardElem.setAttribute('data-ambient-timesheet-url-2', timesheetUrl2);
       }
     }
 
