@@ -1,5 +1,28 @@
 # Wesentliche Features
 
+## Multi-Board-Unterstützung (zwei Projekt-IDs)
+
+Das Script unterstützt die gleichzeitige Abfrage von **zwei verschiedenen Portal-Projekten** pro GitLab-Board. Dies ist
+nützlich, wenn Tickets über mehrere Abteilungen oder Kostenplätze gebuchte Stunden abbilden sollen.
+
+### Einrichtung der zweiten Projekt-ID:
+
+1. Öffne das Zahnrad-Menü in der GitLab-Topbar und navigiere zur „Projekt-Konfiguration"
+2. Aktiviere das Kontrollkästchen **„Zweite Projekt-ID verwenden"**
+3. Gib deine **zweite Portal-Projekt-ID** in das neu erscheinende Eingabefeld ein (z. B. `5678`)
+4. Klicke auf „Einstellungen speichern"
+
+Das Script lädt dann beim nächsten Scan Fortschrittsdaten von **beiden Projekt-IDs** und aggregiert sie:
+
+- Verbrachte Stunden beider Projekte addieren sich zur angezeigten Progressbar
+- Verbleibende Stunden werden kombiniert
+- Sollte eines der beiden Portale nicht antwortet, zeigt das Script trotzdem die Daten des anderen an
+
+**Hinweis**: Beide Projekt-IDs müssen mit der gleichen Portal-Base-URL erreichbar sein. Die Einstellung wirkt sich auf
+das **gesamte Projekt** aus und wird lokal gespeichert.
+
+## Toolbar & Bedienelemente
+
 - Platziert eine Toolbar rechts in der GitLab-Topbar, zeigt dort Versionslabel, `Anzeigen`- und `Debug`-Toggles,
   einen Gear-Button sowie die „Cache leeren"- und „Einstellungen speichern"-Actions.
 - Fügt pro Board-Spalte eine Checkbox direkt neben dem Spalten-Titel ein, damit du die Listen zur Progress-Anzeige
@@ -31,3 +54,7 @@
 - Zeigt im Dropdown eine Zeile mit dem Zeitstempel der letzten Portal-Anfrage und einen Button zum sofortigen
   Neuladen aller Tickets; der Button löscht den lokalen Cache, setzt den Zeitstempel zurück und lädt die Seite neu,
   damit wirklich alle Tickets erneut vom Portal angefragt werden.
+- Unterstützt die optionale Konfiguration einer **zweiten Projekt-ID**, um Fortschrittsdaten aus zwei verschiedenen
+  Portal-Projekten zu kombinieren. Wenn aktiviert, lädt das Script Daten von beiden Projekt-IDs und aggregiert sie in
+  der angezeigten Progressbar (Summe aller Stunden, kombinierte Auslastung). Jedes Board-Projekt speichert diese
+  Einstellung separat.
