@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      4.3.3
+// @version      4.4.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @include      https://gitlab*/*/-/*
+// @include      https://gitlab*/*/*/-/*
 // @grant        GM_xmlhttpRequest
 // @updateURL    https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/portal-gitlab-ticket-progress.js
 // @downloadURL  https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/portal-gitlab-ticket-progress.js
@@ -18,10 +19,11 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '4.3.3';
+  const SCRIPT_VERSION = '4.4.0';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   const HOST_CONFIG = {};
+  const NOT_FOUND_SENTINEL = { notFound: true };
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
   const PORTAL_WARNING_COOLDOWN_MS = 2 * 60 * 1000;
@@ -48,6 +50,11 @@
   let portalUrlInputElement = null;
   let projectStatusElement = null;
   let portalStatusElement = null;
+  let projectId2InputElement = null;
+  let projectId2StatusElement = null;
+  let toolbarInitialProjectId2Value = '';
+  let toolbarInitialUseSecondProjectIdValue = false;
+  let useSecondProjectIdToggleCheckbox = null;
   let lastRefreshLabelElement = null;
   let manualRefreshButtonElement = null;
   let forceRefreshMode = false;
@@ -169,7 +176,8 @@
     }
     lastPortalWarningAt = now;
     showToast({
-      text: 'Portal-Base URL fehlt – ⚙ → Projekt-Konfiguration öffnen und eintragen.',
+      text: 'Portal-Base URL fehlt -> Projekt-Konfiguration öffnen und' +
+        ' eintragen.',
       variant: 'warning'
     });
   }
@@ -689,7 +697,7 @@
     return stored || 'default';
   }
 
-  function buildProgressCacheKey(projectSettings, issueIid) {
+  function buildProgressCacheKey(projectSettings, issueIid, cacheKeySuffix) {
     if (!projectSettings || !issueIid) {
       return null;
     }
@@ -699,7 +707,8 @@
     }
     const boardId = getCurrentBoardIdentifier();
     const normalizedBoardId = boardId ? boardId : 'default';
-    return 'board:' + normalizedBoardId + '|' + projectIdentifier + ':' + String(issueIid);
+    const suffix = cacheKeySuffix ? '|' + cacheKeySuffix : '';
+    return 'board:' + normalizedBoardId + '|' + projectIdentifier + suffix + ':' + String(issueIid);
   }
 
   function hydrateProgressCacheFromStorage() {
@@ -866,6 +875,19 @@
       textLayer.style.justifyContent = 'center';
       textLayer.appendChild(createTextSpan(text, centerLabelStyle));
     };
+
+    if (progressData.notFound) {
+      const neutralBar = document.createElement('div');
+      applyStyles(neutralBar, {
+        height: '100%',
+        width: '100%',
+        background: colors.neutral
+      });
+      barOuter.appendChild(neutralBar);
+      appendCenterText('Nicht gefunden');
+      barOuter.appendChild(textLayer);
+      return barOuter;
+    }
 
     if (progressData.booked && !progressData.spent && !progressData.remaining && !progressData.over) {
       const bookedText = (progressData.bookedLabel || 'Booked Hours') + ': ' + progressData.booked;
@@ -1182,11 +1204,19 @@
       storedProjectConfig && typeof storedProjectConfig.debugEnabled === 'boolean'
         ? storedProjectConfig.debugEnabled
         : fallbackDebug;
+    const projectId2 =
+      (storedProjectConfig && storedProjectConfig.portalProjectId2) || null;
+    const useSecondPortalProjectId =
+      storedProjectConfig && typeof storedProjectConfig.useSecondPortalProjectId === 'boolean'
+        ? storedProjectConfig.useSecondPortalProjectId
+        : false;
 
     return Object.assign({}, base, {
       projectPath,
       projectKey,
       projectId,
+      projectId2,
+      useSecondPortalProjectId,
       allowedListLookup: initialLookup,
       listFilterMode,
       portalBaseUrl,
@@ -1545,11 +1575,11 @@
     return normalizePortalBaseUrl(projectSettings.portalBaseUrl);
   }
 
-  function buildPortalUrl(projectSettings, issueIid) {
+  function buildPortalUrl(projectSettings, issueIid, projectIdOverride) {
     if (!projectSettings || !issueIid) {
       return null;
     }
-    const projectId = projectSettings.projectId;
+    const projectId = projectIdOverride || projectSettings.projectId;
     const base = getPortalBaseUrl(projectSettings);
     if (!projectId || !base) {
       return null;
@@ -1678,6 +1708,10 @@
     try {
       const parser = new DOMParser();
       const doc = parser.parseFromString(htmlText, 'text/html');
+
+      if (doc.querySelector('.alert.alert-danger')) {
+        return null;
+      }
 
       function attachBookedInfo(result, cached) {
         const booked = cached || parseBookedHours(doc);
@@ -1893,8 +1927,8 @@
    * Rendering: Progressbar in der Kartenmitte + Link-Button
    ******************************************************************/
 
-  function injectProgressIntoCard(cardElem, progressData) {
-    if (!cardElem || !progressData) return;
+  function injectProgressIntoCard(cardElem, progressData, progressData2) {
+    if (!cardElem || (!progressData && !progressData2)) return;
 
     let container = cardElem.querySelector('.ambient-progress-badge');
 
@@ -1925,13 +1959,6 @@
     container.style.display = showEnabled ? '' : 'none';
     container.innerHTML = '';
 
-    const row = document.createElement('div');
-    applyStyles(row, {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '6px'
-    });
-
     const theme = getThemeAwareBarStyles({
       fontSize: '11px',
       barOverrides: {
@@ -1942,21 +1969,79 @@
       }
     });
     container.style.color = theme.textColor;
-    const barOuter = createProgressBarElements(progressData, theme.styles);
 
-    const url = cardElem.getAttribute('data-ambient-progress-url');
+    if (progressData && progressData2) {
+      const warningBanner = document.createElement('div');
+      applyStyles(warningBanner, {
+        backgroundColor: '#f97316',
+        color: '#fff',
+        padding: '4px 8px',
+        borderRadius: '4px',
+        marginBottom: '6px',
+        fontSize: '11px',
+        fontWeight: '600',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px'
+      });
+      warningBanner.textContent = '⚠ In beiden Portal-Projekten gefunden';
+      container.appendChild(warningBanner);
+    }
 
-    const timesheetUrl = cardElem.getAttribute('data-ambient-timesheet-url');
-    const timesheetButton = createTimesheetButton(timesheetUrl);
-    if (timesheetButton) {
-      row.appendChild(timesheetButton);
+    if (progressData) {
+      const row = document.createElement('div');
+      applyStyles(row, {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px'
+      });
+
+      const barOuter = createProgressBarElements(progressData, theme.styles);
+
+      const url = cardElem.getAttribute('data-ambient-progress-url');
+      const timesheetUrl = cardElem.getAttribute('data-ambient-timesheet-url');
+      if (!progressData.notFound) {
+        const timesheetButton = createTimesheetButton(timesheetUrl);
+        if (timesheetButton) {
+          row.appendChild(timesheetButton);
+        }
+      }
+      row.appendChild(barOuter);
+      const portalButton = createPortalLinkButton(url);
+      if (portalButton) {
+        row.appendChild(portalButton);
+      }
+      container.appendChild(row);
     }
-    row.appendChild(barOuter);
-    const portalButton = createPortalLinkButton(url);
-    if (portalButton) {
-      row.appendChild(portalButton);
+
+    if (progressData2) {
+      const row2 = document.createElement('div');
+      applyStyles(row2, {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px'
+      });
+
+      const theme2Styles = Object.assign({}, theme.styles, {
+        colors: {
+          spent: '#f97316',
+          spentHover: '#ea580c',
+          neutral: '#D9D4C7',
+          bookedFallback: '#2563eb',
+          over: '#dc3545'
+        }
+      });
+
+      const barOuter2 = createProgressBarElements(progressData2, theme2Styles);
+      row2.appendChild(barOuter2);
+
+      const url2 = cardElem.getAttribute('data-ambient-progress-url-2');
+      const portalButton2 = createPortalLinkButton(url2);
+      if (portalButton2) {
+        row2.appendChild(portalButton2);
+      }
+      container.appendChild(row2);
     }
-    container.appendChild(row);
   }
 
   function applyShowFlagToAllBadges() {
@@ -2041,9 +2126,25 @@
     }
 
     const cached = getProgressCacheEntry(cacheKey);
-    if (cached) {
-      log('Cache-Hit für Issue', issueIid, '→', cached);
-      injectProgressIntoCard(cardElem, cached);
+    let cachedSecondary = null;
+    let url2 = null;
+    const cacheKey2 = projectSettings.useSecondPortalProjectId && projectSettings.projectId2
+      ? buildProgressCacheKey(projectSettings, issueIid, 'pid2:' + projectSettings.projectId2)
+      : null;
+    if (cacheKey2) {
+      cachedSecondary = getProgressCacheEntry(cacheKey2);
+      url2 = buildPortalUrl(projectSettings, issueIid, projectSettings.projectId2);
+      if (url2) {
+        cardElem.setAttribute('data-ambient-progress-url-2', url2);
+      }
+    }
+
+    if (cached || cachedSecondary) {
+      log('Cache-Hit für Issue', issueIid);
+      const effectiveCached = (cached && cached.notFound && !projectSettings.useSecondPortalProjectId)
+        ? null
+        : cached;
+      injectProgressIntoCard(cardElem, effectiveCached, cachedSecondary);
       return;
     }
 
@@ -2058,12 +2159,40 @@
 
     log('Hole Progress-Daten für Issue', issueIid, '→', url);
 
-    loadProgressData(url, issueIid)
-      .then(function (progressData) {
+    const promises = [loadProgressData(url, issueIid)];
+    if (projectSettings.useSecondPortalProjectId && projectSettings.projectId2) {
+      if (!url2) {
+        url2 = buildPortalUrl(projectSettings, issueIid, projectSettings.projectId2);
+      }
+      if (url2) {
+        log('Hole auch Progress-Daten für zweites Portal-Projekt', issueIid, '→', url2);
+        promises.push(loadProgressData(url2, issueIid));
+      }
+    }
+
+    Promise.allSettled(promises)
+      .then(function (results) {
         clearProjectRequestBlock(projectKey);
-        if (!progressData) return;
-        setProgressCacheEntry(cacheKey, progressData);
-        injectProgressIntoCard(cardElem, progressData);
+        const progressData = results[0].status === 'fulfilled' ? results[0].value : null;
+        const progressData2 = results[1] && results[1].status === 'fulfilled' ? results[1].value : null;
+
+        if (!progressData && !progressData2) {
+          if (projectSettings.useSecondPortalProjectId) {
+            setProgressCacheEntry(cacheKey, NOT_FOUND_SENTINEL);
+            injectProgressIntoCard(cardElem, NOT_FOUND_SENTINEL, null);
+            markPortalRefreshTimestamp();
+          }
+          return;
+        }
+
+        if (progressData) {
+          setProgressCacheEntry(cacheKey, progressData);
+        }
+        if (progressData2 && cacheKey2) {
+          setProgressCacheEntry(cacheKey2, progressData2);
+        }
+
+        injectProgressIntoCard(cardElem, progressData, progressData2);
         markPortalRefreshTimestamp();
       })
       .catch(function (err) {
@@ -2767,6 +2896,89 @@
     }, 50);
   }
 
+  function makeSwitch(labelText, checked, onChange) {
+    const wrapper = document.createElement('div');
+    applyStyles(wrapper, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.4rem',
+      cursor: 'pointer'
+    });
+
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = labelText;
+    applyStyles(labelSpan, {
+      opacity: '0.85',
+      fontWeight: '500'
+    });
+
+    const switchWrapper = document.createElement('div');
+    applyStyles(switchWrapper, {
+      position: 'relative',
+      width: '38px',
+      height: '20px'
+    });
+
+    const slider = document.createElement('span');
+    applyStyles(slider, {
+      position: 'absolute',
+      top: '0',
+      left: '0',
+      right: '0',
+      bottom: '0',
+      borderRadius: '999px',
+      background: checked ? '#4ade80' : '#4b5563',
+      transition: 'background 0.2s ease'
+    });
+
+    const knob = document.createElement('span');
+    applyStyles(knob, {
+      position: 'absolute',
+      top: '2px',
+      width: '16px',
+      height: '16px',
+      borderRadius: '50%',
+      background: '#ffffff',
+      boxShadow: '0 1px 2px rgba(0,0,0,0.35)',
+      transition: 'left 0.2s ease',
+      left: checked ? 'calc(100% - 18px)' : '2px'
+    });
+
+    slider.appendChild(knob);
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = checked;
+    applyStyles(checkbox, {
+      position: 'absolute',
+      opacity: '0',
+      width: '100%',
+      height: '100%',
+      margin: '0',
+      cursor: 'pointer',
+      zIndex: '2'
+    });
+
+    function updateAppearance(val) {
+      applyStyles(slider, {
+        background: val ? '#4ade80' : '#4b5563'
+      });
+      knob.style.left = val ? 'calc(100% - 18px)' : '2px';
+    }
+
+    checkbox.addEventListener('change', function () {
+      updateAppearance(checkbox.checked);
+      onChange(checkbox.checked);
+    });
+
+    switchWrapper.appendChild(slider);
+    switchWrapper.appendChild(checkbox);
+
+    wrapper.appendChild(labelSpan);
+    wrapper.appendChild(switchWrapper);
+    return wrapper;
+  }
+
   function createToolbar(hostConfig, projectSettings) {
     const existing = document.getElementById('ambient-progress-toolbar');
     if (existing) return existing;
@@ -2806,89 +3018,6 @@
       const payload = {};
       payload[field] = value;
       writeProjectConfigEntry(projectSettings.projectKey, payload);
-    }
-
-    function makeSwitch(labelText, checked, onChange) {
-      const wrapper = document.createElement('div');
-      applyStyles(wrapper, {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.4rem',
-        cursor: 'pointer'
-      });
-
-      const labelSpan = document.createElement('span');
-      labelSpan.textContent = labelText;
-      applyStyles(labelSpan, {
-        opacity: '0.85',
-        fontWeight: '500'
-      });
-
-      const switchWrapper = document.createElement('div');
-      applyStyles(switchWrapper, {
-        position: 'relative',
-        width: '38px',
-        height: '20px'
-      });
-
-      const slider = document.createElement('span');
-      applyStyles(slider, {
-        position: 'absolute',
-        top: '0',
-        left: '0',
-        right: '0',
-        bottom: '0',
-        borderRadius: '999px',
-        background: checked ? '#4ade80' : '#4b5563',
-        transition: 'background 0.2s ease'
-      });
-
-      const knob = document.createElement('span');
-      applyStyles(knob, {
-        position: 'absolute',
-        top: '2px',
-        width: '16px',
-        height: '16px',
-        borderRadius: '50%',
-        background: '#ffffff',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.35)',
-        transition: 'left 0.2s ease',
-        left: checked ? 'calc(100% - 18px)' : '2px'
-      });
-
-      slider.appendChild(knob);
-
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.checked = checked;
-      applyStyles(checkbox, {
-        position: 'absolute',
-        opacity: '0',
-        width: '100%',
-        height: '100%',
-        margin: '0',
-        cursor: 'pointer',
-        zIndex: '2'
-      });
-
-      function updateAppearance(val) {
-        applyStyles(slider, {
-          background: val ? '#4ade80' : '#4b5563'
-        });
-        knob.style.left = val ? 'calc(100% - 18px)' : '2px';
-      }
-
-      checkbox.addEventListener('change', function () {
-        updateAppearance(checkbox.checked);
-        onChange(checkbox.checked);
-      });
-
-      switchWrapper.appendChild(slider);
-      switchWrapper.appendChild(checkbox);
-
-      wrapper.appendChild(labelSpan);
-      wrapper.appendChild(switchWrapper);
-      return wrapper;
     }
 
     const togglesContainer = document.createElement('div');
@@ -3163,9 +3292,13 @@
     function updateSaveButtonState() {
       const projectValue = projectIdInputElement ? (projectIdInputElement.value || '').trim() : '';
       const portalValue = portalUrlInputElement ? (portalUrlInputElement.value || '').trim() : '';
+      const id2Value = projectId2InputElement ? (projectId2InputElement.value || '').trim() : '';
+      const useSecondValue = useSecondProjectIdToggleCheckbox ? useSecondProjectIdToggleCheckbox.checked : false;
       const hasChanges =
         projectValue !== toolbarInitialProjectIdValue ||
-        portalValue !== toolbarInitialPortalUrlValue;
+        portalValue !== toolbarInitialPortalUrlValue ||
+        id2Value !== toolbarInitialProjectId2Value ||
+        useSecondValue !== toolbarInitialUseSecondProjectIdValue;
       const enabled = hasChanges;
       saveButton.disabled = !enabled;
       const styleToApply = enabled
@@ -3185,11 +3318,14 @@
     });
 
     saveButton.addEventListener('click', function () {
-      if (!projectSettings || !projectIdInputElement || !portalUrlInputElement) {
+      if (!projectSettings || !projectIdInputElement || !portalUrlInputElement || !projectId2InputElement || !useSecondProjectIdToggleCheckbox) {
         return;
       }
       const projectAttempt = projectIdInputElement.value.trim();
       const portalAttempt = portalUrlInputElement.value.trim();
+      const projectAttempt2 = projectId2InputElement.value.trim();
+      const useSecond = useSecondProjectIdToggleCheckbox.checked;
+
       if (!projectAttempt) {
         if (projectStatusElement) {
           projectStatusElement.textContent = 'Bitte gib eine Projekt-ID ein.';
@@ -3208,6 +3344,20 @@
         }
         return;
       }
+
+      if (useSecond && !projectAttempt2) {
+        if (projectId2StatusElement) {
+          projectId2StatusElement.textContent = 'Bitte gib eine zweite Projekt-ID ein (oder deaktiviere das Feature).';
+        }
+        return;
+      }
+      if (useSecond && !/^\d+$/.test(projectAttempt2)) {
+        if (projectId2StatusElement) {
+          projectId2StatusElement.textContent = 'Zweite Projekt-ID darf nur Zahlen enthalten.';
+        }
+        return;
+      }
+
       const entry = {};
       let changed = false;
       if (projectAttempt !== projectSettings.projectId) {
@@ -3218,6 +3368,15 @@
         entry.portalBaseUrl = portalAttempt;
         changed = true;
       }
+      if (projectAttempt2 !== (projectSettings.projectId2 || '')) {
+        entry.portalProjectId2 = projectAttempt2;
+        changed = true;
+      }
+      if (useSecond !== (projectSettings.useSecondPortalProjectId || false)) {
+        entry.useSecondPortalProjectId = useSecond;
+        changed = true;
+      }
+
       if (!changed) {
         showToast({text: 'Keine Änderungen vorhanden.', variant: 'info'});
         return;
@@ -3228,6 +3387,12 @@
       }
       if (entry.portalBaseUrl) {
         projectSettings.portalBaseUrl = entry.portalBaseUrl;
+      }
+      if (entry.portalProjectId2 !== undefined) {
+        projectSettings.projectId2 = entry.portalProjectId2;
+      }
+      if (entry.useSecondPortalProjectId !== undefined) {
+        projectSettings.useSecondPortalProjectId = entry.useSecondPortalProjectId;
       }
       clearProgressCache();
       clearProjectRequestBlock(projectSettings.projectKey);
@@ -3429,6 +3594,114 @@
     section.appendChild(portalCurrent);
     section.appendChild(portalRow);
     section.appendChild(portalStatus);
+
+    toolbarInitialProjectId2Value = String(projectSettings.projectId2 || '').trim();
+    toolbarInitialUseSecondProjectIdValue = projectSettings.useSecondPortalProjectId || false;
+
+    const secondIdHeading = document.createElement('div');
+    secondIdHeading.textContent = 'Zweite Portal-Projekt-ID';
+    applyStyles(secondIdHeading, {
+      fontSize: '0.8rem',
+      letterSpacing: '0.05em',
+      textTransform: 'uppercase',
+      opacity: '0.75',
+      fontWeight: '600',
+      color: panelTextColor,
+      marginTop: '0.4rem'
+    });
+
+    const toggleContainer = document.createElement('div');
+    applyStyles(toggleContainer, {
+      display: 'flex',
+      gap: '0.5rem',
+      alignItems: 'center',
+      marginBottom: '0.4rem'
+    });
+
+    const toggleSwitch = makeSwitch(
+      'Zweite ID aktivieren',
+      projectSettings.useSecondPortalProjectId || false,
+      function (value) {
+        if (typeof onValuesChanged === 'function') {
+          onValuesChanged();
+        }
+      }
+    );
+    useSecondProjectIdToggleCheckbox = toggleSwitch.querySelector('input[type="checkbox"]');
+
+    toggleContainer.appendChild(toggleSwitch);
+
+    const currentId2 = document.createElement('div');
+    const updateCurrentLabel2 = function (value) {
+      const display = value ? value : 'nicht gesetzt';
+      currentId2.textContent = 'Aktuell: ' + display;
+    };
+    updateCurrentLabel2(projectSettings.projectId2);
+
+    applyStyles(currentId2, {
+      fontSize: '0.8rem',
+      color: panelTextColor
+    });
+
+    const formRow2 = document.createElement('div');
+    applyStyles(formRow2, {
+      display: 'flex',
+      gap: '0.35rem',
+      alignItems: 'center'
+    });
+
+    const input2 = document.createElement('input');
+    input2.type = 'text';
+    input2.placeholder = 'Zweite Projekt ID eingeben';
+    input2.value = projectSettings.projectId2 || '';
+    input2.disabled = !projectSettings.useSecondPortalProjectId;
+    applyStyles(input2, {
+      flex: '1 1 auto',
+      padding: '0.35rem 0.5rem',
+      borderRadius: '6px',
+      border: '1px solid #374151',
+      background: panelBackground,
+      color: panelTextColor,
+      fontSize: '0.85rem',
+      opacity: input2.disabled ? '0.4' : '1',
+      cursor: input2.disabled ? 'not-allowed' : 'text'
+    });
+    projectId2InputElement = input2;
+
+    useSecondProjectIdToggleCheckbox.addEventListener('change', function () {
+      const isEnabled = this.checked;
+      input2.disabled = !isEnabled;
+      applyStyles(input2, {
+        opacity: isEnabled ? '1' : '0.4',
+        cursor: isEnabled ? 'text' : 'not-allowed'
+      });
+      if (typeof onValuesChanged === 'function') {
+        onValuesChanged();
+      }
+    });
+
+    const status2 = document.createElement('div');
+    applyStyles(status2, {
+      fontSize: '0.75rem',
+      color: '#a5b4fc',
+      minHeight: '1em'
+    });
+
+    projectId2StatusElement = status2;
+
+    input2.addEventListener('input', function () {
+      status2.textContent = '';
+      if (typeof onValuesChanged === 'function') {
+        onValuesChanged();
+      }
+    });
+
+    formRow2.appendChild(input2);
+    section.appendChild(secondIdHeading);
+    section.appendChild(toggleContainer);
+    section.appendChild(currentId2);
+    section.appendChild(formRow2);
+    section.appendChild(status2);
     return section;
   }
 
