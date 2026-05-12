@@ -18,7 +18,7 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
 
 ### Installationsschritte:
 
-1. Öffne das Tampermonkey-Dashboard (Icon in der Erweiterungsleiste → "Dashboard").
+1. Öffne das Tampermonkey-Dashboard (Icon in der Erweiterungsleiste → "Dashboard" (englisch) / "Übersicht" (deutsch)).
 2. Klicke auf "Utilities" / "Hilfsmittel" im Dashboard (NICHT im Dropdown Menü des Icons der Erweiterungsleiste!) und
    wähle "Import from URL" / "Von URL importieren", statt ein neues Skript anzulegen.
 3. Gib die RAW-URL ein:
