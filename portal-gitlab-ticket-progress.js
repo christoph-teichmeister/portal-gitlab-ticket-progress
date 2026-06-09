@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      5.0.1
+// @version      5.0.2
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @include      https://gitlab*/*/-/*
@@ -19,7 +19,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '5.0.1';
+  const SCRIPT_VERSION = '5.0.2';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   const HOST_CONFIG = {};
@@ -826,7 +826,7 @@
       height: '16px',
       borderRadius: '999px',
       overflow: 'hidden',
-      background: '#1f2937'
+      background: 'var(--gl-background-color-default, #18171d)'
     },
     textLayer: {
       position: 'absolute',
@@ -983,7 +983,7 @@
   function getThemeAwareBarStyles(options) {
     var opts = options || {};
     var isDark = isGitLabDarkModeActive();
-    var barBackground = isDark ? '#1f2937' : '#E5EAF0';
+    var barBackground = isDark ? 'var(--gl-background-color-default, #18171d)' : 'var(--gl-background-color-subtle, #E5EAF0)';
     var textColor = getContrastTextColor(PROGRESS_BAR_DEFAULTS.colors.neutral);
 
     var barStyle = {background: barBackground};
@@ -1235,6 +1235,7 @@
     '--gl-surface-100'
   ];
   const GITLAB_DARK_BG_VARS = [
+    '--gl-background-color-default',
     '--gl-dark-mode-body-bg',
     '--gl-dark-surface',
     '--gl-dark-mode-surface',
@@ -1254,6 +1255,7 @@
     default: null
   };
   const GITLAB_THEME_BG_VAR = '--theme-background-color';
+  const GITLAB_THEME_BG_VARS = [GITLAB_THEME_BG_VAR, '--gl-background-color-default'];
 
   function readCssVariableValue(name) {
     if (!name) return null;
@@ -1362,19 +1364,22 @@
       }
     }
 
-    const themeBg = readCssVariableValue(GITLAB_THEME_BG_VAR);
-    if (themeBg) {
-      const rgb = parseCssColorToRgb(themeBg);
-      if (rgb) {
-        const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
-        const isDark = luminance <= 0.55;
-        log('isGitLabDarkModeActive', {
-          source: 'theme-var',
-          themeBg,
-          luminance: luminance.toFixed(3),
-          isDark
-        });
-        return isDark;
+    for (const bgVar of GITLAB_THEME_BG_VARS) {
+      const themeBg = readCssVariableValue(bgVar);
+      if (themeBg) {
+        const rgb = parseCssColorToRgb(themeBg);
+        if (rgb) {
+          const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+          const isDark = luminance <= 0.55;
+          log('isGitLabDarkModeActive', {
+            source: 'theme-var',
+            bgVar,
+            themeBg,
+            luminance: luminance.toFixed(3),
+            isDark
+          });
+          return isDark;
+        }
       }
     }
 
@@ -1398,7 +1403,8 @@
   }
 
   function getToolbarForegroundColor() {
-    return isGitLabDarkModeActive() ? '#ececef' : '#28272d';
+    // return isGitLabDarkModeActive() ? '#ececef' : '#28272d';
+    return isGitLabDarkModeActive() ? '#ececef' : 'var(--gl-background-color-default, #18171d)';
   }
 
   function getGitLabWindowBackgroundColor(preferLightInDarkMode) {
@@ -1415,7 +1421,11 @@
       ? GITLAB_LIGHT_BG_VARS.concat(GITLAB_DARK_BG_VARS)
       : GITLAB_DARK_BG_VARS.concat(GITLAB_LIGHT_BG_VARS);
 
-    let value = readCssVariableValue(GITLAB_THEME_BG_VAR);
+    let value = null;
+    for (const bgVar of GITLAB_THEME_BG_VARS) {
+      value = readCssVariableValue(bgVar);
+      if (value) break;
+    }
     if (!value) {
       value = getFirstCssVariableValue(variableOrder);
     }
@@ -2993,17 +3003,21 @@
 
     const windowBackground = getGitLabWindowBackgroundColor(true);
 
-    const targetSelectors = ['.top-bar-container', '.top-bar-fixed'];
+    const targetSelectors = ['#js-injected-page-breadcrumbs', '.panel-header-inner-actions', '.top-bar-container', '.top-bar-fixed'];
     let insertParent = null;
     for (let si = 0; si < targetSelectors.length; si++) {
       const candidate = document.querySelector(targetSelectors[si]);
+      log('[createToolbar] Selector "' + targetSelectors[si] + '" → ' + (candidate ? 'GEFUNDEN (' + candidate.tagName + '#' + candidate.id + '.' + candidate.className + ')' : 'nicht gefunden'));
       if (candidate) {
         insertParent = candidate;
         break;
       }
     }
     if (!insertParent) {
+      log('[createToolbar] Kein Selector gefunden → Fallback document.body');
       insertParent = document.body;
+    } else {
+      log('[createToolbar] Toolbar wird eingefügt in: ' + insertParent.tagName + '#' + insertParent.id + '.' + insertParent.className);
     }
 
     const toolbarTextColor = getToolbarForegroundColor();
@@ -3447,6 +3461,30 @@
     return bar;
   }
 
+  function repositionToolbarIfNeeded() {
+    const bar = document.getElementById('ambient-progress-toolbar');
+    if (!bar) {
+      log('[reposition] Toolbar-Element nicht im DOM gefunden – abbruch');
+      return;
+    }
+    log('[reposition] Toolbar gefunden, aktueller Parent: ' + bar.parentNode.tagName + '#' + bar.parentNode.id + '.' + bar.parentNode.className);
+    const targetSelectors = ['#js-injected-page-breadcrumbs', '.panel-header-inner-actions', '.top-bar-container', '.top-bar-fixed'];
+    for (let si = 0; si < targetSelectors.length; si++) {
+      const candidate = document.querySelector(targetSelectors[si]);
+      log('[reposition] Selector "' + targetSelectors[si] + '" → ' + (candidate ? 'GEFUNDEN' : 'nicht gefunden'));
+      if (candidate) {
+        if (bar.parentNode !== candidate) {
+          log('[reposition] Verschiebe Toolbar → ' + candidate.tagName + '#' + candidate.id + '.' + candidate.className);
+          candidate.appendChild(bar);
+        } else {
+          log('[reposition] Toolbar bereits im richtigen Parent – keine Aktion');
+        }
+        return;
+      }
+    }
+    log('[reposition] Kein Ziel-Selector gefunden – Toolbar bleibt wo sie ist');
+  }
+
   function createProjectConfigSection(hostConfig, projectSettings, onValuesChanged) {
     const section = document.createElement('div');
     const panelBackground = getGitLabWindowBackgroundColor(true);
@@ -3754,6 +3792,20 @@
     }
 
     createToolbar(hostConfig, projectSettings);
+
+    log('[init] toolbarPositionObserver wird auf document.body gestartet');
+    const toolbarPositionObserver = new MutationObserver(function (mutations) {
+      for (let i = 0; i < mutations.length; i++) {
+        if (mutations[i].addedNodes && mutations[i].addedNodes.length) {
+          log('[toolbarPositionObserver] DOM-Änderung erkannt → repositionToolbarIfNeeded()');
+          repositionToolbarIfNeeded();
+          return;
+        }
+      }
+    });
+    toolbarPositionObserver.observe(document.body, {childList: true, subtree: true});
+    log('[init] toolbarPositionObserver aktiv');
+
     scheduleReleaseCheck();
     applyShowFlagToAllBadges();
     applyShowFlagToDetailBadges();
