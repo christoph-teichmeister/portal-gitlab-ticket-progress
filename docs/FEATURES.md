@@ -47,6 +47,10 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
   hinterlegte Cache älter als 60 Minuten ist, und leert ihn automatisch, damit direkt nach einem Reload frische
   Daten vom Portal abgefragt werden.
 - Blockiert weitere Requests nach Fehlern (403/404), bis du den Cache leerst oder die Portal-URL neu speicherst.
+- Begrenzt neue Portal-Requests pro Board-Scan auf max. 80 Tickets, um Request-Bursts bei großen Boards (viele Spalten)
+  zu vermeiden. Überschüssige Karten werden beim nächsten Scan automatisch nachgeladen. Wird das Limit erreicht,
+  erscheint einmalig ein Warn-Toast sowie ein roter Indikator am Einstellungen-Icon mit der Bitte, weniger Spalten
+  auszuwählen; beides verschwindet automatisch, sobald ein Scan wieder unter dem Limit bleibt.
 - Beim ersten Request nach dem Speichern einer neuen Portal-Base-URL erscheint ein Tampermonkey-Popup, das dich um
   Erlaubnis für den Zugriff auf diese URL bittet (`GM_xmlhttpRequest`). Gib dort „Allow" oder „Ja", damit das Skript
   tatsächlich auf das Portal zugreifen darf.

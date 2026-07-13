@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      5.0.2
+// @version      5.1.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @include      https://gitlab*/*/-/*
@@ -19,7 +19,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '5.0.2';
+  const SCRIPT_VERSION = '5.1.1';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   const HOST_CONFIG = {};
@@ -83,6 +83,7 @@
   const LS_KEY_PROGRESS_CACHE = 'ambientProgressCache';
   const LS_KEY_LAST_BOARD_ID = 'ambientProgressLastBoardId';
   const LS_KEY_RELEASE_INFO = 'ambientProgressReleaseInfo';
+  const LS_KEY_RATE_LIMIT_WARNING = 'ambientProgressRateLimitWarning';
 
   let debugEnabled = readBoolFromLocalStorage(LS_KEY_DEBUG, false);  // Default: Debug aus
   let showEnabled = readBoolFromLocalStorage(LS_KEY_SHOW, true);    // Default: Anzeigen an
@@ -99,10 +100,22 @@
     divider: null
   };
 
+  let rateLimitWarningActive = null; // null = noch nicht aus localStorage geladen
+  let rateLimitNotificationElements = {
+    badge: null,
+    messageRow: null,
+    messageText: null,
+    divider: null
+  };
+  let lastRateLimitToastAt = 0;
+
   const LOG_PREFIX = '[GitLab Progress]';
   const PROGRESS_CACHE_TTL_MS = 60 * 60 * 1000;
   const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
   const PROJECT_BLOCK_COOLDOWN_MS = 5 * 60 * 1000;
+  const MAX_NEW_FETCHES_PER_SCAN = 80;
+  const RATE_LIMIT_TOAST_COOLDOWN_MS = 2 * 60 * 1000;
+  const RATE_LIMIT_WARNING_MIN_VISIBLE_MS = 60 * 1000;
   const progressCache = {}; // key: projectId + ':' + issueIid → {data, timestamp}
   hydrateProgressCacheFromStorage();
 
@@ -418,6 +431,74 @@
         '⚠️ Neue Version ' +
         displayVersion +
         ' verfügbar - öffne das Tampermonkey-Dashboard, um das Script zu aktualisieren.';
+      elements.divider.style.display = 'block';
+    } else {
+      elements.badge.style.display = 'none';
+      elements.messageRow.style.display = 'none';
+      elements.divider.style.display = 'none';
+    }
+  }
+
+  function readRateLimitWarningFromStorage() {
+    try {
+      const raw = window.localStorage.getItem(LS_KEY_RATE_LIMIT_WARNING);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || !parsed.active) {
+        return null;
+      }
+      return {
+        active: true,
+        triggeredAt: Number(parsed.triggeredAt) || null,
+        listCount: Number(parsed.listCount) || null
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeRateLimitWarningToStorage(state) {
+    try {
+      if (!state || !state.active) {
+        window.localStorage.removeItem(LS_KEY_RATE_LIMIT_WARNING);
+        return;
+      }
+      window.localStorage.setItem(LS_KEY_RATE_LIMIT_WARNING, JSON.stringify(state));
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function getCachedRateLimitWarning() {
+    if (rateLimitWarningActive !== null) {
+      return rateLimitWarningActive;
+    }
+    rateLimitWarningActive = readRateLimitWarningFromStorage();
+    return rateLimitWarningActive;
+  }
+
+  function setRateLimitWarning(active, listCount) {
+    const state = active ? { active: true, triggeredAt: Date.now(), listCount: listCount || null } : null;
+    rateLimitWarningActive = state;
+    writeRateLimitWarningToStorage(state);
+    updateRateLimitWarningUI(state);
+  }
+
+  function updateRateLimitWarningUI(state) {
+    const elements = rateLimitNotificationElements;
+    if (!elements.badge || !elements.messageRow || !elements.messageText || !elements.divider) {
+      return;
+    }
+    const isActive = Boolean(state && state.active);
+    if (isActive) {
+      elements.badge.style.display = 'block';
+      elements.messageRow.style.display = 'flex';
+      elements.messageText.textContent =
+        '⚠️ Rate-Limit erreicht (mehr als ' +
+        MAX_NEW_FETCHES_PER_SCAN +
+        ' Tickets gleichzeitig) – bitte Anzahl ausgewählter Board-Spalten reduzieren, damit alle Tickets zuverlässig geladen werden.';
       elements.divider.style.display = 'block';
     } else {
       elements.badge.style.display = 'none';
@@ -2226,6 +2307,7 @@
    ******************************************************************/
 
   let scanRunCounter = 0;
+  let totalFetchesSincePageLoad = 0;
 
   function scanBoard(hostConfig, projectSettings) {
     scanRunCounter += 1;
@@ -2247,7 +2329,11 @@
     const allowedLookup = projectSettings.allowedListLookup || {};
     const hasAllowedFilters = Object.keys(allowedLookup).length > 0;
 
+    let newFetchesThisScan = 0;
+    let limitReached = false;
+
     for (let li = 0; li < boardLists.length; li++) {
+      if (limitReached) break;
       const boardListElem = boardLists[li];
       const header = getBoardListHeaderElement(boardListElem);
       const listName = getListNameFromBoardListElem(boardListElem, header);
@@ -2300,8 +2386,46 @@
           cardElem.setAttribute('data-ambient-progress-processed', '1');
           continue;
         }
+
+        if (newFetchesThisScan >= MAX_NEW_FETCHES_PER_SCAN) {
+          limitReached = true;
+          break;
+        }
+
         cardElem.setAttribute('data-ambient-progress-processed', '1');
         fetchAndDisplayProgress(hostConfig, projectSettings, issueIid, cardElem);
+        newFetchesThisScan++;
+        totalFetchesSincePageLoad++;
+      }
+    }
+
+    log(
+      'scanBoard run #' + scanRunCounter + ': ' + newFetchesThisScan +
+      '/' + MAX_NEW_FETCHES_PER_SCAN + ' neue Fetches ausgelöst' +
+      (limitReached ? ' (Limit erreicht).' : '.') +
+      ' Gesamt seit Seitenaufruf: ' + totalFetchesSincePageLoad + '.'
+    );
+
+    if (limitReached) {
+      log(
+        'Scan-Limit erreicht (' + MAX_NEW_FETCHES_PER_SCAN +
+        '), weitere Karten werden erst im nächsten Scan verarbeitet.'
+      );
+      setRateLimitWarning(true, boardLists.length);
+      const now = Date.now();
+      if (now - lastRateLimitToastAt >= RATE_LIMIT_TOAST_COOLDOWN_MS) {
+        lastRateLimitToastAt = now;
+        showToast({
+          text:
+            'Viele Tickets gleichzeitig geladen (' + MAX_NEW_FETCHES_PER_SCAN +
+            '+) – bitte weniger Spalten auswählen.',
+          variant: 'warning'
+        });
+      }
+    } else {
+      const cachedWarning = getCachedRateLimitWarning();
+      if (cachedWarning && Date.now() - cachedWarning.triggeredAt >= RATE_LIMIT_WARNING_MIN_VISIBLE_MS) {
+        setRateLimitWarning(false);
       }
     }
   }
@@ -2492,6 +2616,7 @@
         return;
       }
       log('MR-Detail lädt Progress-Daten (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ') →', url);
+      totalFetchesSincePageLoad++;
       loadProgressData(url, issueIid)
         .then(function (progressData) {
           clearProjectRequestBlock(projectSettings.projectKey);
@@ -2644,6 +2769,7 @@
         return;
       }
       log('Ticket-Detail lädt Progress-Daten (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ') →', url);
+      totalFetchesSincePageLoad++;
       loadProgressData(url, issueIid)
         .then(function (progressData) {
           clearProjectRequestBlock(projectSettings.projectKey);
@@ -3154,6 +3280,23 @@
     gearButton.appendChild(releaseBadge);
     releaseNotificationElements.badge = releaseBadge;
 
+    const rateLimitBadge = document.createElement('span');
+    rateLimitBadge.setAttribute('aria-hidden', 'true');
+    applyStyles(rateLimitBadge, {
+      position: 'absolute',
+      top: '4px',
+      left: '4px',
+      width: '10px',
+      height: '10px',
+      borderRadius: '50%',
+      background: '#ef4444',
+      boxShadow: '0 0 0 2px ' + windowBackground,
+      display: 'none',
+      pointerEvents: 'none'
+    });
+    gearButton.appendChild(rateLimitBadge);
+    rateLimitNotificationElements.badge = rateLimitBadge;
+
     const dropdown = document.createElement('div');
     applyStyles(dropdown, {
       position: 'absolute',
@@ -3267,6 +3410,41 @@
     releaseNotificationElements.messageText = releaseNotificationText;
     releaseNotificationElements.divider = releaseNotificationDivider;
     dropdown.appendChild(releaseNotificationRow);
+
+    const rateLimitNotificationRow = document.createElement('div');
+    applyStyles(rateLimitNotificationRow, {
+      display: 'none',
+      flexDirection: 'column',
+      gap: '0.25rem',
+      padding: '0.35rem 0',
+      borderTop: '1px solid #2f374c',
+      width: '100%'
+    });
+
+    const rateLimitNotificationText = document.createElement('div');
+    applyStyles(rateLimitNotificationText, {
+      fontSize: '0.78rem',
+      lineHeight: '1.35',
+      opacity: '0.9',
+      color: toolbarTextColor
+    });
+
+    rateLimitNotificationRow.appendChild(rateLimitNotificationText);
+    const rateLimitNotificationDivider = document.createElement('div');
+    applyStyles(rateLimitNotificationDivider, {
+      width: '100%',
+      height: '1px',
+      background: 'rgba(255, 255, 255, 0.1)',
+      borderRadius: '2px',
+      margin: '0.35rem 0'
+    });
+    rateLimitNotificationDivider.style.display = 'none';
+    rateLimitNotificationRow.appendChild(rateLimitNotificationDivider);
+    rateLimitNotificationElements.messageRow = rateLimitNotificationRow;
+    rateLimitNotificationElements.messageText = rateLimitNotificationText;
+    rateLimitNotificationElements.divider = rateLimitNotificationDivider;
+    dropdown.appendChild(rateLimitNotificationRow);
+    updateRateLimitWarningUI(getCachedRateLimitWarning());
 
     dropdown.appendChild(togglesContainer);
     if (projectSettings) {
