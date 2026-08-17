@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      5.1.2
+// @version      5.2.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @include      https://gitlab*/*/-/*
@@ -19,7 +19,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '5.1.2';
+  const SCRIPT_VERSION = '5.2.0';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   const HOST_CONFIG = {};
@@ -1811,6 +1811,43 @@
     return null;
   }
 
+  // Parses the title attribute text of the Tailwind progress container,
+  // e.g. "Booked hours: 6.50h | Remaining: 5.50h" or "... | Over: 8.25h".
+  // More robust than reading the bar segments, since it doesn't depend
+  // on classes/order/number of segment divs.
+  function parseProgressFromTitleAttr(titleText) {
+    if (!titleText) return null;
+    const parts = titleText.split('|');
+    const result = {spent: null, remaining: null, over: null};
+    let foundAny = false;
+
+    for (let i = 0; i < parts.length; i++) {
+      const m = parts[i].match(/([A-Za-zÄÖÜäöüß ]+):\s*(-?[\d.,]+)\s*h?/i);
+      if (!m) continue;
+      const label = m[1].trim();
+      const hours = extractHourNumber(m[2]);
+      if (hours === null) continue;
+
+      if (/Booked\s+Hours|Gebuchte\s+Stunden/i.test(label)) {
+        result.spent = formatBookedHoursDisplay(hours);
+        foundAny = true;
+      } else if (/Remaining|Verbleibend/i.test(label)) {
+        // Negative remaining = overbooked/escalation, not a normal remaining value
+        if (hours < 0) {
+          result.over = formatBookedHoursDisplay(Math.abs(hours));
+        } else {
+          result.remaining = formatBookedHoursDisplay(hours);
+        }
+        foundAny = true;
+      } else if (/Over|Über/i.test(label)) {
+        result.over = formatBookedHoursDisplay(Math.abs(hours));
+        foundAny = true;
+      }
+    }
+
+    return foundAny ? result : null;
+  }
+
   function parseProgressHtml(htmlText) {
     try {
       const parser = new DOMParser();
@@ -1842,55 +1879,24 @@
         );
       }
 
-      const progressDiv = doc.querySelector('div.progress') || doc.querySelector('div.Progress');
+      const progressDiv = doc.querySelector('[title*="Booked hours" i]')
+        || doc.querySelector('[title*="Gebuchte Stunden" i]');
       if (!progressDiv) {
-        if (debugEnabled) log('parseProgressHtml: Kein div.progress/Progress gefunden → Fallback Booked Hours.');
+        if (debugEnabled) log('parseProgressHtml: Kein Progress-Container gefunden → Fallback Booked Hours.');
         return fallbackBooked();
       }
 
-      let innerDivs = progressDiv.querySelectorAll('div.progress-bar');
-      if (!innerDivs || innerDivs.length === 0) {
-        innerDivs = progressDiv.querySelectorAll('div');
-      }
-      if (!innerDivs || innerDivs.length === 0) {
-        if (debugEnabled) log('parseProgressHtml: Keine inneren divs → Fallback Booked Hours.');
-        return fallbackBooked();
-      }
-
-      const texts = [];
-      for (let i = 0; i < innerDivs.length; i++) {
-        let content = innerDivs[i].textContent;
-        if (!content) continue;
-        content = content.replace(/\s+/g, ' ').trim();
-        if (!content) continue;
-        texts.push(content);
-      }
-      if (texts.length === 0) {
-        if (debugEnabled) log('parseProgressHtml: Keine nichtleeren Textinhalte → Fallback Booked Hours.');
-        return fallbackBooked();
+      // Tailwind markup: the title attribute carries the values as plain text,
+      // independent of segment divs/classes/order → prefer this over anything else.
+      const titleAttr = progressDiv.getAttribute('title');
+      const fromTitle = parseProgressFromTitleAttr(titleAttr);
+      if (fromTitle) {
+        if (debugEnabled) log('parseProgressHtml: Werte aus title-Attribut geparst:', fromTitle);
+        return attachBookedInfo(fromTitle);
       }
 
-      // Over-Fall: ein Wert, z. B. "-72.25h"
-      if (texts.length === 1) {
-        const single = texts[0];
-        if (/^-/.test(single)) {
-          const overText = single.replace(/^-+/, '');
-          return attachBookedInfo({
-            spent: null,
-            remaining: null,
-            over: overText
-          });
-        }
-        // sonst: Einzelwert = spent
-        return attachBookedInfo({spent: single, remaining: null, over: null});
-      }
-
-      // Normalfall: mind. zwei Werte → erster = spent, zweiter = remaining
-      return attachBookedInfo({
-        spent: texts[0],
-        remaining: texts[1],
-        over: null
-      });
+      if (debugEnabled) log('parseProgressHtml: title-Attribut nicht auswertbar → Fallback Booked Hours.');
+      return fallbackBooked();
     } catch (e) {
       error('Fehler beim Parsen des Progress-HTML:', e);
       return null;
