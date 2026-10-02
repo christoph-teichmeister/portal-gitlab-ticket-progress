@@ -84,8 +84,10 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
 
 - Auf der Merge-Request-Detailseite zeigt das Script oberhalb des GitLab-Assignee-Blocks an, wer aktuell dem
   verlinkten Ticket (Issue) zugewiesen ist.
-- Zwei Quick-Buttons erlauben das Umzuweisen des Tickets auf den MR-Assignee bzw. den MR-Author, ohne das Ticket
-  selbst öffnen zu müssen. Sind MR-Assignee und MR-Author dieselbe Person, erscheint nur ein Button. Ist die
-  Person bereits Ticket-Assignee, wird ihr Button ausgeblendet.
+- Zwei Quick-Buttons erlauben das Umzuweisen des Tickets auf den MR-Assignee und eine zweite Person, ohne das
+  Ticket selbst öffnen zu müssen. Die zweite Person ist normalerweise der MR-Author – bist du selbst aber der
+  MR-Assignee (z. B. weil du einen MR vertretungsweise übernommen hast), zeigt der zweite Button stattdessen den
+  MR-Reviewer, da der Author in diesem Fall meist nicht relevant ist. Sind beide Personen identisch oder bereits
+  Ticket-Assignee, wird der jeweilige Button ausgeblendet.
 - Das Umzuweisen erfolgt per `PUT /api/v4/projects/:id/issues/:issue_iid` (Session-Auth + CSRF-Token aus der
   Seite), keine zusätzliche Anmeldung nötig.
