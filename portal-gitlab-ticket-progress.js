@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      5.2.1
+// @version      5.3.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @include      https://gitlab*/*/-/*
@@ -19,9 +19,10 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '5.2.1';
+  const SCRIPT_VERSION = '5.3.0';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
+  const MERGE_REQUEST_ICON_SVG = '<svg data-testid="merge-request-icon" role="img" aria-hidden="true" class="gl-button-icon gl-icon s16 gl-fill-current"><use href="/assets/icons-5a3f88503a318f1eaf3b49d9d82c93cdde31fd5224ab8aeeb08534974b21f10c.svg#merge-request"></use></svg>';
   const HOST_CONFIG = {};
   const NOT_FOUND_SENTINEL = { notFound: true };
 
@@ -77,6 +78,7 @@
   // Debug / Anzeige – gesteuert über Toolbar, persistiert in localStorage
   const LS_KEY_DEBUG = 'portalProgressDebug';
   const LS_KEY_SHOW = 'portalProgressShow';
+  const LS_KEY_MR_LINKS = 'portalProgressMrLinks';
   const LS_KEY_LIST_SELECTIONS = 'ambientProgressListSelections';
   const LS_KEY_PROJECT_CONFIG = 'ambientProgressProjectConfigs';
   const LS_KEY_LAST_REFRESH = 'ambientProgressLastRefresh';
@@ -87,6 +89,7 @@
 
   let debugEnabled = readBoolFromLocalStorage(LS_KEY_DEBUG, false);  // Default: Debug aus
   let showEnabled = readBoolFromLocalStorage(LS_KEY_SHOW, true);    // Default: Anzeigen an
+  let mrLinksEnabled = readBoolFromLocalStorage(LS_KEY_MR_LINKS, true); // Default: MR-Buttons an
 
   const RELEASE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
   const RAW_SCRIPT_URL =
@@ -1282,6 +1285,7 @@
       (storedProjectConfig && storedProjectConfig.portalBaseUrl) || base.portalBaseUrl || null;
     const fallbackShow = readBoolFromLocalStorage(LS_KEY_SHOW, true);
     const fallbackDebug = readBoolFromLocalStorage(LS_KEY_DEBUG, false);
+    const fallbackMrLinks = readBoolFromLocalStorage(LS_KEY_MR_LINKS, true);
     const showEnabled =
       storedProjectConfig && typeof storedProjectConfig.showEnabled === 'boolean'
         ? storedProjectConfig.showEnabled
@@ -1290,6 +1294,10 @@
       storedProjectConfig && typeof storedProjectConfig.debugEnabled === 'boolean'
         ? storedProjectConfig.debugEnabled
         : fallbackDebug;
+    const mrLinksEnabled =
+      storedProjectConfig && typeof storedProjectConfig.mrLinksEnabled === 'boolean'
+        ? storedProjectConfig.mrLinksEnabled
+        : fallbackMrLinks;
     const projectId2 =
       (storedProjectConfig && storedProjectConfig.portalProjectId2) || null;
     const useSecondPortalProjectId =
@@ -1307,7 +1315,8 @@
       listFilterMode,
       portalBaseUrl,
       showEnabled: showEnabled,
-      debugEnabled: debugEnabled
+      debugEnabled: debugEnabled,
+      mrLinksEnabled: mrLinksEnabled
     });
   }
 
@@ -3193,8 +3202,10 @@
     applyStyles(togglesContainer, {
       display: 'flex',
       flexDirection: 'row',
+      flexWrap: 'wrap',
       alignItems: 'center',
-      gap: '1rem',
+      rowGap: '0.5rem',
+      columnGap: '1rem',
       padding: '1em 0',
       minWidth: '220px'
     });
@@ -3222,8 +3233,21 @@
       console.log(LOG_PREFIX, 'Debug geändert auf:', debugEnabled);
     });
 
+    const mrLinksToggle = makeSwitch('MR Buttons anzeigen', mrLinksEnabled, function (val) {
+      mrLinksEnabled = val;
+      persistProjectFlag('mrLinksEnabled', mrLinksEnabled);
+      log('MR-Buttons geändert auf:', mrLinksEnabled);
+      if (mrLinksEnabled) {
+        createMrLinksBar();
+      } else {
+        const existingMrLinks = document.getElementById('js-my-mr-links');
+        if (existingMrLinks) existingMrLinks.remove();
+      }
+    });
+
     togglesContainer.appendChild(showToggle);
     togglesContainer.appendChild(debugToggle);
+    togglesContainer.appendChild(mrLinksToggle);
 
     const gearWrapper = document.createElement('div');
     gearWrapper.classList.add('gl-disclosure-dropdown', 'super-sidebar-new-menu-dropdown', 'gl-new-dropdown');
@@ -3684,6 +3708,161 @@
     log('[reposition] Kein Ziel-Selector gefunden – Toolbar bleibt wo sie ist');
   }
 
+  const MY_MR_USERNAME = 'christoph-teichmeister';
+
+  function getCurrentProjectPath() {
+    const marker = '/-/';
+    const idx = window.location.pathname.indexOf(marker);
+    if (idx === -1) return null;
+    const projectPath = window.location.pathname.slice(0, idx).replace(/^\/+|\/+$/g, '');
+    if (!projectPath) return null;
+    return projectPath;
+  }
+
+  function buildMrLinksBar(projectPath) {
+    const toolbarTextColor = getToolbarForegroundColor();
+    const windowBackground = getGitLabWindowBackgroundColor(true);
+    const linksBar = document.createElement('div');
+    linksBar.id = 'js-my-mr-links';
+    applyStyles(linksBar, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.25rem',
+      padding: '0 0.25rem'
+    });
+
+    function makeMrIconLink(queryParam, badgeLabel, badgeColor, tooltip) {
+      const link = document.createElement('a');
+      link.href = '/' + projectPath + '/-/merge_requests/?sort=merged_at_desc&state=opened&' + queryParam + '=' + MY_MR_USERNAME;
+      link.title = tooltip;
+      link.setAttribute('aria-label', tooltip);
+      link.classList.add(
+        'btn',
+        'gl-button',
+        'btn-default',
+        'btn-md',
+        'btn-default-tertiary',
+        'btn-icon'
+      );
+      applyStyles(link, {
+        padding: '0.35rem',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: '38px',
+        minHeight: '38px',
+        position: 'relative',
+        overflow: 'visible',
+        color: toolbarTextColor,
+        opacity: '0.85'
+      });
+      attachHoverEffect(link, {opacity: '1'});
+
+      const icon = document.createElement('span');
+      icon.innerHTML = MERGE_REQUEST_ICON_SVG;
+      icon.setAttribute('aria-hidden', 'true');
+      applyStyles(icon, {
+        width: '20px',
+        height: '20px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: toolbarTextColor
+      });
+      const iconSvg = icon.querySelector('svg');
+      if (iconSvg) {
+        iconSvg.setAttribute('width', '20');
+        iconSvg.setAttribute('height', '20');
+        applyStyles(iconSvg, {width: '20px', height: '20px', display: 'block'});
+      }
+      link.appendChild(icon);
+
+      const badge = document.createElement('span');
+      badge.textContent = badgeLabel;
+      badge.setAttribute('aria-hidden', 'true');
+      applyStyles(badge, {
+        position: 'absolute',
+        bottom: '2px',
+        right: '2px',
+        minWidth: '12px',
+        height: '12px',
+        padding: '0 2px',
+        borderRadius: '6px',
+        background: badgeColor,
+        color: '#fff',
+        fontSize: '9px',
+        fontWeight: '700',
+        lineHeight: '12px',
+        textAlign: 'center',
+        boxShadow: '0 0 0 2px ' + windowBackground,
+        pointerEvents: 'none'
+      });
+      link.appendChild(badge);
+
+      return link;
+    }
+
+    linksBar.appendChild(makeMrIconLink('reviewer_username', 'R', '#3b82f6', 'MRs, bei denen ich Reviewer bin'));
+    linksBar.appendChild(makeMrIconLink('author_username', 'A', '#10b981', 'Meine MRs'));
+    return linksBar;
+  }
+
+  function insertMrLinksBar(wrapper, linksBar) {
+    const injectedBreadcrumbs = wrapper.querySelector('#js-injected-page-breadcrumbs');
+    if (injectedBreadcrumbs && injectedBreadcrumbs.parentNode === wrapper) {
+      wrapper.insertBefore(linksBar, injectedBreadcrumbs);
+    } else {
+      wrapper.appendChild(linksBar);
+    }
+  }
+
+  function createMrLinksBar() {
+    if (!mrLinksEnabled) {
+      log('[createMrLinksBar] MR-Buttons deaktiviert – abbruch');
+      return;
+    }
+
+    const projectPath = getCurrentProjectPath();
+    if (!projectPath) {
+      log('[createMrLinksBar] Kein Projekt-Pfad in der URL – MR-Links werden nicht angezeigt');
+      return;
+    }
+
+    const wrapper = document.getElementById('js-vue-page-breadcrumbs-wrapper');
+    if (!wrapper) {
+      log('[createMrLinksBar] #js-vue-page-breadcrumbs-wrapper nicht gefunden – abbruch');
+      return;
+    }
+
+    const existing = document.getElementById('js-my-mr-links');
+    if (existing) {
+      insertMrLinksBar(wrapper, existing);
+      return;
+    }
+
+    const linksBar = buildMrLinksBar(projectPath);
+    insertMrLinksBar(wrapper, linksBar);
+  }
+
+  function repositionMrLinksIfNeeded() {
+    const linksBar = document.getElementById('js-my-mr-links');
+    if (!mrLinksEnabled) {
+      if (linksBar) linksBar.remove();
+      return;
+    }
+    const wrapper = document.getElementById('js-vue-page-breadcrumbs-wrapper');
+    if (!linksBar || !wrapper) {
+      createMrLinksBar();
+      return;
+    }
+    const injectedBreadcrumbs = wrapper.querySelector('#js-injected-page-breadcrumbs');
+    const needsMove = linksBar.parentNode !== wrapper ||
+      (injectedBreadcrumbs && linksBar.nextSibling !== injectedBreadcrumbs);
+    if (needsMove) {
+      insertMrLinksBar(wrapper, linksBar);
+    }
+  }
+
   function createProjectConfigSection(hostConfig, projectSettings, onValuesChanged) {
     const section = document.createElement('div');
     const panelBackground = getGitLabWindowBackgroundColor(true);
@@ -3981,6 +4160,9 @@
     if (typeof projectSettings.debugEnabled === 'boolean') {
       debugEnabled = projectSettings.debugEnabled;
     }
+    if (typeof projectSettings.mrLinksEnabled === 'boolean') {
+      mrLinksEnabled = projectSettings.mrLinksEnabled;
+    }
 
     log('hostConfig:', hostConfig);
     log('projectSettings:', projectSettings);
@@ -3991,6 +4173,7 @@
     }
 
     createToolbar(hostConfig, projectSettings);
+    createMrLinksBar();
 
     log('[init] toolbarPositionObserver wird auf document.body gestartet');
     const toolbarPositionObserver = new MutationObserver(function (mutations) {
@@ -3998,6 +4181,7 @@
         if (mutations[i].addedNodes && mutations[i].addedNodes.length) {
           log('[toolbarPositionObserver] DOM-Änderung erkannt → repositionToolbarIfNeeded()');
           repositionToolbarIfNeeded();
+          repositionMrLinksIfNeeded();
           return;
         }
       }
