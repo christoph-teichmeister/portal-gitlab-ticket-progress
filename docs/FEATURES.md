@@ -80,6 +80,24 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
 - Die MR-Liste pro Projekt wird über `GET /api/v4/projects/:id/merge_requests` geladen und 5 Minuten im Speicher
   gecacht (kein localStorage, nur für die laufende Seiten-Session).
 
+## Verweildauer in der Spalte
+
+- Im Karten-Footer (hinter Nummer, MR und Sprint) zeigt jede Karte in aktivierten Spalten mit einem Uhr-Icon, wie
+  lange das Ticket schon in der Spalte liegt, relativ als `45min`, `5h` oder `10d`. Beim Hovern erscheint das
+  genaue Datum.
+- Grundlage ist die Label-Historie des Tickets (`GET /api/v4/projects/:id/issues/:iid/resource_label_events`):
+  Gezählt wird ab dem letzten Mal, an dem das Spalten-Label hinzugefügt wurde.
+- Pro aktivierter Spalte wird der Durchschnitt über alle geladenen Karten berechnet und bei jeder neu
+  geladenen Karte aktualisiert. Tickets, die länger als der Durchschnitt in der Spalte liegen, bekommen einen
+  roten Rahmen – aber nur in Spalten, die in den Einstellungen (Zahnrad) unter „Roter Rahmen bei
+  Ø-Überschreitung" ausgewählt sind. Die Auswahl wird pro Board im localStorage gespeichert.
+- Der Spalten-Ø steht im Spalten-Header links neben der Checkbox (`Ø 4d`, ab der ersten geladenen
+  Karte). Beim Hovern erklärt ein Hilfetext, was der Wert bedeutet.
+- Spalten ohne Label (`Open`, `Closed`) sowie Tickets, deren Label-Event nicht (mehr) auffindbar ist, zeigen keine
+  Dauer an.
+- Die Events werden nur im Speicher gecacht. Wird eine Karte per Drag & Drop verschoben, aktualisiert sich die
+  Dauer erst nach einem Neuladen der Seite.
+
 ## Ticket-Assignee direkt im MR
 
 - Auf der Merge-Request-Detailseite zeigt das Script oberhalb des GitLab-Assignee-Blocks an, wer aktuell dem

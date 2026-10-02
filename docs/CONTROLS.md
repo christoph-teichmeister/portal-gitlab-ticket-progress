@@ -7,6 +7,9 @@
   erneut gescannt, beim Deaktivieren werden die Badges lediglich ausgeblendet; die Sichtbarkeit bleibt pro Projekt erhalten.
 - **Listen-Checkboxes**: Aktivierte Listen werden im Cache gespeichert; sobald du eine Spalte per Checkbox erlaubst oder
   deaktivierst, wechselt das Script in den expliziten Modus und speichert die Auswahl unter dem Projektschlüssel.
+- **Roter Rahmen bei Ø-Überschreitung** (`ambientProgressAgeHighlightLists`): Auswahlliste mit allen Label-Spalten des
+  aktuellen Boards. Nur in ausgewählten Spalten bekommen Tickets, die länger als der Spalten-Ø dort liegen, einen
+  roten Rahmen. Wird sofort pro Projektschlüssel gespeichert, ohne „Einstellungen speichern".
 - **Cache leeren**: Entfernt alle gespeicherten Progress-Daten, hebt eventuell gesetzte Request-Blocks und triggert
   neue Scans sowie einen grünen Toast („Cache geleert").
 - **Fehlerzustände & Portal-Hinweise**: Hilfreiche Toasts warnen bei fehlender Portal-Base, 403/404-Block(-Wiederholung) oder

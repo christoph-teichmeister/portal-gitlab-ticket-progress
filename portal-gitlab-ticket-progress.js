@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      5.4.1
+// @version      5.5.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @include      https://gitlab*/*/-/*
@@ -19,10 +19,11 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '5.4.1';
+  const SCRIPT_VERSION = '5.5.0';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   const MERGE_REQUEST_ICON_SVG = '<svg data-testid="merge-request-icon" role="img" aria-hidden="true" class="gl-button-icon gl-icon s16 gl-fill-current"><use href="/assets/icons-5a3f88503a318f1eaf3b49d9d82c93cdde31fd5224ab8aeeb08534974b21f10c.svg#merge-request"></use></svg>';
+  const CLOCK_ICON_SVG = MERGE_REQUEST_ICON_SVG.replace('merge-request-icon', 'clock-icon').replace('#merge-request', '#clock');
   const HOST_CONFIG = {};
   const NOT_FOUND_SENTINEL = { notFound: true };
 
@@ -86,6 +87,7 @@
   const LS_KEY_LAST_BOARD_ID = 'ambientProgressLastBoardId';
   const LS_KEY_RELEASE_INFO = 'ambientProgressReleaseInfo';
   const LS_KEY_RATE_LIMIT_WARNING = 'ambientProgressRateLimitWarning';
+  const LS_KEY_AGE_HIGHLIGHT_LISTS = 'ambientProgressAgeHighlightLists';
 
   let debugEnabled = readBoolFromLocalStorage(LS_KEY_DEBUG, false);  // Default: Debug aus
   let showEnabled = readBoolFromLocalStorage(LS_KEY_SHOW, true);    // Default: Anzeigen an
@@ -306,6 +308,32 @@
       include,
       explicit: Boolean(entry.explicit)
     };
+  }
+
+  // Spalten mit rotem Rahmen bei überdurchschnittlicher Verweildauer: {projectKey: {labelKey: true}}
+  let ageHighlightProjectKey = null;
+  let ageHighlightLookup = {};
+
+  function loadAgeHighlightLookup(projectKey) {
+    if (projectKey === ageHighlightProjectKey) return;
+    ageHighlightProjectKey = projectKey;
+    try {
+      const state = JSON.parse(window.localStorage.getItem(LS_KEY_AGE_HIGHLIGHT_LISTS) || '{}');
+      ageHighlightLookup = (state && state[projectKey]) || {};
+    } catch (e) {
+      ageHighlightLookup = {};
+    }
+  }
+
+  function saveAgeHighlightLookup() {
+    if (!ageHighlightProjectKey) return;
+    try {
+      const state = JSON.parse(window.localStorage.getItem(LS_KEY_AGE_HIGHLIGHT_LISTS) || '{}') || {};
+      state[ageHighlightProjectKey] = ageHighlightLookup;
+      window.localStorage.setItem(LS_KEY_AGE_HIGHLIGHT_LISTS, JSON.stringify(state));
+    } catch (e) {
+      // ignore
+    }
   }
 
   function writeListSelectionEntry(projectKey, includeLookup, explicit) {
@@ -1639,6 +1667,13 @@
     return null;
   }
 
+  // Ganzer Label-Text inkl. Scope (z. B. "workflow::Design Review"), Fallback Listenname
+  function getColumnLabelText(boardListElem, headerOverride) {
+    const header = headerOverride || getBoardListHeaderElement(boardListElem);
+    const labelElem = header && header.querySelector('.board-title-text .gl-label');
+    return labelElem ? labelElem.textContent.replace(/\s+/g, ' ').trim() : getListNameFromBoardListElem(boardListElem, header);
+  }
+
   function normalizeListNameForMatching(name) {
     if (!name) return '';
     let normalized = String(name);
@@ -2254,6 +2289,181 @@
       });
   }
 
+  /******************************************************************
+   * Verweildauer in Spalte
+   ******************************************************************/
+
+  const columnEnteredAtCache = {}; // key: projectPath#iid#list → Promise<Date|null>
+
+  function normalizeLabelNameForMatching(name) {
+    return normalizeListNameForMatching(String(name || '').replace(/::/g, ' ').replace(/\s+/g, ' '));
+  }
+
+  function loadColumnEnteredAt(projectPath, issueIid, listName) {
+    const key = projectPath + '#' + issueIid + '#' + listName;
+    if (!columnEnteredAtCache[key]) {
+      const target = normalizeLabelNameForMatching(listName);
+      const url = '/api/v4/projects/' + encodeURIComponent(projectPath) +
+        '/issues/' + issueIid + '/resource_label_events?per_page=100';
+      // ponytail: per_page=100, keine Paginierung – bei >100 Label-Events fehlen neuere
+      columnEnteredAtCache[key] = fetch(url, {credentials: 'include'})
+        .then(function (res) {
+          if (!res.ok) throw new Error('Label-Events Status ' + res.status);
+          return res.json();
+        })
+        .then(function (events) {
+          let latest = null;
+          events.forEach(function (ev) {
+            if (ev.action !== 'add' || !ev.label) return;
+            if (normalizeLabelNameForMatching(ev.label.name) !== target) return;
+            const date = new Date(ev.created_at);
+            if (!latest || date > latest) latest = date;
+          });
+          return latest;
+        })
+        .catch(function (err) {
+          delete columnEnteredAtCache[key];
+          throw err;
+        });
+    }
+    return columnEnteredAtCache[key];
+  }
+
+  function formatDuration(ms) {
+    const minutes = Math.max(0, Math.floor(ms / 60000));
+    if (minutes < 60) return minutes + 'min';
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours + 'h';
+    return Math.floor(hours / 24) + 'd';
+  }
+
+  // Schrift der Issue-ID (#1234) übernehmen, damit MR-ID und Verweildauer identisch aussehen
+  function getIssueNumberFontStyles(footer) {
+    const numberText = footer && footer.querySelector('.board-card-number span, .board-card-number');
+    if (!numberText) return {fontSize: '12px', lineHeight: '1'};
+    const c = getComputedStyle(numberText);
+    return {fontFamily: c.fontFamily, fontSize: c.fontSize, fontWeight: c.fontWeight, lineHeight: '1'};
+  }
+
+  function injectColumnAgeIntoCard(cardElem, enteredAt) {
+    const boardListElem = cardElem.closest('div[data-testid="board-list"]');
+    let el = cardElem.querySelector('.ambient-column-age');
+    if (!enteredAt) {
+      if (el) el.remove();
+      cardElem.removeAttribute('data-ambient-entered-at');
+      updateColumnAgeAverage(boardListElem);
+      return;
+    }
+    if (!el) {
+      const footer = cardElem.querySelector('.board-card-footer');
+      if (!footer) return;
+      const numberElem = footer.querySelector('.board-card-number');
+      el = document.createElement('span');
+      el.className = 'ambient-column-age';
+      // gleiche Optik wie MR-Badge (Farbe der Ticketnummer, 12px bold)
+      applyStyles(el, {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '4px',
+        height: '20px',
+        marginLeft: '6px',
+        whiteSpace: 'nowrap',
+        color: numberElem ? getComputedStyle(numberElem).color : 'inherit',
+        opacity: '1'
+      });
+      const icon = document.createElement('span');
+      icon.innerHTML = CLOCK_ICON_SVG;
+      applyStyles(icon, {width: '14px', height: '14px', display: 'inline-flex', alignItems: 'center'});
+      const iconSvg = icon.querySelector('svg');
+      if (iconSvg) applyStyles(iconSvg, {width: '14px', height: '14px', margin: '0'});
+      el.appendChild(icon);
+      const text = document.createElement('span');
+      text.className = 'ambient-column-age-text';
+      applyStyles(text, getIssueNumberFontStyles(footer));
+      el.appendChild(text);
+      // Ans Ende der Meta-Zeile (Nummer · MR · Sprint), links vom Assignee-Avatar
+      (numberElem && numberElem.parentElement ? numberElem.parentElement : footer).appendChild(el);
+    }
+    el.style.display = showEnabled ? 'inline-flex' : 'none';
+    cardElem.setAttribute('data-ambient-entered-at', String(enteredAt.getTime()));
+    updateColumnAgeAverage(boardListElem);
+  }
+
+  // Ø über alle aktuell geladenen Karten der Spalte; läuft bei jeder neu geladenen Karte erneut
+  function updateColumnAgeAverage(boardListElem) {
+    if (!boardListElem) return;
+    const now = Date.now();
+    const cards = boardListElem.querySelectorAll('[data-ambient-entered-at]');
+    let sum = 0;
+    cards.forEach(function (card) {
+      sum += now - Number(card.getAttribute('data-ambient-entered-at'));
+    });
+    const avg = cards.length ? sum / cards.length : null;
+    updateColumnAgeHeader(boardListElem, avg, cards.length);
+    const highlight = Boolean(ageHighlightLookup[normalizeLabelNameForMatching(getColumnLabelText(boardListElem))]);
+
+    cards.forEach(function (card) {
+      const el = card.querySelector('.ambient-column-age');
+      if (!el) return;
+      const enteredAt = new Date(Number(card.getAttribute('data-ambient-entered-at')));
+      const age = now - enteredAt.getTime();
+      const aboveAvg = avg !== null && age > avg;
+      el.querySelector('.ambient-column-age-text').textContent = formatDuration(age);
+      el.title = 'In dieser Spalte seit ' + enteredAt.toLocaleString('de-DE');
+      card.toggleAttribute('data-ambient-above-avg', highlight && aboveAvg);
+      setColumnAgeBorder(card, el.style.display !== 'none');
+    });
+  }
+
+  function setColumnAgeBorder(cardElem, visible) {
+    const marked = visible && cardElem.hasAttribute('data-ambient-above-avg');
+    // box-shadow statt border: folgt dem Radius, kein Layout-Sprung
+    cardElem.style.boxShadow = marked ? '0 0 0 2px #dc2626' : '';
+  }
+
+  function updateColumnAgeHeader(boardListElem, avg, count) {
+    const header = getBoardListHeaderElement(boardListElem);
+    const wrapper = header && header.querySelector('.ambient-progress-list-checkbox-wrapper');
+    if (!wrapper) return;
+    let el = wrapper.querySelector('.ambient-column-avg');
+    if (avg === null) {
+      if (el) el.remove();
+      return;
+    }
+    if (!el) {
+      el = document.createElement('span');
+      el.className = 'ambient-column-avg';
+      applyStyles(el, {
+        fontSize: '11px',
+        lineHeight: '1.2',
+        fontWeight: '600',
+        marginRight: '0.35rem',
+        whiteSpace: 'nowrap',
+        cursor: 'help',
+        color: 'var(--gl-text-color-subtle, #737278)'
+      });
+      wrapper.insertBefore(el, wrapper.firstChild);
+    }
+    el.textContent = 'Ø ' + formatDuration(avg);
+    el.title = 'Ø Verweildauer: So lange liegen die aktuell in dieser Spalte geladenen Tickets im Schnitt schon ' +
+      'hier (' + count + ' Tickets, gezählt ab dem letzten Hinzufügen des Spalten-Labels). ' +
+      (ageHighlightLookup[normalizeLabelNameForMatching(getColumnLabelText(boardListElem))]
+        ? 'Tickets über dem Durchschnitt haben einen roten Rahmen.'
+        : 'Roter Rahmen für Tickets über dem Durchschnitt lässt sich in den Einstellungen pro Spalte aktivieren.');
+  }
+
+  function fetchAndDisplayColumnAge(projectSettings, issueIid, cardElem, listName) {
+    const projectPath = projectSettings && projectSettings.projectPath;
+    if (!projectPath || !issueIid || !cardElem || !listName) return;
+    loadColumnEnteredAt(projectPath, issueIid, listName)
+      .then(function (enteredAt) {
+        injectColumnAgeIntoCard(cardElem, enteredAt);
+      })
+      .catch(function (err) {
+        error('Label-Events konnten nicht geladen werden für', projectPath, issueIid, err);
+      });
+  }
+
   function injectMrBadgeIntoCard(cardElem, matches, projectPath, issueIid) {
     const footer = cardElem.querySelector('.board-card-footer');
     if (!footer) return;
@@ -2297,7 +2507,7 @@
       gap: '2px',
       height: '20px',
       color: badgeColor,
-      opacity: allMerged ? '0.6' : '0.85',
+      opacity: allMerged ? '0.6' : '1',
       textDecoration: 'none'
     });
     attachHoverEffect(el, {opacity: allMerged ? '0.8' : '1'});
@@ -2310,7 +2520,7 @@
     if (matches.length === 1) {
       const numberText = document.createElement('span');
       numberText.textContent = '!' + matches[0].iid;
-      applyStyles(numberText, {fontSize: '12px', lineHeight: '1', fontWeight: 'bold'});
+      applyStyles(numberText, getIssueNumberFontStyles(footer));
       el.appendChild(numberText);
     }
 
@@ -2640,6 +2850,7 @@
     if (!boardLists.length) return;
 
     const allowedLookup = projectSettings.allowedListLookup || {};
+    loadAgeHighlightLookup(projectSettings.projectKey);
     const hasAllowedFilters = Object.keys(allowedLookup).length > 0;
 
     let newFetchesThisScan = 0;
@@ -2652,6 +2863,7 @@
       const listName = getListNameFromBoardListElem(boardListElem, header);
       const displayListName = listName || '<unbekannt>';
       const listNameLower = listName ? normalizeListNameForMatching(listName) : '';
+      const columnLabelText = getColumnLabelText(boardListElem, header);
 
       if (listName && header) {
         ensureListSelectionCheckbox(
@@ -2668,6 +2880,10 @@
       if (listNameLower && hasAllowedFilters) {
         isAllowed = Boolean(allowedLookup[listNameLower]);
       }
+      const avgElem = header && header.querySelector('.ambient-column-avg');
+      if (avgElem) {
+        avgElem.style.display = isAllowed && showEnabled ? '' : 'none';
+      }
 
       log('Liste #' + li + ' Name:', '"' + displayListName + '"', '→ allowed:', isAllowed);
 
@@ -2681,6 +2897,11 @@
         const badge = cardElem.querySelector('.ambient-progress-badge');
         if (badge) {
           badge.style.display = isAllowed && showEnabled ? '' : 'none';
+        }
+        const ageElem = cardElem.querySelector('.ambient-column-age');
+        if (ageElem) {
+          ageElem.style.display = isAllowed && showEnabled ? 'inline-flex' : 'none';
+          setColumnAgeBorder(cardElem, isAllowed && showEnabled);
         }
 
         if (!isAllowed || !showEnabled) {
@@ -2701,6 +2922,7 @@
         }
 
         fetchAndDisplayMrInfo(projectSettings, issueIid, cardElem);
+        fetchAndDisplayColumnAge(projectSettings, issueIid, cardElem, columnLabelText);
 
         if (newFetchesThisScan >= MAX_NEW_FETCHES_PER_SCAN) {
           limitReached = true;
@@ -3963,6 +4185,12 @@
     updateRateLimitWarningUI(getCachedRateLimitWarning());
 
     dropdown.appendChild(togglesContainer);
+    let refreshAgeHighlightSection = null;
+    if (projectSettings) {
+      const ageHighlightSection = createAgeHighlightSection(projectSettings);
+      refreshAgeHighlightSection = ageHighlightSection.refresh;
+      dropdown.appendChild(ageHighlightSection.element);
+    }
     if (projectSettings) {
       const projectConfigSection = createProjectConfigSection(hostConfig, projectSettings, updateSaveButtonState);
       dropdown.appendChild(projectConfigSection);
@@ -4135,6 +4363,7 @@
 
     gearButton.addEventListener('click', function () {
       dropdownLocked = !dropdownLocked;
+      if (dropdownLocked && refreshAgeHighlightSection) refreshAgeHighlightSection();
       updateDropdownVisibility();
     });
 
@@ -4332,6 +4561,125 @@
     if (needsMove) {
       insertMrLinksBar(wrapper, linksBar);
     }
+  }
+
+  function createAgeHighlightSection(projectSettings) {
+    const panelBackground = getGitLabWindowBackgroundColor(true);
+    const panelTextColor = getToolbarForegroundColor();
+    const section = document.createElement('div');
+    applyStyles(section, {
+      padding: '0.5rem 0',
+      width: '100%',
+      borderTop: '1px solid #2f374c',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.4rem',
+      color: panelTextColor
+    });
+    const heading = document.createElement('div');
+    heading.textContent = 'Roter Rahmen bei Ø-Überschreitung';
+    applyStyles(heading, {
+      fontSize: '0.8rem',
+      letterSpacing: '0.05em',
+      textTransform: 'uppercase',
+      opacity: '0.75',
+      fontWeight: '600',
+      color: panelTextColor
+    });
+    const hint = document.createElement('div');
+    hint.textContent = 'Spalten, in denen Tickets über dem Spalten-Ø rot umrandet werden.';
+    applyStyles(hint, {fontSize: '0.75rem', opacity: '0.7', lineHeight: '1.3'});
+
+    // <details> als Combobox: Summary zeigt Auswahl, aufgeklappt Checkbox-Liste
+    const combo = document.createElement('details');
+    // contain: Auswahltext darf das Menü nicht verbreitern, Summary kürzt mit Ellipsis
+    applyStyles(combo, {position: 'relative', width: '100%', contain: 'inline-size'});
+    const summary = document.createElement('summary');
+    applyStyles(summary, {
+      padding: '0.35rem 0.5rem',
+      borderRadius: '6px',
+      border: '1px solid #374151',
+      background: panelBackground,
+      color: panelTextColor,
+      fontSize: '0.85rem',
+      cursor: 'pointer',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap'
+    });
+    const options = document.createElement('div');
+    applyStyles(options, {
+      marginTop: '0.25rem',
+      padding: '0.25rem 0',
+      borderRadius: '6px',
+      border: '1px solid #374151',
+      background: panelBackground,
+      maxHeight: '220px',
+      overflowY: 'auto'
+    });
+    combo.appendChild(summary);
+    combo.appendChild(options);
+    section.appendChild(heading);
+    section.appendChild(hint);
+    section.appendChild(combo);
+
+    function updateSummary(labels) {
+      const selected = labels.filter(function (l) { return ageHighlightLookup[l.key]; });
+      summary.textContent = selected.length
+        ? selected.map(function (l) { return l.text; }).join(', ')
+        : 'Keine Spalte ausgewählt';
+      summary.title = summary.textContent;
+    }
+
+    // Spalten erst beim Öffnen lesen – Board ist beim Toolbar-Aufbau evtl. noch nicht gerendert
+    function refresh() {
+      loadAgeHighlightLookup(projectSettings.projectKey);
+      options.innerHTML = '';
+      const labels = [];
+      document.querySelectorAll('div[data-testid="board-list"]').forEach(function (boardListElem) {
+        const header = getBoardListHeaderElement(boardListElem);
+        if (!header || !header.querySelector('.board-title-text .gl-label')) return; // Open/Closed ohne Label
+        const text = getColumnLabelText(boardListElem, header);
+        const key = normalizeLabelNameForMatching(text);
+        if (key && !labels.some(function (l) { return l.key === key; })) labels.push({key: key, text: text});
+      });
+
+      labels.forEach(function (l) {
+        const row = document.createElement('label');
+        applyStyles(row, {
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.4rem',
+          padding: '0.2rem 0.5rem',
+          fontSize: '0.85rem',
+          cursor: 'pointer'
+        });
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = Boolean(ageHighlightLookup[l.key]);
+        checkbox.addEventListener('change', function () {
+          if (checkbox.checked) {
+            ageHighlightLookup[l.key] = true;
+          } else {
+            delete ageHighlightLookup[l.key];
+          }
+          saveAgeHighlightLookup();
+          updateSummary(labels);
+          document.querySelectorAll('div[data-testid="board-list"]').forEach(updateColumnAgeAverage);
+        });
+        row.appendChild(checkbox);
+        row.appendChild(document.createTextNode(l.text));
+        options.appendChild(row);
+      });
+
+      if (!labels.length) {
+        options.textContent = 'Keine Label-Spalten gefunden.';
+        applyStyles(options, {padding: '0.35rem 0.5rem', fontSize: '0.85rem'});
+      }
+      updateSummary(labels);
+    }
+
+    return {element: section, refresh: refresh};
   }
 
   function createProjectConfigSection(hostConfig, projectSettings, onValuesChanged) {
