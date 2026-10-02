@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      5.5.0
+// @version      5.6.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @include      https://gitlab*/*/-/*
@@ -19,10 +19,17 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '5.5.0';
+  const SCRIPT_VERSION = '5.6.0';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   const MERGE_REQUEST_ICON_SVG = '<svg data-testid="merge-request-icon" role="img" aria-hidden="true" class="gl-button-icon gl-icon s16 gl-fill-current"><use href="/assets/icons-5a3f88503a318f1eaf3b49d9d82c93cdde31fd5224ab8aeeb08534974b21f10c.svg#merge-request"></use></svg>';
+  const GITLAB_ICON_SPRITE = MERGE_REQUEST_ICON_SVG.match(/href="([^"#]+)#/)[1];
+
+  function gitlabIconSvg(name, classes) {
+    return '<svg role="img" aria-hidden="true" class="' + classes + '"><use href="' +
+      GITLAB_ICON_SPRITE + '#' + name + '"></use></svg>';
+  }
+
   const CLOCK_ICON_SVG = MERGE_REQUEST_ICON_SVG.replace('merge-request-icon', 'clock-icon').replace('#merge-request', '#clock');
   const HOST_CONFIG = {};
   const NOT_FOUND_SENTINEL = { notFound: true };
@@ -92,6 +99,37 @@
   let debugEnabled = readBoolFromLocalStorage(LS_KEY_DEBUG, false);  // Default: Debug aus
   let showEnabled = readBoolFromLocalStorage(LS_KEY_SHOW, true);    // Default: Anzeigen an
   let mrLinksEnabled = readBoolFromLocalStorage(LS_KEY_MR_LINKS, true); // Default: MR-Buttons an
+
+  // Globale Feature-Schalter (gelten für alle Boards). show/debug/mrLinks liegen ebenfalls hier,
+  // fehlen sie, gilt der alte projektbezogene Wert (Migration in init).
+  const LS_KEY_FEATURES = 'ambientProgressFeatures';
+  const FEATURE_PARENTS = {portalButtons: 'progress', mrAvatars: 'mrBadge', columnAvg: 'columnAge'};
+  let features = readFeatures();
+
+  function readFeatures() {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(LS_KEY_FEATURES) || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveFeature(key, value) {
+    features[key] = value;
+    try {
+      window.localStorage.setItem(LS_KEY_FEATURES, JSON.stringify(features));
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // Default an; Unter-Features nur aktiv, wenn das Eltern-Feature aktiv ist
+  function isFeatureOn(key) {
+    if (!showEnabled) return false; // „Anzeigen" ist Hauptschalter für alles
+    const parent = FEATURE_PARENTS[key];
+    return features[key] !== false && (!parent || isFeatureOn(parent));
+  }
 
   const RELEASE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
   const RAW_SCRIPT_URL =
@@ -848,38 +886,6 @@
     writeProgressCacheState(progressCache);
   }
 
-  let checkboxStylesInjected = false;
-
-  function ensureCheckboxStyles() {
-    if (checkboxStylesInjected) return;
-    checkboxStylesInjected = true;
-    const style = document.createElement('style');
-    style.id = 'ambient-progress-list-checkbox-styles';
-    style.textContent = `
-      .ambient-progress-list-checkbox-wrapper {
-        transition: opacity 0.2s ease, margin 0.2s ease;
-        vertical-align: middle;
-        position: relative;
-      }
-      .ambient-progress-list-checkbox-wrapper.ambient-progress-list-checkbox-collapsed {
-        opacity: 0.9;
-        margin-left: 0;
-        position: absolute;
-        top: 50%;
-        right: 0.35rem;
-        transform: translateY(-50%);
-        pointer-events: auto;
-      }
-      .ambient-progress-list-checkbox-wrapper .ambient-progress-list-checkbox {
-        transition: transform 0.2s ease;
-      }
-      .ambient-progress-list-checkbox-wrapper.ambient-progress-list-checkbox-collapsed .ambient-progress-list-checkbox {
-        transform: scale(0.9);
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
   function log(...args) {
     if (!debugEnabled) return;
     console.log(LOG_PREFIX, ...args);
@@ -1143,7 +1149,7 @@
   };
 
   function createPortalLinkButton(url, overrides) {
-    if (!url) return null;
+    if (!url || !isFeatureOn('portalButtons')) return null;
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = '↗';
@@ -1163,7 +1169,7 @@
   }
 
   function createTimesheetButton(url, overrides) {
-    if (!url) return null;
+    if (!url || !isFeatureOn('portalButtons')) return null;
     const button = document.createElement('button');
     button.type = 'button';
     button.innerHTML = TIMESHEET_ICON_SVG;
@@ -2090,6 +2096,7 @@
 
   function injectProgressIntoCard(cardElem, progressData, progressData2) {
     if (!cardElem || (!progressData && !progressData2)) return;
+    if (!isCardInActiveColumn(cardElem)) return;
 
     let container = cardElem.querySelector('.ambient-progress-badge');
 
@@ -2345,6 +2352,25 @@
     return {fontFamily: c.fontFamily, fontSize: c.fontSize, fontWeight: c.fontWeight, lineHeight: '1'};
   }
 
+  // Für asynchron zurückkommende Requests: Spalte inzwischen ausgeschaltet → nichts mehr einfügen
+  function isCardInActiveColumn(cardElem) {
+    if (!showEnabled || !cardElem.isConnected) return false;
+    const boardListElem = cardElem.closest('div[data-testid="board-list"]');
+    const header = boardListElem && getBoardListHeaderElement(boardListElem);
+    const toggle = header && header.querySelector('.ambient-progress-list-toggle');
+    return !toggle || toggle.dataset.ambientActive === 'true';
+  }
+
+  // Entfernt alles, was das Script in eine Karte eingefügt hat; nächster Scan baut es bei Bedarf neu auf
+  function clearCardInjections(cardElem) {
+    cardElem.querySelectorAll('.ambient-progress-badge, .ambient-mr-badge, .ambient-column-age')
+      .forEach(function (el) { el.remove(); });
+    cardElem.removeAttribute('data-ambient-progress-processed');
+    cardElem.removeAttribute('data-ambient-entered-at');
+    cardElem.removeAttribute('data-ambient-above-avg');
+    cardElem.style.boxShadow = '';
+  }
+
   function injectColumnAgeIntoCard(cardElem, enteredAt) {
     const boardListElem = cardElem.closest('div[data-testid="board-list"]');
     let el = cardElem.querySelector('.ambient-column-age');
@@ -2422,29 +2448,24 @@
   }
 
   function updateColumnAgeHeader(boardListElem, avg, count) {
+    if (!isFeatureOn('columnAvg')) avg = null;
     const header = getBoardListHeaderElement(boardListElem);
-    const wrapper = header && header.querySelector('.ambient-progress-list-checkbox-wrapper');
-    if (!wrapper) return;
-    let el = wrapper.querySelector('.ambient-column-avg');
+    // Neben GitLabs Issue-Zähler, mit denselben Utility-Klassen wie der Zähler selbst
+    const countBadge = header && header.querySelector('[data-testid="issue-count-badge"]');
+    if (!countBadge) return;
+    let el = countBadge.querySelector('.ambient-column-avg');
     if (avg === null) {
       if (el) el.remove();
       return;
     }
     if (!el) {
       el = document.createElement('span');
-      el.className = 'ambient-column-avg';
-      applyStyles(el, {
-        fontSize: '11px',
-        lineHeight: '1.2',
-        fontWeight: '600',
-        marginRight: '0.35rem',
-        whiteSpace: 'nowrap',
-        cursor: 'help',
-        color: 'var(--gl-text-color-subtle, #737278)'
-      });
-      wrapper.insertBefore(el, wrapper.firstChild);
+      el.className = 'ambient-column-avg gl-flex gl-items-center gl-whitespace-nowrap gl-text-subtle gl-text-sm gl-font-bold gl-mr-3';
+      el.style.cursor = 'help';
+      el.innerHTML = gitlabIconSvg('clock', 'gl-mr-2 gl-icon s14 gl-fill-current') + '<span></span>';
+      countBadge.insertBefore(el, countBadge.firstChild);
     }
-    el.textContent = 'Ø ' + formatDuration(avg);
+    el.lastChild.textContent = formatDuration(avg);
     el.title = 'Ø Verweildauer: So lange liegen die aktuell in dieser Spalte geladenen Tickets im Schnitt schon ' +
       'hier (' + count + ' Tickets, gezählt ab dem letzten Hinzufügen des Spalten-Labels). ' +
       (ageHighlightLookup[normalizeLabelNameForMatching(getColumnLabelText(boardListElem))]
@@ -2457,6 +2478,7 @@
     if (!projectPath || !issueIid || !cardElem || !listName) return;
     loadColumnEnteredAt(projectPath, issueIid, listName)
       .then(function (enteredAt) {
+        if (!isCardInActiveColumn(cardElem)) return;
         injectColumnAgeIntoCard(cardElem, enteredAt);
       })
       .catch(function (err) {
@@ -2553,7 +2575,7 @@
       el.appendChild(checkmark);
     }
 
-    if (!allMerged && matches.length === 1) {
+    if (!allMerged && matches.length === 1 && isFeatureOn('mrAvatars')) {
       const assignee = matches[0].assignee;
       const reviewers = matches[0].reviewers || [];
 
@@ -2661,6 +2683,7 @@
     if (!projectPath || !issueIid || !cardElem) return;
     loadMergeRequestsForProject(projectPath)
       .then(function (mrs) {
+        if (!isCardInActiveColumn(cardElem)) return;
         const matches = findMatchingMrs(mrs, issueIid);
         injectMrBadgeIntoCard(cardElem, matches, projectPath, issueIid);
       })
@@ -2849,6 +2872,13 @@
     log('scanBoard run #' + scanRunCounter + ', Listen gefunden:', boardLists.length);
     if (!boardLists.length) return;
 
+    if (!showEnabled) {
+      rootBoardsApp.querySelectorAll('.ambient-progress-list-toggle').forEach(function (button) {
+        button.style.display = 'none';
+      });
+      return;
+    }
+
     const allowedLookup = projectSettings.allowedListLookup || {};
     loadAgeHighlightLookup(projectSettings.projectKey);
     const hasAllowedFilters = Object.keys(allowedLookup).length > 0;
@@ -2871,8 +2901,7 @@
           listName,
           listNameLower,
           projectSettings,
-          hostConfig,
-          boardListElem
+          hostConfig
         );
       }
 
@@ -2881,8 +2910,8 @@
         isAllowed = Boolean(allowedLookup[listNameLower]);
       }
       const avgElem = header && header.querySelector('.ambient-column-avg');
-      if (avgElem) {
-        avgElem.style.display = isAllowed && showEnabled ? '' : 'none';
+      if (avgElem && !isAllowed) {
+        avgElem.remove();
       }
 
       log('Liste #' + li + ' Name:', '"' + displayListName + '"', '→ allowed:', isAllowed);
@@ -2894,17 +2923,8 @@
 
       for (let k = 0; k < cards.length; k++) {
         const cardElem = cards[k];
-        const badge = cardElem.querySelector('.ambient-progress-badge');
-        if (badge) {
-          badge.style.display = isAllowed && showEnabled ? '' : 'none';
-        }
-        const ageElem = cardElem.querySelector('.ambient-column-age');
-        if (ageElem) {
-          ageElem.style.display = isAllowed && showEnabled ? 'inline-flex' : 'none';
-          setColumnAgeBorder(cardElem, isAllowed && showEnabled);
-        }
-
-        if (!isAllowed || !showEnabled) {
+        if (!isAllowed) {
+          clearCardInjections(cardElem);
           continue;
         }
 
@@ -2921,8 +2941,17 @@
           continue;
         }
 
-        fetchAndDisplayMrInfo(projectSettings, issueIid, cardElem);
-        fetchAndDisplayColumnAge(projectSettings, issueIid, cardElem, columnLabelText);
+        if (isFeatureOn('mrBadge')) {
+          fetchAndDisplayMrInfo(projectSettings, issueIid, cardElem);
+        }
+        if (isFeatureOn('columnAge')) {
+          fetchAndDisplayColumnAge(projectSettings, issueIid, cardElem, columnLabelText);
+        }
+
+        if (!isFeatureOn('progress')) {
+          cardElem.setAttribute('data-ambient-progress-processed', '1');
+          continue;
+        }
 
         if (newFetchesThisScan >= MAX_NEW_FETCHES_PER_SCAN) {
           limitReached = true;
@@ -2983,6 +3012,9 @@
     }
     if (!showEnabled) {
       log('scanIssueDetail übersprungen (Anzeigen-Toggle aus).');
+      return;
+    }
+    if (!isFeatureOn('issueDetail')) {
       return;
     }
     if (!shouldAttemptIssueDetailInjection()) {
@@ -3404,10 +3436,10 @@
     resetMRRetryState();
 
     const parent = assigneeBlock.parentElement;
-    if (!parent || parent.dataset.ambientProgressMrIssueIid !== issueIid) {
+    if (isFeatureOn('mrPageProgress') && (!parent || parent.dataset.ambientProgressMrIssueIid !== issueIid)) {
       fetchAndDisplayProgressForMRDetail(hostConfig, projectSettings, issueIid, assigneeBlock);
     }
-    if (!parent || parent.dataset.ambientTicketAssigneeIid !== issueIid) {
+    if (isFeatureOn('mrAssigneeButtons') && (!parent || parent.dataset.ambientTicketAssigneeIid !== issueIid)) {
       injectIssueAssigneeBlock(assigneeBlock, projectSettings.projectPath, issueIid);
     }
   }
@@ -3600,65 +3632,28 @@
     listName,
     listNameLower,
     projectSettings,
-    hostConfig,
-    boardListElem
+    hostConfig
   ) {
     if (!header || !listName || !listNameLower) return;
+    // Als Icon-Button in GitLabs Button-Gruppe (+ / ⚙); eingeklappte Spalten blenden die Gruppe selbst aus
+    const buttonGroup = header.querySelector('.board-list-button-group');
+    if (!buttonGroup) return;
 
-    const listLabel = header.querySelector('.board-title-text') || header.querySelector('h2');
-    const wrapperAnchor = (listLabel && listLabel.parentElement) || header;
-    if (!wrapperAnchor) return;
-
-    let wrapper = header.querySelector('.ambient-progress-list-checkbox-wrapper');
-    if (!wrapper) {
-      wrapper = document.createElement('span');
-      wrapper.className = 'ambient-progress-list-checkbox-wrapper';
-      applyStyles(wrapper, {
-        display: 'inline-flex',
-        alignItems: 'center',
-        marginRight: '0.35rem',
-        fontSize: '0',
-        lineHeight: '1'
-      });
-      if (listLabel && listLabel.parentElement) {
-        listLabel.insertAdjacentElement('afterend', wrapper);
-      } else {
-        wrapperAnchor.appendChild(wrapper);
-      }
-    }
-
-    let checkbox = wrapper.querySelector('input.ambient-progress-list-checkbox');
-    if (!checkbox) {
-      checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.className = 'ambient-progress-list-checkbox';
-      checkbox.title = 'Progress für "' + listName + '" anzeigen';
-      applyStyles(checkbox, {
-        width: '14px',
-        height: '14px',
-        marginRight: '0.25rem',
-        cursor: 'pointer'
-      });
-      wrapper.appendChild(checkbox);
-    }
-
-    checkbox.dataset.ambientProgressList = listNameLower;
-    checkbox.dataset.ambientProgressListName = listName;
-    checkbox.checked = Boolean(
-      projectSettings.allowedListLookup && projectSettings.allowedListLookup[listNameLower]
-    );
-
-    if (!checkbox.dataset.ambientProgressListener) {
-      checkbox.addEventListener('change', function (ev) {
+    let button = buttonGroup.querySelector('button.ambient-progress-list-toggle');
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'ambient-progress-list-toggle btn gl-button btn-default btn-sm btn-icon';
+      buttonGroup.insertBefore(button, buttonGroup.firstChild);
+      button.addEventListener('click', function (ev) {
         ev.stopPropagation();
         ev.preventDefault();
-        const key = checkbox.dataset.ambientProgressList;
-        const currentLookup = projectSettings.allowedListLookup || {};
-        const updatedLookup = Object.assign({}, currentLookup);
-        if (checkbox.checked) {
-          updatedLookup[key] = true;
-        } else {
+        const key = button.dataset.ambientProgressList;
+        const updatedLookup = Object.assign({}, projectSettings.allowedListLookup || {});
+        if (updatedLookup[key]) {
           delete updatedLookup[key];
+        } else {
+          updatedLookup[key] = true;
         }
         projectSettings.allowedListLookup = updatedLookup;
         projectSettings.listFilterMode = 'explicit';
@@ -3666,74 +3661,19 @@
         clearProgressCache();
         scanBoard(hostConfig, projectSettings);
       });
-      checkbox.dataset.ambientProgressListener = '1';
     }
 
-    ensureCheckboxStyles();
-    watchCheckboxCollapseState(header, wrapper, listLabel, boardListElem);
-  }
-
-  function watchCheckboxCollapseState(header, wrapper, listLabel, boardListElem) {
-    if (!header || !wrapper) return;
-
-    const collapseButton =
-      header.querySelector('button[data-testid="board-list-collapse-button"]') ||
-      header.querySelector('button[aria-expanded]');
-    const applyState = function () {
-      let collapsed = false;
-      if (collapseButton) {
-        const aria = collapseButton.getAttribute('aria-expanded');
-        if (aria !== null) {
-          collapsed = aria === 'false';
-        } else {
-          collapsed = collapseButton.getAttribute('aria-pressed') === 'true';
-        }
-      }
-      if (
-        !collapsed &&
-        boardListElem &&
-        (boardListElem.classList.contains('is-collapsed') ||
-          boardListElem.classList.contains('board-list-collapsed') ||
-          boardListElem.classList.contains('board-list--collapsed') ||
-          boardListElem.classList.contains('gl-board-list--collapsed'))
-      ) {
-        collapsed = true;
-      }
-      wrapper.classList.toggle('ambient-progress-list-checkbox-collapsed', collapsed);
-      repositionCheckbox(wrapper, header, listLabel, collapsed);
-    };
-
-    applyState();
-
-    if (!collapseButton || collapseButton.dataset.ambientProgressCollapseListener) {
-      return;
+    const active = Boolean(projectSettings.allowedListLookup && projectSettings.allowedListLookup[listNameLower]);
+    button.dataset.ambientProgressList = listNameLower;
+    if (button.dataset.ambientActive !== String(active)) {
+      button.dataset.ambientActive = String(active);
+      button.innerHTML = gitlabIconSvg(active ? 'eye' : 'eye-slash', 'gl-button-icon gl-icon s16 gl-fill-current');
     }
-
-    collapseButton.addEventListener('click', function () {
-      setTimeout(applyState, 35);
-    });
-    collapseButton.dataset.ambientProgressCollapseListener = '1';
-  }
-
-  function repositionCheckbox(wrapper, header, listLabel, collapsed) {
-    if (!wrapper || !header) return;
-    if (collapsed) {
-      if (wrapper.parentNode !== header) {
-        header.appendChild(wrapper);
-      }
-      return;
-    }
-    if (listLabel && listLabel.parentElement) {
-      const sameParent = wrapper.parentNode === listLabel.parentElement;
-      const alreadyNext = wrapper.previousElementSibling === listLabel;
-      if (!sameParent || !alreadyNext) {
-        listLabel.insertAdjacentElement('afterend', wrapper);
-      }
-      return;
-    }
-    if (wrapper.parentNode !== header) {
-      header.appendChild(wrapper);
-    }
+    const label = active ? 'Script für diese Spalte ausschalten' : 'Script für diese Spalte einschalten';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-pressed', String(active));
+    button.style.display = '';
   }
 
   /******************************************************************
@@ -3883,52 +3823,32 @@
       color: toolbarTextColor
     });
 
-    function persistProjectFlag(field, value) {
-      if (!projectSettings || !projectSettings.projectKey) return;
-      projectSettings[field] = value;
-      const payload = {};
-      payload[field] = value;
-      writeProjectConfigEntry(projectSettings.projectKey, payload);
-    }
-
-    const togglesContainer = document.createElement('div');
-    applyStyles(togglesContainer, {
-      display: 'flex',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      alignItems: 'center',
-      rowGap: '0.5rem',
-      columnGap: '1rem',
-      padding: '1em 0',
-      minWidth: '220px'
-    });
+    let refreshAgeHighlightSection = null;
 
     const showToggle = makeSwitch('Anzeigen', showEnabled, function (val) {
       showEnabled = val;
-      persistProjectFlag('showEnabled', showEnabled);
+      saveFeature('show', showEnabled);
       log('Anzeigen geändert auf:', showEnabled);
-      applyShowFlagToAllBadges();
-      applyShowFlagToDetailBadges();
       if (showEnabled) {
         clearProgressCache();
-        const hostConfig = getCurrentHostConfig();
-        const projectSettings = hostConfig && getProjectSettings(hostConfig);
-        if (hostConfig && projectSettings) {
-          scanBoard(hostConfig, projectSettings);
-          scanIssueDetail(hostConfig, projectSettings);
-        }
+        createMrLinksBar();
+      } else {
+        const existingMrLinks = document.getElementById('js-my-mr-links');
+        if (existingMrLinks) existingMrLinks.remove();
       }
+      // entfernt alle Injektionen; Scans fügen bei „aus" nichts mehr ein
+      rerenderFeatures();
     });
 
     const debugToggle = makeSwitch('Debug', debugEnabled, function (val) {
       debugEnabled = val;
-      persistProjectFlag('debugEnabled', debugEnabled);
+      saveFeature('debug', debugEnabled);
       console.log(LOG_PREFIX, 'Debug geändert auf:', debugEnabled);
     });
 
     const mrLinksToggle = makeSwitch('MR Buttons anzeigen', mrLinksEnabled, function (val) {
       mrLinksEnabled = val;
-      persistProjectFlag('mrLinksEnabled', mrLinksEnabled);
+      saveFeature('mrLinks', mrLinksEnabled);
       log('MR-Buttons geändert auf:', mrLinksEnabled);
       if (mrLinksEnabled) {
         createMrLinksBar();
@@ -3938,9 +3858,33 @@
       }
     });
 
-    togglesContainer.appendChild(showToggle);
-    togglesContainer.appendChild(debugToggle);
-    togglesContainer.appendChild(mrLinksToggle);
+    // Alle Injektionen entfernen und neu scannen – Daten kommen aus den Caches, kein Request-Burst
+    function rerenderFeatures() {
+      document.querySelectorAll(
+        '.ambient-progress-badge, .ambient-mr-badge, .ambient-column-age, .ambient-column-avg,' +
+        ' .ambient-progress-detail-badge, .ambient-progress-mr-badge, .ambient-ticket-assignee-badge'
+      ).forEach(function (el) { el.remove(); });
+      document.querySelectorAll('[data-ambient-progress-processed]').forEach(clearCardInjections);
+      document.querySelectorAll(
+        '[data-ambient-progress-issue-iid], [data-ambient-progress-mr-issue-iid], [data-ambient-ticket-assignee-iid]'
+      ).forEach(function (el) {
+        delete el.dataset.ambientProgressIssueIid;
+        delete el.dataset.ambientProgressMrIssueIid;
+        delete el.dataset.ambientTicketAssigneeIid;
+      });
+      if (!projectSettings) return;
+      if (isMergeRequestPage()) {
+        scanMergeRequestPage(hostConfig, projectSettings);
+      } else {
+        scanBoard(hostConfig, projectSettings);
+        scanIssueDetail(hostConfig, projectSettings);
+      }
+    }
+
+    const globalSection = createGlobalSettingsSection(mrLinksToggle, debugToggle, function () {
+      rerenderFeatures();
+      if (refreshAgeHighlightSection) refreshAgeHighlightSection();
+    });
 
     const gearWrapper = document.createElement('div');
     gearWrapper.classList.add('gl-disclosure-dropdown', 'super-sidebar-new-menu-dropdown', 'gl-new-dropdown');
@@ -4050,21 +3994,34 @@
       zIndex: '150',
       gap: '0',
       padding: '0.75rem',
+      width: '320px',
+      maxHeight: 'calc(100vh - 80px)',
+      overflowY: 'auto',
       opacity: '0',
       transform: 'translateY(-8px) scale(0.97)',
       pointerEvents: 'none',
       transition: 'opacity 0.2s ease, transform 0.2s ease'
     });
 
+    const versionRow = document.createElement('div');
+    applyStyles(versionRow, {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '0.5rem',
+      paddingBottom: '0.35rem'
+    });
     const versionLabel = document.createElement('div');
     versionLabel.textContent = 'Version: ' + SCRIPT_VERSION;
     applyStyles(versionLabel, {
       fontSize: '0.75rem',
       letterSpacing: '0.04em',
-      opacity: '0.8',
-      paddingBottom: '0.2rem'
+      opacity: '0.8'
     });
-    dropdown.appendChild(versionLabel);
+    showToggle.title = 'Blendet alle Anzeigen des Scripts auf einmal aus (gilt für alle Boards)';
+    versionRow.appendChild(versionLabel);
+    versionRow.appendChild(showToggle);
+    dropdown.appendChild(versionRow);
 
     const timestampRow = document.createElement('div');
     applyStyles(timestampRow, {
@@ -4184,16 +4141,29 @@
     dropdown.appendChild(rateLimitNotificationRow);
     updateRateLimitWarningUI(getCachedRateLimitWarning());
 
-    dropdown.appendChild(togglesContainer);
-    let refreshAgeHighlightSection = null;
+    dropdown.appendChild(globalSection);
+    let projectConfigDetails = null;
     if (projectSettings) {
+      const boardSection = document.createElement('div');
+      boardSection.appendChild(createSettingsGroupHeader(
+        'Board-Einstellungen',
+        'Gelten nur für ' + (projectSettings.projectPath || 'dieses Board')
+      ));
       const ageHighlightSection = createAgeHighlightSection(projectSettings);
       refreshAgeHighlightSection = ageHighlightSection.refresh;
-      dropdown.appendChild(ageHighlightSection.element);
-    }
-    if (projectSettings) {
+      boardSection.appendChild(ageHighlightSection.element);
+
       const projectConfigSection = createProjectConfigSection(hostConfig, projectSettings, updateSaveButtonState);
-      dropdown.appendChild(projectConfigSection);
+      projectConfigSection.removeChild(projectConfigSection.firstChild); // Überschrift steckt im <summary>
+      projectConfigSection.style.borderTop = 'none';
+      // Eingerichtete Boards brauchen die Konfiguration selten → zugeklappt
+      projectConfigDetails = createCollapsible(
+        'Projekt-Konfiguration',
+        !(projectSettings.projectId && projectSettings.portalBaseUrl)
+      );
+      projectConfigDetails.body.appendChild(projectConfigSection);
+      boardSection.appendChild(projectConfigDetails.element);
+      dropdown.appendChild(boardSection);
     }
 
     const saveRow = document.createElement('div');
@@ -4347,7 +4317,7 @@
     });
     saveRow.appendChild(saveButton);
     updateSaveButtonState();
-    dropdown.appendChild(saveRow);
+    (projectConfigDetails ? projectConfigDetails.body : dropdown).appendChild(saveRow);
     gearWrapper.appendChild(gearButton);
     gearWrapper.appendChild(dropdown);
     bar.appendChild(gearWrapper);
@@ -4517,7 +4487,7 @@
   }
 
   function createMrLinksBar() {
-    if (!mrLinksEnabled) {
+    if (!mrLinksEnabled || !showEnabled) {
       log('[createMrLinksBar] MR-Buttons deaktiviert – abbruch');
       return;
     }
@@ -4546,7 +4516,7 @@
 
   function repositionMrLinksIfNeeded() {
     const linksBar = document.getElementById('js-my-mr-links');
-    if (!mrLinksEnabled) {
+    if (!mrLinksEnabled || !showEnabled) {
       if (linksBar) linksBar.remove();
       return;
     }
@@ -4563,14 +4533,127 @@
     }
   }
 
+  const SETTINGS_SUBHEADING_STYLES = {
+    fontSize: '0.8rem',
+    letterSpacing: '0.05em',
+    textTransform: 'uppercase',
+    opacity: '0.75',
+    fontWeight: '600'
+  };
+
+  function createSettingsGroupHeader(title, subtitle) {
+    const header = document.createElement('div');
+    applyStyles(header, {
+      borderTop: '1px solid #2f374c',
+      padding: '0.6rem 0 0.2rem 0',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.1rem'
+    });
+    const titleElem = document.createElement('div');
+    titleElem.textContent = title;
+    applyStyles(titleElem, {fontSize: '0.95rem', fontWeight: '700'});
+    const subtitleElem = document.createElement('div');
+    subtitleElem.textContent = subtitle;
+    applyStyles(subtitleElem, {fontSize: '0.75rem', opacity: '0.65'});
+    header.appendChild(titleElem);
+    header.appendChild(subtitleElem);
+    return header;
+  }
+
+  function createCollapsible(title, open) {
+    const details = document.createElement('details');
+    details.open = Boolean(open);
+    applyStyles(details, {padding: '0.4rem 0'});
+    const summary = document.createElement('summary');
+    summary.textContent = title;
+    applyStyles(summary, Object.assign({cursor: 'pointer'}, SETTINGS_SUBHEADING_STYLES));
+    const body = document.createElement('div');
+    applyStyles(body, {paddingTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.4rem'});
+    details.appendChild(summary);
+    details.appendChild(body);
+    return {element: details, body: body};
+  }
+
+  function setSettingDisabled(elem, disabled) {
+    applyStyles(elem, {opacity: disabled ? '0.45' : '1', pointerEvents: disabled ? 'none' : ''});
+    const input = elem.querySelector('input');
+    if (input) input.disabled = disabled;
+  }
+
+  const FEATURE_MENU = [
+    {title: 'Karten', items: [
+      ['progress', 'Progress-Bar (Portal)'],
+      ['portalButtons', 'Portal- & Timesheet-Buttons'],
+      ['mrBadge', 'MR-Badge'],
+      ['mrAvatars', 'Assignee-/Reviewer-Avatare'],
+      ['columnAge', 'Verweildauer (Uhr im Footer)']
+    ]},
+    {title: 'Spalten', items: [
+      ['columnAvg', 'Ø Verweildauer im Header']
+    ]},
+    {title: 'Andere Ansichten', items: [
+      ['mrLinks'],
+      ['issueDetail', 'Progress im Issue-Detail'],
+      ['mrPageProgress', 'Progress im MR'],
+      ['mrAssigneeButtons', 'Ticket-Assignee-Buttons im MR']
+    ]}
+  ];
+
+  function createGlobalSettingsSection(mrLinksToggle, debugToggle, onFeatureChanged) {
+    const section = document.createElement('div');
+    section.appendChild(createSettingsGroupHeader('Globale Einstellungen', 'Gelten für alle Boards'));
+    const subRows = [];
+
+    function updateSubRows() {
+      subRows.forEach(function (row) {
+        setSettingDisabled(row.elem, !isFeatureOn(FEATURE_PARENTS[row.key]));
+      });
+    }
+
+    FEATURE_MENU.forEach(function (group) {
+      const groupElem = document.createElement('div');
+      applyStyles(groupElem, {display: 'flex', flexDirection: 'column', gap: '0.35rem', padding: '0.4rem 0'});
+      const heading = document.createElement('div');
+      heading.textContent = group.title;
+      applyStyles(heading, SETTINGS_SUBHEADING_STYLES);
+      groupElem.appendChild(heading);
+      group.items.forEach(function (item) {
+        const key = item[0];
+        const row = key === 'mrLinks'
+          ? mrLinksToggle
+          : makeSwitch(item[1], features[key] !== false, function (val) {
+            saveFeature(key, val);
+            updateSubRows();
+            onFeatureChanged();
+          });
+        applyStyles(row, {justifyContent: 'space-between'});
+        if (FEATURE_PARENTS[key]) {
+          row.style.paddingLeft = '1rem';
+          subRows.push({key: key, elem: row});
+        }
+        groupElem.appendChild(row);
+      });
+      section.appendChild(groupElem);
+    });
+
+    const advanced = createCollapsible('Erweitert', false);
+    applyStyles(debugToggle, {justifyContent: 'space-between'});
+    advanced.body.appendChild(debugToggle);
+    section.appendChild(advanced.element);
+
+    mrLinksToggle.querySelector('span').textContent = 'MR-Buttons in der Topbar';
+    updateSubRows();
+    return section;
+  }
+
   function createAgeHighlightSection(projectSettings) {
     const panelBackground = getGitLabWindowBackgroundColor(true);
     const panelTextColor = getToolbarForegroundColor();
     const section = document.createElement('div');
     applyStyles(section, {
-      padding: '0.5rem 0',
+      padding: '0.4rem 0',
       width: '100%',
-      borderTop: '1px solid #2f374c',
       display: 'flex',
       flexDirection: 'column',
       gap: '0.4rem',
@@ -4634,6 +4717,11 @@
     // Spalten erst beim Öffnen lesen – Board ist beim Toolbar-Aufbau evtl. noch nicht gerendert
     function refresh() {
       loadAgeHighlightLookup(projectSettings.projectKey);
+      // Rahmen braucht die Verweildauer-Daten
+      setSettingDisabled(combo, !isFeatureOn('columnAge'));
+      hint.textContent = isFeatureOn('columnAge')
+        ? 'Spalten, in denen Tickets über dem Spalten-Ø rot umrandet werden.'
+        : 'Benötigt die globale Einstellung „Verweildauer".';
       options.innerHTML = '';
       const labels = [];
       document.querySelectorAll('div[data-testid="board-list"]').forEach(function (boardListElem) {
@@ -4973,15 +5061,9 @@
       return;
     }
 
-    if (typeof projectSettings.showEnabled === 'boolean') {
-      showEnabled = projectSettings.showEnabled;
-    }
-    if (typeof projectSettings.debugEnabled === 'boolean') {
-      debugEnabled = projectSettings.debugEnabled;
-    }
-    if (typeof projectSettings.mrLinksEnabled === 'boolean') {
-      mrLinksEnabled = projectSettings.mrLinksEnabled;
-    }
+    showEnabled = typeof features.show === 'boolean' ? features.show : projectSettings.showEnabled;
+    debugEnabled = typeof features.debug === 'boolean' ? features.debug : projectSettings.debugEnabled;
+    mrLinksEnabled = typeof features.mrLinks === 'boolean' ? features.mrLinks : projectSettings.mrLinksEnabled;
 
     log('hostConfig:', hostConfig);
     log('projectSettings:', projectSettings);

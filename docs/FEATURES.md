@@ -23,10 +23,12 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
 
 ## Toolbar & Bedienelemente
 
-- Platziert eine Toolbar rechts in der GitLab-Topbar, zeigt dort Versionslabel, `Anzeigen`- und `Debug`-Toggles,
-  einen Gear-Button sowie die „Cache leeren"- und „Einstellungen speichern"-Actions.
-- Fügt pro Board-Spalte eine Checkbox direkt neben dem Spalten-Titel ein, damit du die Listen zur Progress-Anzeige
-  ein- oder ausschaltest. Die Auswahl wird lokal gespeichert (haftet an den Projekt-Keys) und aktiviert den
+- Platziert eine Toolbar rechts in der GitLab-Topbar mit einem Gear-Button. Das Menü zeigt Version, `Anzeigen`-Schalter
+  und letzte Aktualisierung, darunter jedes Feature einzeln schaltbar als „Globale Einstellungen" sowie die
+  „Board-Einstellungen" (roter Rahmen, Projekt-Konfiguration). Details siehe [Lokale Controls](CONTROLS.md).
+- Fügt pro Board-Spalte einen Augen-Button in GitLabs Button-Gruppe (neben `+` und `⚙`) ein, mit dem du das Script
+  für die Spalte ein- oder ausschaltest (Auge = an, durchgestrichenes Auge = aus). In eingeklappten Spalten blendet
+  GitLab die Button-Gruppe samt Augen-Button aus. Die Auswahl wird lokal gespeichert (haftet an den Projekt-Keys) und aktiviert den
   expliziten Modus, wenn du manuell eingreifst.
 - Fügt pro Board-Karte ein Overlay-Badge ein, das eine farbige Progressbar, `spent`/`remaining`-Labels (oder
   Over-/Booked-Hours-Fallback) sowie einen `↗`-Button zum entsprechenden Portal-Ticket enthält. Booked-Hours-Fallbacks
@@ -91,8 +93,8 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
   geladenen Karte aktualisiert. Tickets, die länger als der Durchschnitt in der Spalte liegen, bekommen einen
   roten Rahmen – aber nur in Spalten, die in den Einstellungen (Zahnrad) unter „Roter Rahmen bei
   Ø-Überschreitung" ausgewählt sind. Die Auswahl wird pro Board im localStorage gespeichert.
-- Der Spalten-Ø steht im Spalten-Header links neben der Checkbox (`Ø 4d`, ab der ersten geladenen
-  Karte). Beim Hovern erklärt ein Hilfetext, was der Wert bedeutet.
+- Der Spalten-Ø steht im Spalten-Header mit Uhr-Icon direkt vor GitLabs Issue-Zähler (`🕓 4d  ▢ 12`, ab der ersten
+  geladenen Karte) und nutzt dessen Schrift und Farbe. Beim Hovern erklärt ein Hilfetext, was der Wert bedeutet.
 - Spalten ohne Label (`Open`, `Closed`) sowie Tickets, deren Label-Event nicht (mehr) auffindbar ist, zeigen keine
   Dauer an.
 - Die Events werden nur im Speicher gecacht. Wird eine Karte per Drag & Drop verschoben, aktualisiert sich die
