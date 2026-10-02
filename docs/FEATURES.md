@@ -5,7 +5,7 @@
 Das Script unterstützt die gleichzeitige Abfrage von **zwei verschiedenen Portal-Projekten** pro GitLab-Board. Dies ist
 nützlich, wenn Tickets über mehrere Abteilungen oder Kostenplätze gebuchte Stunden abbilden sollen.
 
-### Einrichtung der zweiten Projekt-ID:
+### Einrichtung der zweiten Projekt-ID
 
 1. Öffne das Zahnrad-Menü in der GitLab-Topbar und navigiere zur „Projekt-Konfiguration"
 2. Aktiviere das Kontrollkästchen **„Zweite Projekt-ID verwenden"**
@@ -62,3 +62,30 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
   Portal-Projekten zu kombinieren. Wenn aktiviert, lädt das Script Daten von beiden Projekt-IDs und aggregiert sie in
   der angezeigten Progressbar (Summe aller Stunden, kombinierte Auslastung). Jedes Board-Projekt speichert diese
   Einstellung separat.
+- Zeigt in der Toolbar zwei MR-Icon-Buttons („Meine MRs" / „MRs, bei denen ich Reviewer bin"), die direkt zur
+  gefilterten Merge-Request-Liste des aktuellen Projekts verlinken.
+
+## MR-Badge auf Board-Karten
+
+- Erkennt pro Issue-Karte automatisch, ob ein oder mehrere Merge Requests zum Ticket existieren (Matching über die
+  Ticket-ID als Wortgrenzen-Token im MR-Titel, z. B. `#1891`) und zeigt rechts neben der Ticket-ID ein MR-Icon an.
+- Genau ein Treffer: Icon verlinkt direkt (neuer Tab) zum MR und zeigt `!<MR-Nummer>` daneben.
+- Mehrere Treffer: Icon zeigt eine Anzahl-Badge, Tooltip listet alle Titel, Klick öffnet die nach der Ticket-ID
+  gefilterte MR-Liste im Projekt (neuer Tab).
+- Ist der MR bereits gemerged, wird das Badge ausgegraut und mit einem Häkchen markiert.
+- Bei genau einem Treffer werden zusätzlich kleine, überlappende Avatare für MR-Assignee und ersten Reviewer
+  angezeigt (Reviewer überlappt Assignee um ca. 25 %). Fehlt ein Assignee/Reviewer, erscheint ein grauer
+  Platzhalter mit „?“. Der Reviewer-Platzhalter ist klickbar: „Mich als Reviewer zuweisen“ trägt dich direkt per
+  API als Reviewer auf dem MR ein.
+- Die MR-Liste pro Projekt wird über `GET /api/v4/projects/:id/merge_requests` geladen und 5 Minuten im Speicher
+  gecacht (kein localStorage, nur für die laufende Seiten-Session).
+
+## Ticket-Assignee direkt im MR
+
+- Auf der Merge-Request-Detailseite zeigt das Script oberhalb des GitLab-Assignee-Blocks an, wer aktuell dem
+  verlinkten Ticket (Issue) zugewiesen ist.
+- Zwei Quick-Buttons erlauben das Umzuweisen des Tickets auf den MR-Assignee bzw. den MR-Author, ohne das Ticket
+  selbst öffnen zu müssen. Sind MR-Assignee und MR-Author dieselbe Person, erscheint nur ein Button. Ist die
+  Person bereits Ticket-Assignee, wird ihr Button ausgeblendet.
+- Das Umzuweisen erfolgt per `PUT /api/v4/projects/:id/issues/:issue_iid` (Session-Auth + CSRF-Token aus der
+  Seite), keine zusätzliche Anmeldung nötig.

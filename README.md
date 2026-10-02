@@ -9,14 +9,14 @@ ausgewählten Spalten an, inklusive eines Buttons, der direkt ins Portal führt.
 Die Datei `portal-gitlab-ticket-progress.js` in diesem Repository ist das volle Tampermonkey-Skript; Tampermonkey lädt
 sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automatisch die neueste Version bekommen.
 
-### Pre-Installation:
+### Pre-Installation
 
 1. Tampermonkey Script
    installieren: [Chrome Web Store](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=en&pli=1)
    oder [Firefox](https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/)
 2. [User Scripts erlauben](https://www.tampermonkey.net/faq.php?q=Q209)
 
-### Installationsschritte:
+### Installationsschritte
 
 1. Öffne das Tampermonkey-Dashboard (Icon in der Erweiterungsleiste → "Dashboard" (englisch) / "Übersicht" (deutsch)).
 2. Klicke auf "Utilities" / "Hilfsmittel" im Dashboard (NICHT im Dropdown Menü des Icons der Erweiterungsleiste!) und

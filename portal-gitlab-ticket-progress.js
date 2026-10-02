@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      5.3.0
+// @version      5.4.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @include      https://gitlab*/*/-/*
@@ -19,7 +19,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '5.3.0';
+  const SCRIPT_VERSION = '5.4.0';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   const MERGE_REQUEST_ICON_SVG = '<svg data-testid="merge-request-icon" role="img" aria-hidden="true" class="gl-button-icon gl-icon s16 gl-fill-current"><use href="/assets/icons-5a3f88503a318f1eaf3b49d9d82c93cdde31fd5224ab8aeeb08534974b21f10c.svg#merge-request"></use></svg>';
@@ -1668,6 +1668,11 @@
     return null;
   }
 
+  function findMatchingMrs(mrs, issueIid) {
+    const re = new RegExp('(^|[^0-9])#' + issueIid + '(?!\\d)');
+    return mrs.filter(function (mr) { return re.test(mr.title); });
+  }
+
   function normalizePortalBaseUrl(value) {
     if (!value) {
       return null;
@@ -2177,6 +2182,284 @@
   }
 
   /******************************************************************
+   * MR-Badge auf Karten
+   ******************************************************************/
+
+  const MR_LIST_CACHE_TTL_MS = 5 * 60 * 1000; // ponytail: in-memory only, kein localStorage nötig
+  const mrListCache = {}; // key: projectPath → {mrs: [{iid, title, web_url}], timestamp}
+
+  let currentUserPromise = null;
+
+  function getCurrentUser() {
+    if (!currentUserPromise) {
+      currentUserPromise = fetch('/api/v4/user', {credentials: 'include'})
+        .then(function (res) {
+          if (!res.ok) throw new Error('Aktueller User Status ' + res.status);
+          return res.json();
+        });
+    }
+    return currentUserPromise;
+  }
+
+  function getCsrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.content : null;
+  }
+
+  function assignCurrentUserAsReviewer(projectPath, mrIid) {
+    return getCurrentUser().then(function (user) {
+      const url = '/api/v4/projects/' + encodeURIComponent(projectPath) +
+        '/merge_requests/' + mrIid;
+      return fetch(url, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken()
+        },
+        body: JSON.stringify({reviewer_ids: [user.id]})
+      }).then(function (res) {
+        if (!res.ok) throw new Error('Reviewer zuweisen Status ' + res.status);
+        return user;
+      });
+    });
+  }
+
+  function loadMergeRequestsForProject(projectPath) {
+    const cached = mrListCache[projectPath];
+    if (cached && Date.now() - cached.timestamp <= MR_LIST_CACHE_TTL_MS) {
+      return Promise.resolve(cached.mrs);
+    }
+    const url = '/api/v4/projects/' + encodeURIComponent(projectPath) +
+      '/merge_requests?per_page=100&order_by=updated_at';
+    return fetch(url, {credentials: 'include'})
+      .then(function (res) {
+        if (!res.ok) throw new Error('MR-Liste Status ' + res.status);
+        return res.json();
+      })
+      .then(function (list) {
+        // ponytail: per_page=100, keine Paginierung – bei >100 offenen MRs fehlen ältere
+        const mrs = list.map(function (mr) {
+          return {
+            iid: mr.iid,
+            title: mr.title,
+            web_url: mr.web_url,
+            state: mr.state,
+            assignee: (mr.assignees && mr.assignees[0]) || mr.assignee || null,
+            reviewers: mr.reviewers || []
+          };
+        });
+        mrListCache[projectPath] = {mrs: mrs, timestamp: Date.now()};
+        return mrs;
+      });
+  }
+
+  function injectMrBadgeIntoCard(cardElem, matches, projectPath, issueIid) {
+    const footer = cardElem.querySelector('.board-card-footer');
+    if (!footer) return;
+    const existing = footer.querySelector('.ambient-mr-badge');
+    if (existing) existing.remove();
+    if (!matches.length) return;
+
+    const el = document.createElement('a');
+    el.className = 'ambient-mr-badge';
+    const targetUrl = matches.length === 1
+      ? matches[0].web_url
+      : '/' + projectPath + '/-/merge_requests/?scope=all&state=all&search=%23' + issueIid;
+    el.href = targetUrl;
+    el.target = '_blank';
+    el.rel = 'noopener noreferrer';
+    el.title = matches.length === 1
+      ? matches[0].title
+      : matches.map(function (m) { return m.title; }).join('\n');
+    el.addEventListener(
+      'click',
+      function (ev) {
+        if (ev.target.closest && ev.target.closest('.ambient-mr-reviewer-placeholder')) {
+          return;
+        }
+        ev.stopPropagation();
+        ev.preventDefault();
+        window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      },
+      true
+    );
+    const numberElem = footer.querySelector('.board-card-number');
+    const matchedColor = numberElem ? getComputedStyle(numberElem).color : 'inherit';
+    const allMerged = matches.every(function (m) { return m.state === 'merged'; });
+    const badgeColor = allMerged ? '#8e8e93' : matchedColor;
+
+    applyStyles(el, {
+      position: 'relative',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '2px',
+      height: '20px',
+      color: badgeColor,
+      opacity: allMerged ? '0.6' : '0.85',
+      textDecoration: 'none'
+    });
+    attachHoverEffect(el, {opacity: allMerged ? '0.8' : '1'});
+
+    const icon = document.createElement('span');
+    icon.innerHTML = MERGE_REQUEST_ICON_SVG;
+    applyStyles(icon, {width: '16px', height: '16px', display: 'inline-flex'});
+    el.appendChild(icon);
+
+    if (matches.length === 1) {
+      const numberText = document.createElement('span');
+      numberText.textContent = '!' + matches[0].iid;
+      applyStyles(numberText, {fontSize: '12px', lineHeight: '1', fontWeight: 'bold'});
+      el.appendChild(numberText);
+    }
+
+    if (matches.length > 1) {
+      const badge = document.createElement('span');
+      badge.textContent = String(matches.length);
+      applyStyles(badge, {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: '14px',
+        height: '14px',
+        padding: '0 3px',
+        borderRadius: '7px',
+        background: allMerged ? '#8e8e93' : '#3b82f6',
+        color: '#fff',
+        fontSize: '9px',
+        fontWeight: '700',
+        lineHeight: '14px',
+        textAlign: 'center'
+      });
+      el.appendChild(badge);
+    }
+
+    if (allMerged) {
+      const checkmark = document.createElement('span');
+      checkmark.textContent = '✓';
+      checkmark.title = 'Gemerged';
+      applyStyles(checkmark, {fontSize: '12px', fontWeight: '700', lineHeight: '1'});
+      el.appendChild(checkmark);
+    }
+
+    if (!allMerged && matches.length === 1) {
+      const assignee = matches[0].assignee;
+      const reviewers = matches[0].reviewers || [];
+
+      const avatarRow = document.createElement('span');
+      applyStyles(avatarRow, {display: 'inline-flex', alignItems: 'center', marginLeft: '2px', cursor: 'default'});
+
+      function appendAvatar(user, label, overlap) {
+        const avatar = document.createElement('img');
+        avatar.src = user.avatar_url;
+        avatar.alt = user.name || user.username || label;
+        avatar.title = label + ': ' + (user.name || user.username);
+        applyStyles(avatar, {
+          width: '16px',
+          height: '16px',
+          borderRadius: '50%',
+          marginLeft: overlap ? '-4px' : '0',
+          position: 'relative',
+          zIndex: overlap ? '1' : '0',
+          border: '1px solid ' + matchedColor,
+          boxSizing: 'border-box',
+          cursor: 'default'
+        });
+        avatarRow.appendChild(avatar);
+      }
+
+      function appendPlaceholder(label, overlap, onClick) {
+        const placeholder = document.createElement('span');
+        if (onClick) placeholder.className = 'ambient-mr-reviewer-placeholder';
+        placeholder.title = onClick ? 'Mich als Reviewer zuweisen' : 'Kein ' + label + ' zugewiesen';
+        applyStyles(placeholder, {
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '16px',
+          height: '16px',
+          borderRadius: '50%',
+          marginLeft: overlap ? '-4px' : '0',
+          position: 'relative',
+          zIndex: overlap ? '1' : '0',
+          background: '#8e8e93',
+          color: '#fff',
+          fontSize: '10px',
+          fontWeight: '700',
+          lineHeight: '1',
+          border: '1px solid ' + matchedColor,
+          boxSizing: 'border-box',
+          cursor: onClick ? 'pointer' : 'default'
+        });
+        placeholder.textContent = '?';
+        if (onClick) {
+          placeholder.addEventListener(
+            'click',
+            function (ev) {
+              ev.stopPropagation();
+              ev.preventDefault();
+              onClick();
+            },
+            true
+          );
+        }
+        avatarRow.appendChild(placeholder);
+      }
+
+      if (assignee) {
+        appendAvatar(assignee, 'Assignee', false);
+      } else {
+        appendPlaceholder('Assignee', false);
+      }
+
+      if (reviewers.length) {
+        reviewers.forEach(function (reviewer) {
+          appendAvatar(reviewer, 'Reviewer', true);
+        });
+      } else {
+        const mrIid = matches[0].iid;
+        appendPlaceholder('Reviewer', true, function () {
+          assignCurrentUserAsReviewer(projectPath, mrIid)
+            .then(function (user) {
+              matches[0].reviewers = [user];
+              const cachedEntry = mrListCache[projectPath];
+              if (cachedEntry) {
+                const cachedMr = cachedEntry.mrs.find(function (m) { return m.iid === mrIid; });
+                if (cachedMr) cachedMr.reviewers = [user];
+              }
+              injectMrBadgeIntoCard(cardElem, matches, projectPath, issueIid);
+            })
+            .catch(function (err) {
+              error('Konnte Reviewer nicht zuweisen für MR', mrIid, err);
+            });
+        });
+      }
+
+      el.appendChild(avatarRow);
+    }
+
+    if (numberElem) {
+      numberElem.insertAdjacentElement('afterend', el);
+    } else {
+      footer.insertBefore(el, footer.firstChild);
+    }
+  }
+
+  function fetchAndDisplayMrInfo(projectSettings, issueIid, cardElem) {
+    const projectPath = projectSettings && projectSettings.projectPath;
+    if (!projectPath || !issueIid || !cardElem) return;
+    loadMergeRequestsForProject(projectPath)
+      .then(function (mrs) {
+        const matches = findMatchingMrs(mrs, issueIid);
+        injectMrBadgeIntoCard(cardElem, matches, projectPath, issueIid);
+      })
+      .catch(function (err) {
+        error('MR-Liste konnte nicht geladen werden für', projectPath, err);
+      });
+  }
+
+  /******************************************************************
    * Requests
    ******************************************************************/
 
@@ -2416,6 +2699,8 @@
           cardElem.setAttribute('data-ambient-progress-processed', '1');
           continue;
         }
+
+        fetchAndDisplayMrInfo(projectSettings, issueIid, cardElem);
 
         if (newFetchesThisScan >= MAX_NEW_FETCHES_PER_SCAN) {
           limitReached = true;
@@ -2686,6 +2971,182 @@
     }
   }
 
+  /******************************************************************
+   * Ticket-Assignee-Umzuweisen auf der MR-Detailseite
+   ******************************************************************/
+
+  function loadMergeRequestDetails(projectPath, mrIid) {
+    const url = '/api/v4/projects/' + encodeURIComponent(projectPath) + '/merge_requests/' + mrIid;
+    return fetch(url, {credentials: 'include'})
+      .then(function (res) {
+        if (!res.ok) throw new Error('MR-Status ' + res.status);
+        return res.json();
+      })
+      .then(function (mr) {
+        return {
+          author: mr.author || null,
+          assignee: (mr.assignees && mr.assignees[0]) || mr.assignee || null
+        };
+      });
+  }
+
+  function getMrIidFromLocation() {
+    const match = window.location.pathname.match(/\/merge_requests\/(\d+)/);
+    return match ? match[1] : null;
+  }
+
+  function loadIssueAssignees(projectPath, issueIid) {
+    const url = '/api/v4/projects/' + encodeURIComponent(projectPath) + '/issues/' + issueIid;
+    return fetch(url, {credentials: 'include'})
+      .then(function (res) {
+        if (!res.ok) throw new Error('Issue-Status ' + res.status);
+        return res.json();
+      })
+      .then(function (issue) {
+        return issue.assignees || [];
+      });
+  }
+
+  function updateIssueAssignee(projectPath, issueIid, userId) {
+    const url = '/api/v4/projects/' + encodeURIComponent(projectPath) + '/issues/' + issueIid;
+    return fetch(url, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': getCsrfToken()
+      },
+      body: JSON.stringify({assignee_ids: [userId]})
+    }).then(function (res) {
+      if (!res.ok) throw new Error('Assignee-Update-Status ' + res.status);
+      return res.json();
+    });
+  }
+
+  function injectIssueAssigneeBlock(assigneeBlock, projectPath, issueIid) {
+    const parent = assigneeBlock.parentElement;
+    if (!parent || !projectPath || !issueIid) return;
+
+    let container = parent.querySelector('.ambient-ticket-assignee-badge');
+    if (!container) {
+      container = document.createElement('div');
+      container.className = 'ambient-ticket-assignee-badge';
+      const windowBackground = getGitLabWindowBackgroundColor(true);
+      applyStyles(container, {
+        padding: '0.5rem 0',
+        borderBottomStyle: 'solid',
+        borderBottomWidth: '1px',
+        borderColor: 'var(--gl-border-color-subtle)',
+        background: windowBackground,
+        fontSize: '12px',
+        display: 'flex',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '0.4rem'
+      });
+      parent.insertBefore(container, assigneeBlock);
+    }
+    container.innerHTML = '';
+
+    const label = document.createElement('span');
+    label.textContent = 'Ticket-Assignee:';
+    applyStyles(label, {fontWeight: '600', opacity: '0.8'});
+    container.appendChild(label);
+
+    const currentWrap = document.createElement('span');
+    currentWrap.textContent = 'Lädt…';
+    applyStyles(currentWrap, {display: 'inline-flex', alignItems: 'center', gap: '0.25rem'});
+    container.appendChild(currentWrap);
+
+    const quickActionsWrap = document.createElement('span');
+    applyStyles(quickActionsWrap, {display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem'});
+    container.appendChild(quickActionsWrap);
+
+    parent.dataset.ambientTicketAssigneeIid = issueIid;
+
+    function renderQuickActionButton(user, label, currentId) {
+      if (!user || user.id === currentId) return;
+      const button = document.createElement('button');
+      button.type = 'button';
+      applyStyles(button, mergeStyles(PORTAL_LINK_BUTTON_DEFAULT_STYLES, {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.25rem',
+        width: 'auto',
+        height: 'auto',
+        padding: '2px 6px',
+        borderRadius: '10px'
+      }));
+
+      const avatar = document.createElement('img');
+      avatar.src = user.avatar_url;
+      avatar.alt = user.name;
+      applyStyles(avatar, {width: '14px', height: '14px', borderRadius: '50%'});
+      button.appendChild(avatar);
+
+      const text = document.createElement('span');
+      text.textContent = label + ': ' + user.name;
+      applyStyles(text, {fontSize: '11px'});
+      button.appendChild(text);
+
+      button.addEventListener(
+        'click',
+        function (ev) {
+          ev.stopPropagation();
+          ev.preventDefault();
+          button.disabled = true;
+          updateIssueAssignee(projectPath, issueIid, user.id)
+            .then(function () {
+              injectIssueAssigneeBlock(assigneeBlock, projectPath, issueIid);
+            })
+            .catch(function (err) {
+              button.disabled = false;
+              error('Konnte Ticket-Assignee nicht aktualisieren für Issue', issueIid, err);
+            });
+        },
+        true
+      );
+
+      quickActionsWrap.appendChild(button);
+    }
+
+    const mrIid = getMrIidFromLocation();
+
+    Promise.all([
+      loadIssueAssignees(projectPath, issueIid),
+      mrIid ? loadMergeRequestDetails(projectPath, mrIid) : Promise.resolve({author: null, assignee: null})
+    ])
+      .then(function (results) {
+        const assignees = results[0];
+        const mrInfo = results[1];
+        const currentId = assignees[0] ? assignees[0].id : null;
+
+        currentWrap.innerHTML = '';
+        if (assignees.length) {
+          const avatar = document.createElement('img');
+          avatar.src = assignees[0].avatar_url;
+          avatar.alt = assignees[0].name;
+          applyStyles(avatar, {width: '16px', height: '16px', borderRadius: '50%'});
+          currentWrap.appendChild(avatar);
+          const name = document.createElement('span');
+          name.textContent = assignees[0].name;
+          currentWrap.appendChild(name);
+        } else {
+          currentWrap.textContent = 'Niemand zugewiesen';
+        }
+
+        const sameSame = mrInfo.assignee && mrInfo.author && mrInfo.assignee.id === mrInfo.author.id;
+        renderQuickActionButton(mrInfo.assignee, 'MR-Assignee zuweisen', currentId);
+        if (!sameSame) {
+          renderQuickActionButton(mrInfo.author, 'MR-Author zuweisen', currentId);
+        }
+      })
+      .catch(function (err) {
+        error('Konnte Ticket-Assignee-Infos nicht laden für Issue', issueIid, err);
+        currentWrap.textContent = 'Fehler beim Laden';
+      });
+  }
+
   function scanMergeRequestPage(hostConfig, projectSettings) {
     if (!hostConfig || !projectSettings) {
       log('scanMergeRequestPage übersprungen (Host/Project fehlt).');
@@ -2712,11 +3173,12 @@
     resetMRRetryState();
 
     const parent = assigneeBlock.parentElement;
-    if (parent && parent.dataset.ambientProgressMrIssueIid === issueIid) {
-      return;
+    if (!parent || parent.dataset.ambientProgressMrIssueIid !== issueIid) {
+      fetchAndDisplayProgressForMRDetail(hostConfig, projectSettings, issueIid, assigneeBlock);
     }
-
-    fetchAndDisplayProgressForMRDetail(hostConfig, projectSettings, issueIid, assigneeBlock);
+    if (!parent || parent.dataset.ambientTicketAssigneeIid !== issueIid) {
+      injectIssueAssigneeBlock(assigneeBlock, projectSettings.projectPath, issueIid);
+    }
   }
 
   function getIssueIidFromDetailView(detailElem) {

@@ -1,0 +1,8 @@
+{
+  "config": {
+    // MD013: project convention uses long prose lines, not hard-wrapped at 80.
+    "MD013": false
+  },
+  // CLAUDE.md is a Claude Code import pointer ("@AGENTS.md"), not prose docs.
+  "ignores": ["CLAUDE.md"]
+}
