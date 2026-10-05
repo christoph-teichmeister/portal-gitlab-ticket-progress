@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      5.6.2
+// @version      5.6.3
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @include      https://gitlab*/*/-/*
@@ -19,7 +19,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '5.6.2';
+  const SCRIPT_VERSION = '5.6.3';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   const MERGE_REQUEST_ICON_SVG = '<svg data-testid="merge-request-icon" role="img" aria-hidden="true" class="gl-button-icon gl-icon s16 gl-fill-current"><use href="/assets/icons-5a3f88503a318f1eaf3b49d9d82c93cdde31fd5224ab8aeeb08534974b21f10c.svg#merge-request"></use></svg>';
@@ -4144,11 +4144,13 @@
     dropdown.appendChild(globalSection);
     let projectConfigDetails = null;
     if (projectSettings) {
-      const boardSection = document.createElement('div');
-      boardSection.appendChild(createSettingsGroupHeader(
+      const boardConfigured = Boolean(projectSettings.projectId && projectSettings.portalBaseUrl);
+      // Zugeklappt, sobald das Board eingerichtet ist
+      const boardSection = createCollapsibleGroup(
         'Board-Einstellungen',
-        'Gelten nur für ' + (projectSettings.projectPath || 'dieses Board')
-      ));
+        'Gelten nur für ' + (projectSettings.projectPath || 'dieses Board'),
+        !boardConfigured
+      );
       const ageHighlightSection = createAgeHighlightSection(projectSettings);
       refreshAgeHighlightSection = ageHighlightSection.refresh;
       boardSection.appendChild(ageHighlightSection.element);
@@ -4159,7 +4161,7 @@
       // Eingerichtete Boards brauchen die Konfiguration selten → zugeklappt
       projectConfigDetails = createCollapsible(
         'Projekt-Konfiguration',
-        !(projectSettings.projectId && projectSettings.portalBaseUrl)
+        !boardConfigured
       );
       projectConfigDetails.body.appendChild(projectConfigSection);
       boardSection.appendChild(projectConfigDetails.element);
@@ -4561,6 +4563,23 @@
     return header;
   }
 
+  function createCollapsibleGroup(title, subtitle, open) {
+    const details = document.createElement('details');
+    details.open = Boolean(open);
+    const summary = document.createElement('summary');
+    applyStyles(summary, {cursor: 'pointer', listStyle: 'none'});
+    const header = createSettingsGroupHeader(title, subtitle);
+    const titleElem = header.firstChild;
+    function updateTitle() {
+      titleElem.textContent = (details.open ? '▾ ' : '▸ ') + title;
+    }
+    details.addEventListener('toggle', updateTitle);
+    updateTitle();
+    summary.appendChild(header);
+    details.appendChild(summary);
+    return details;
+  }
+
   function createCollapsible(title, open) {
     const details = document.createElement('details');
     details.open = Boolean(open);
@@ -4602,18 +4621,7 @@
 
   function createGlobalSettingsSection(mrLinksToggle, debugToggle, onFeatureChanged) {
     // Globale Einstellungen ändern sich selten → standardmäßig zugeklappt
-    const section = document.createElement('details');
-    const summary = document.createElement('summary');
-    applyStyles(summary, {cursor: 'pointer', listStyle: 'none'});
-    const header = createSettingsGroupHeader('Globale Einstellungen', 'Gelten für alle Boards');
-    const titleElem = header.firstChild;
-    function updateTitle() {
-      titleElem.textContent = (section.open ? '▾ ' : '▸ ') + 'Globale Einstellungen';
-    }
-    section.addEventListener('toggle', updateTitle);
-    updateTitle();
-    summary.appendChild(header);
-    section.appendChild(summary);
+    const section = createCollapsibleGroup('Globale Einstellungen', 'Gelten für alle Boards', false);
     const subRows = [];
 
     function updateSubRows() {
