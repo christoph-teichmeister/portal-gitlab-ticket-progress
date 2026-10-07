@@ -89,11 +89,11 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
   genaue Datum.
 - Grundlage ist die Label-Historie des Tickets (`GET /api/v4/projects/:id/issues/:iid/resource_label_events`):
   Gezählt wird ab dem letzten Mal, an dem das Spalten-Label hinzugefügt wurde.
-- Pro aktivierter Spalte wird der Durchschnitt über alle geladenen Karten berechnet und bei jeder neu
-  geladenen Karte aktualisiert. Tickets, die länger als der Durchschnitt in der Spalte liegen, bekommen einen
+- Pro aktivierter Spalte wird der Median über alle geladenen Karten berechnet und bei jeder neu
+  geladenen Karte aktualisiert. Tickets, die länger als der Median in der Spalte liegen, bekommen einen
   roten Rahmen – aber nur in Spalten, die in den Einstellungen (Zahnrad) unter „Roter Rahmen bei
-  Ø-Überschreitung" ausgewählt sind. Die Auswahl wird pro Board im localStorage gespeichert.
-- Der Spalten-Ø steht im Spalten-Header mit Uhr-Icon direkt vor GitLabs Issue-Zähler (`🕓 4d  ▢ 12`, ab der ersten
+  Median-Überschreitung" ausgewählt sind. Die Auswahl wird pro Board im localStorage gespeichert.
+- Der Spalten-Median steht im Spalten-Header mit Uhr-Icon direkt vor GitLabs Issue-Zähler (`🕓 4d  ▢ 12`, ab der ersten
   geladenen Karte) und nutzt dessen Schrift und Farbe. Beim Hovern erklärt ein Hilfetext, was der Wert bedeutet.
 - Spalten ohne Label (`Open`, `Closed`) sowie Tickets, deren Label-Event nicht (mehr) auffindbar ist, zeigen keine
   Dauer an.
@@ -201,3 +201,35 @@ Normaler Text neben den Quick Actions wird als sichtbarer Kommentar auf dem Tick
   MR“ aktiv, Ticket-Nummer im MR-Titel).
 - Du brauchst im Projekt die Rechte, die jeweiligen Quick Actions auszuführen (für Labels/Assignees mind.
   Reporter/Developer). Unbekannte Labels werden von GitLab stillschweigend ignoriert, prüfe deshalb die Schreibweise.
+
+## Neu in 2026.10.6 (aus den Experimenten übernommen)
+
+- **Warnfarbe im Balken:** gelb ab 80 % verbrauchter Stunden; der Prozentwert steht im Tooltip und Screenreader-Text.
+- **Stale-while-revalidate:** abgelaufene Portal-Werte (bis 24 h) erscheinen sofort gedimmt und werden im Hintergrund
+  erneuert; schlägt das fehl, bleibt der alte Wert mit Hinweis stehen.
+- **Cache-Alter** („geladen vor …“) im Balken-Tooltip. **Jetzt aktualisieren** leert den Cache und scannt neu, ohne
+  Seiten-Reload.
+- **Weitere Portal-Projekt-IDs** (bis zu 3 zusätzliche Balken): Zahnrad → Erweitert.
+- **Portal-Fehlerprotokoll:** Zahnrad → Erweitert → „Portal-Fehler anzeigen“.
+- **Verweildauer:** Median statt Durchschnitt; Verlauf pro Spalte im Tooltip; Eintrittszeiten 30 min in `localStorage`;
+  Aktualisierung nach Drag & Drop.
+- **Ticket-Aktionen als Dropdown** (Drei-Punkte-Icon) auf Karten und im Issue-Detail, im GitLab-Stil.
+- **Unassigned nach oben / Nach Assignee gruppieren:** pro Spalte über das Sortier-Icon im Spalten-Header. „Unassigned nach oben“ sortiert die Spalte per
+  `PUT …/issues/:iid/reorder` um. **Achtung:** das ändert die gespeicherte Reihenfolge für das ganze Team; es gibt eine
+  Rückfrage. „Nach Assignee gruppieren“ setzt zusätzlich die Tickets je Person (erster Assignee, alphabetisch) hintereinander,
+  Unassigned zuerst; innerhalb einer Gruppe bleibt die bisherige Reihenfolge.
+- **Split-Labels** (`workflow::…`) auch im Issue-Detail, Board-Drawer und auf der MR-Seite (nicht in Dropdowns und
+  der Filterleiste).
+- **Changelog** im Update-Hinweis (liest `CHANGELOG.md`), **Auto-Selbsttest** einmal nach jedem Script-Update und eine
+  **teilweise englische Oberfläche** (Zahnrad → Erweitert, Reload nötig).
+
+## Experimente (zum Testen)
+
+Zahnrad → Globale Einstellungen → Erweitert → **Experimente (zum Testen)**. Standardmäßig aus.
+
+| Experiment | Hinweis |
+|---|---|
+| Pipeline-Status am MR-Badge | farbiger Punkt; wird bei Bedarf pro MR nachgeladen |
+| Konfiguration als Link teilen | `#ptp-config=…`; Empfänger bestätigt vor dem Übernehmen, braucht den Schalter ebenfalls |
+
+Die reinen Funktionen lassen sich ohne npm prüfen: `node tests/pure.check.js`.

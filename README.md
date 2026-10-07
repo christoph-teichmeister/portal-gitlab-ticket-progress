@@ -76,7 +76,7 @@ Quick Actions:
 Weitere Details zur Nutzung und Konfiguration:
 
 - [Sicherheitsaspekte](docs/SECURITY.md) – Warum dieses Script sicher ist
-- [Wesentliche Features](docs/FEATURES.md) – Alle Funktionen im Überblick
+- [Wesentliche Features](docs/FEATURES.md) – Alle Funktionen im Überblick, inkl. [Experimente](docs/FEATURES.md#experimente-zum-testen)
 - [Konfiguration & Erweiterung](docs/CONFIGURATION.md) – Technische Konfigurationsdetails
 - [Lokale Controls](docs/CONTROLS.md) – Bedienung der Toggles und Einstellungen
 - [Hinweise](docs/NOTES.md) – Wichtige Besonderheiten und Limitationen

@@ -5,12 +5,12 @@ Das Einstellungs-Menü (Zahnrad) ist in **Globale Einstellungen** (gelten für a
 „Einstellungen speichern". Das Menü ist per Tastatur erreichbar (Escape schließt es).
 
 - **Anzeigen** (neben der Versionszeile, global): Hauptschalter – blendet alles aus, was das Script einfügt
-  (Karten-Badges, Spalten-Buttons und Ø, roter Rahmen, MR-Buttons, Issue-/MR-Detail), z. B. fürs Screensharing.
+  (Karten-Badges, Spalten-Buttons und Median, roter Rahmen, MR-Buttons, Issue-/MR-Detail), z. B. fürs Screensharing.
   Sichtbar bleibt nur das Zahnrad, um es wieder einzuschalten. Beim Aktivieren wird das Board erneut gescannt.
 - **Globale Einstellungen** (`ambientProgressFeatures`): ein Schalter pro Feature, gruppiert nach Ort:
   - *Karten*: Progress-Bar (Portal) mit Unterpunkt Portal- & Timesheet-Buttons, MR-Badge mit Unterpunkt
     Assignee-/Reviewer-Avatare, Verweildauer (Uhr im Footer), `workflow::`-Labels als Split-Label.
-  - *Spalten*: Ø Verweildauer im Header (benötigt Verweildauer).
+  - *Spalten*: Median-Verweildauer im Header (benötigt Verweildauer).
   - *Andere Ansichten*: MR-Buttons in der Topbar, Progress im Issue-Detail, Progress im MR,
     Ticket-Assignee-Buttons im MR.
   - *Erweitert* (zugeklappt): Debug – aktiviert `console.log` mit zusätzlichen Informationen. Außerdem:
@@ -23,7 +23,7 @@ Das Einstellungs-Menü (Zahnrad) ist in **Globale Einstellungen** (gelten für a
   Ausgangswert übernommen.
 - **Spalten-Button (Auge)**: Aktivierte Listen werden im Cache gespeichert; sobald du eine Spalte per Augen-Button erlaubst oder
   deaktivierst, wechselt das Script in den expliziten Modus und speichert die Auswahl unter dem Projektschlüssel.
-- **Board-Einstellungen → Roter Rahmen bei Ø-Überschreitung** (`ambientProgressAgeHighlightLists`): Auswahlliste mit allen Label-Spalten des
+- **Board-Einstellungen → Roter Rahmen bei Median-Überschreitung** (`ambientProgressAgeHighlightLists`): Auswahlliste mit allen Label-Spalten des
   aktuellen Boards. Nur in ausgewählten Spalten bekommen Tickets, die länger als der Spalten-Ø dort liegen, einen
   roten Rahmen. Wird sofort pro Projektschlüssel gespeichert. Benötigt die globale Einstellung „Verweildauer".
 - **Board-Einstellungen → Projekt-Konfiguration**: Projekt-ID, Portal-Base-URL, zweite Projekt-ID und
