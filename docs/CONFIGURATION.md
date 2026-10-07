@@ -4,10 +4,10 @@
   Script liest diesen Sockel und überschreibt ihn mit den lokal gespeicherten Einträgen aus
   `ambientProgressProjectConfigs`
   bzw. `ambientProgressListSelections`, sobald du die Projekt-ID/Portal-Base-URL oder die Listenauswahl änderst.
-- Der Gear-Dropdown bietet ein Formular für Projekt-ID und Portal-Base-URL; Werte werden normalisiert (`https://`
-  -Prefix,
-  Trailing-Slash entfernt), in LocalStorage gespeichert und mit einem Reload sofort aktiv („Einstellungen speichern").
-- Ein optionales Kontrollkästchen **„Zweite Projekt-ID verwenden"** aktiviert die Multi-Board-Abfrage. Ist es aktiv,
+- Das Einstellungs-Panel (Zahnrad) bietet ein Formular für Projekt-ID und Portal-Base-URL; Werte werden normalisiert
+  (`https://`-Prefix, Trailing-Slash entfernt) und entprellt automatisch in LocalStorage gespeichert (Autosave); das
+  Board lädt danach ohne Seiten-Reload neu.
+- Ein optionaler Schalter **„Zweite ID aktivieren"** aktiviert die Multi-Board-Abfrage. Ist es aktiv,
   wird
   zusätzlich ein Eingabefeld für `projectId2` angezeigt. Beide Projekt-IDs nutzen die gleiche Portal-Base-URL.
 - Die Portal-URLs bestehen aus der Base + `/management/project/{projectId}/booking-label/#` + IID; ohne gültige

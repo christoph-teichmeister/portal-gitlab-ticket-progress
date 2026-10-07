@@ -8,9 +8,9 @@ nützlich, wenn Tickets über mehrere Abteilungen oder Kostenplätze gebuchte St
 ### Einrichtung der zweiten Projekt-ID
 
 1. Öffne das Zahnrad-Menü in der GitLab-Topbar und navigiere zur „Projekt-Konfiguration"
-2. Aktiviere das Kontrollkästchen **„Zweite Projekt-ID verwenden"**
-3. Gib deine **zweite Portal-Projekt-ID** in das neu erscheinende Eingabefeld ein (z. B. `5678`)
-4. Klicke auf „Einstellungen speichern"
+2. Aktiviere den Schalter **„Zweite ID aktivieren"**
+3. Gib deine **zweite Portal-Projekt-ID** in das Eingabefeld ein (z. B. `5678`); die Änderung wird automatisch
+   gespeichert (Feld leuchtet kurz grün)
 
 Das Script lädt dann beim nächsten Scan Fortschrittsdaten von **beiden Projekt-IDs** und aggregiert sie:
 
@@ -23,7 +23,7 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
 
 ## Toolbar & Bedienelemente
 
-- Platziert eine Toolbar rechts in der GitLab-Topbar mit einem Gear-Button. Das Menü zeigt Version, `Anzeigen`-Schalter
+- Platziert eine Toolbar rechts in der GitLab-Topbar mit einem Gear-Button. Das Menü öffnet als Seitenpanel rechts (wie GitLabs Ticket-Vorschau) und zeigt Version, `Anzeigen`-Schalter
   und letzte Aktualisierung, darunter jedes Feature einzeln schaltbar als „Globale Einstellungen" sowie die
   „Board-Einstellungen" (roter Rahmen, Projekt-Konfiguration). Details siehe [Lokale Controls](CONTROLS.md).
 - Fügt pro Board-Spalte einen Augen-Button in GitLabs Button-Gruppe (neben `+` und `⚙`) ein, mit dem du das Script
@@ -57,9 +57,9 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
   Erlaubnis für den Zugriff auf diese URL bittet (`GM_xmlhttpRequest`). Gib dort „Allow" oder „Ja", damit das Skript
   tatsächlich auf das Portal zugreifen darf.
 - Beobachtet das Board via `MutationObserver`, reagiert auf neue Karten/Listen und führt bei Bedarf neue Scans aus.
-- Zeigt im Dropdown eine Zeile mit dem Zeitstempel der letzten Portal-Anfrage und einen Button zum sofortigen
-  Neuladen aller Tickets; der Button löscht den lokalen Cache, setzt den Zeitstempel zurück und lädt die Seite neu,
-  damit wirklich alle Tickets erneut vom Portal angefragt werden.
+- Zeigt im Panel eine Zeile mit dem Zeitstempel der letzten Portal-Anfrage und einen Button zum sofortigen
+  Neuladen aller Tickets; der Button löscht den lokalen Cache, setzt den Zeitstempel zurück und scannt das Board neu
+  (ohne Seiten-Reload), damit alle Tickets erneut vom Portal angefragt werden.
 - Unterstützt die optionale Konfiguration einer **zweiten Projekt-ID**, um Fortschrittsdaten aus zwei verschiedenen
   Portal-Projekten zu kombinieren. Wenn aktiviert, lädt das Script Daten von beiden Projekt-IDs und aggregiert sie in
   der angezeigten Progressbar (Summe aller Stunden, kombinierte Auslastung). Jedes Board-Projekt speichert diese
@@ -72,8 +72,9 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
 - Erkennt pro Issue-Karte automatisch, ob ein oder mehrere Merge Requests zum Ticket existieren (Matching über die
   Ticket-ID als Wortgrenzen-Token im MR-Titel, z. B. `#1891`) und zeigt rechts neben der Ticket-ID ein MR-Icon an.
 - Genau ein Treffer: Icon verlinkt direkt (neuer Tab) zum MR und zeigt `!<MR-Nummer>` daneben.
-- Mehrere Treffer: Icon zeigt eine Anzahl-Badge, Tooltip listet alle Titel, Klick öffnet die nach der Ticket-ID
-  gefilterte MR-Liste im Projekt (neuer Tab).
+- Mehrere Treffer: Icon zeigt eine Anzahl-Badge, Tooltip listet alle Titel, Klick öffnet ein Dropdown mit allen MRs
+  (Titel, darunter `!iid`, ggf. „merged“); die Auswahl öffnet den MR in einem neuen Tab. Das Badge fadet beim Laden
+  ein, und beim Überfahren bekommt es einen Hover-Zustand.
 - Ist der MR bereits gemerged, wird das Badge ausgegraut und mit einem Häkchen markiert.
 - Bei genau einem Treffer werden zusätzlich kleine, überlappende Avatare für MR-Assignee und ersten Reviewer
   angezeigt (Reviewer überlappt Assignee um ca. 25 %). Fehlt ein Assignee/Reviewer, erscheint ein grauer
@@ -88,7 +89,9 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
   lange das Ticket schon in der Spalte liegt, relativ als `45min`, `5h` oder `10d`. Beim Hovern erscheint das
   genaue Datum.
 - Grundlage ist die Label-Historie des Tickets (`GET /api/v4/projects/:id/issues/:iid/resource_label_events`):
-  Gezählt wird ab dem letzten Mal, an dem das Spalten-Label hinzugefügt wurde.
+  Gezählt wird ab dem Beginn des aktuellen Aufenthalts: Ein versehentliches Verschieben in eine andere Spalte und
+  innerhalb von 15 Minuten zurück unterbricht den Aufenthalt nicht. Liegt das Spalten-Label gar nicht mehr am Ticket
+  (z. B. Events noch nicht aktuell), beginnt die Dauer bei 0 statt mit einem alten Eintritt.
 - Pro aktivierter Spalte wird der Median über alle geladenen Karten berechnet und bei jeder neu
   geladenen Karte aktualisiert. Tickets, die länger als der Median in der Spalte liegen, bekommen einen
   roten Rahmen – aber nur in Spalten, die in den Einstellungen (Zahnrad) unter „Roter Rahmen bei
@@ -97,8 +100,9 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
   geladenen Karte) und nutzt dessen Schrift und Farbe. Beim Hovern erklärt ein Hilfetext, was der Wert bedeutet.
 - Spalten ohne Label (`Open`, `Closed`) sowie Tickets, deren Label-Event nicht (mehr) auffindbar ist, zeigen keine
   Dauer an.
-- Die Events werden nur im Speicher gecacht. Wird eine Karte per Drag & Drop verschoben, aktualisiert sich die
-  Dauer erst nach einem Neuladen der Seite.
+- Solange die Events laden, zeigen Karte und Spaltenkopf kleine Platzhalter (Skeletons); fertige Werte blenden ein
+  (bei „Bewegung reduzieren“ ohne Animation). Wird eine Karte per Drag & Drop verschoben, aktualisiert sich die
+  Dauer nach kurzer Wartezeit von selbst.
 
 ## Ticket-Assignee direkt im MR
 
@@ -122,7 +126,8 @@ z. B. nützlich, um ein Ticket nach dem Merge in die nächste Board-Spalte zu sc
 
 1. Zahnrad → Board-Einstellungen → Projekt-Konfiguration aufklappen.
 2. Im Feld **„Ticket-Aktionen im MR“** die Aktionen eintragen (Format siehe unten).
-3. „Einstellungen speichern“. Die Seite lädt neu, die Buttons erscheinen unter der Progressbar im MR.
+3. Die Eingabe wird automatisch gespeichert (Feld leuchtet kurz grün); die Buttons erscheinen nach dem nächsten
+   Laden der MR-Seite unter der Progressbar.
 
 Die Konfiguration gilt pro Projekt und wird nur lokal im Browser gespeichert. Jedes Team kann so seinen eigenen
 Workflow und seine eigenen Labels hinterlegen.
@@ -222,6 +227,14 @@ Normaler Text neben den Quick Actions wird als sichtbarer Kommentar auf dem Tick
   der Filterleiste).
 - **Changelog** im Update-Hinweis (liest `CHANGELOG.md`), **Auto-Selbsttest** einmal nach jedem Script-Update und eine
   **teilweise englische Oberfläche** (Zahnrad → Erweitert, Reload nötig).
+
+## Neu in 2026.10.12 bis 2026.10.18
+
+- **Einstellungen als Seitenpanel** mit Karten-Layout, zwei Schalter-Spalten und festem Kopf; Autosave statt
+  „Einstellungen speichern“ (siehe [Lokale Controls](CONTROLS.md)).
+- **GitLab-Optik:** Buttons rund um die Progressbar und im Panel nutzen GitLabs Button-Klassen; alle Dropdowns
+  (Ticket-Aktionen, Spalte sortieren, MRs) haben Kopfzeile, größere Zeilen und Hover wie GitLabs eigene Dropdowns.
+- **Verweildauer:** robuster gegen versehentliche Spaltenwechsel, Skeletons und Einblend-Animation.
 
 ## Experimente (zum Testen)
 

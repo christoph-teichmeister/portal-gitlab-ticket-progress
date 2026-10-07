@@ -34,21 +34,20 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    wählen, aber **nicht** „alle Domains“.
 5. Die `@updateURL`/`@downloadURL` im Skriptkopf halten alles automatisch aktuell – nach der einmaligen Installation
    liefert Tampermonkey neue Versionen direkt aus diesem Repo.
-6. Über die Debug/Anzeige-Toggles in der GitLab-Topbar kannst du das Verhalten bei Bedarf ein- oder ausschalten. Die
-   Toggles hängen direkt rechts vom oberen Menü und bleiben beim Scrollen sichtbar; Debug ist standardmäßig aus, die
-   Anzeige (Badges) standardmäßig an. Jede Projekt-Ansicht merkt sich ihre eigene Konfiguration (die Werte werden pro
-   Projekt lokal gespeichert).
+6. Über das Zahnrad in der GitLab-Topbar öffnest du das Einstellungs-Seitenpanel (Anzeige, einzelne Features, Debug).
+   Das Zahnrad hängt direkt rechts vom oberen Menü und bleibt beim Scrollen sichtbar; Debug ist standardmäßig aus,
+   die Anzeige (Badges) standardmäßig an. Änderungen gelten sofort, einen Speichern-Button gibt es nicht.
 7. Klicke in der GitLab-Topbar auf das Zahnrad, um die „Projekt-Konfiguration“ zu öffnen, und trage dort die
    Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Erlaubt ist nur `https://` ohne
-   Benutzername/Passwort; Query und Fragment werden verworfen. Die Einstellung wird ausschließlich lokal im Browser
-   gespeichert (per Projekt). Du musst sie nur einmal hinterlegen.
+   Benutzername/Passwort; Query und Fragment werden verworfen. Die Eingabe wird automatisch gespeichert (das Feld
+   leuchtet kurz grün) und ausschließlich lokal im Browser abgelegt (per Projekt). Du musst sie nur einmal hinterlegen.
 8. Wenn die Portal-Base-URL fehlt, blendet das Script einen kleinen Toast von oben rechts ein („Portal-Base URL fehlt –
    ⚙ → Projekt-Konfiguration öffnen und eintragen.”). Nach fünf Sekunden verschwindet der Hinweis wieder; du kannst
    ihn bei Bedarf erneut triggern, indem du das Zahnrad öffnest.
 
 ## Ticket-Aktionen im MR
 
-Im Zahnrad-Menü unter „Ticket-Aktionen im MR“ kannst du pro Projekt eigene Buttons definieren. Sie erscheinen in der
+Im Einstellungs-Panel unter „Ticket-Aktionen im MR“ kannst du pro Projekt eigene Buttons definieren. Sie erscheinen in der
 Box mit den gebuchten Stunden oben rechts im MR. Ein Klick postet die hinterlegten
 [Quick Actions](https://docs.gitlab.com/user/project/quick_actions/) als Kommentar auf das verknüpfte Ticket (die
 `#<IID>` aus dem MR-Titel). Eine Zeile `[Label]` beginnt einen neuen Button, alle folgenden Zeilen sind dessen
@@ -96,7 +95,7 @@ Weitere Details zur Nutzung und Konfiguration:
 
 ## Bedienung, Barrierefreiheit & Sprache
 
-- Das Einstellungs-Menü ist per Tastatur bedienbar (Tab, Escape schließt und setzt den Fokus aufs Zahnrad); Schalter
+- Das Einstellungs-Panel ist per Tastatur bedienbar (Tab, Escape schließt und setzt den Fokus aufs Zahnrad); Schalter
   haben einen sichtbaren Fokusring, Fortschrittsbalken eine Textalternative. Animationen respektieren
   `prefers-reduced-motion`.
 - Die Oberfläche ist auf Deutsch; Datumsangaben folgen der Sprache der GitLab-Seite. GitLab-Begriffe wie
