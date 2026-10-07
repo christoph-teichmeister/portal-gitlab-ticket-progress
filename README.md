@@ -1,4 +1,4 @@
-# Portal GitLab Ticket Progress
+# <img src="icon.svg" alt="" width="40" align="center"> Portal GitLab Ticket Progress
 
 Dieses Tampermonkey-Skript ergänzt die GitLab-Issue-Boards auf `gitlab.beyonder.de` mit einer eingebetteten
 Fortschrittsanzeige aus dem Portal. Es liest die dort gebuchten Stunden und zeigt sie als Progressbar in
