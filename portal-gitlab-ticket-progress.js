@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.1
+// @version      2026.10.2
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
-// @include      https://gitlab*/*/-/*
-// @include      https://gitlab*/*/*/-/*
+// @match        https://gitlab.beyonder.de/*/-/*
 // @icon         https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/icon.svg
 // @grant        GM_xmlhttpRequest
+// @grant        GM_info
+// @connect      raw.githubusercontent.com
 // @updateURL    https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/portal-gitlab-ticket-progress.js
 // @downloadURL  https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/portal-gitlab-ticket-progress.js
 // ==/UserScript==
@@ -20,20 +21,207 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.1';
+  const SCRIPT_VERSION = '2026.10.2';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
-  const MERGE_REQUEST_ICON_SVG = '<svg data-testid="merge-request-icon" role="img" aria-hidden="true" class="gl-button-icon gl-icon s16 gl-fill-current"><use href="/assets/icons-5a3f88503a318f1eaf3b49d9d82c93cdde31fd5224ab8aeeb08534974b21f10c.svg#merge-request"></use></svg>';
-  const GITLAB_ICON_SPRITE = MERGE_REQUEST_ICON_SVG.match(/href="([^"#]+)#/)[1];
+  // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
+  const FALLBACK_ICON_SPRITE = '/assets/icons-5a3f88503a318f1eaf3b49d9d82c93cdde31fd5224ab8aeeb08534974b21f10c.svg';
+  let gitlabIconSprite = null;
 
-  function gitlabIconSvg(name, classes) {
-    return '<svg role="img" aria-hidden="true" class="' + classes + '"><use href="' +
-      GITLAB_ICON_SPRITE + '#' + name + '"></use></svg>';
+  function getGitLabIconSprite() {
+    if (gitlabIconSprite) return gitlabIconSprite;
+    const use = document.querySelector('svg use[href*="icons-"][href*=".svg#"]');
+    const href = use && use.getAttribute('href');
+    const match = href && href.match(/^([^#]+)#/);
+    if (match) {
+      gitlabIconSprite = match[1];
+      return gitlabIconSprite;
+    }
+    return FALLBACK_ICON_SPRITE; // nicht cachen, falls die Seite noch nicht gerendert ist
   }
 
-  const CLOCK_ICON_SVG = MERGE_REQUEST_ICON_SVG.replace('merge-request-icon', 'clock-icon').replace('#merge-request', '#clock');
+  function gitlabIconSvg(name, classes, testId) {
+    return '<svg ' + (testId ? 'data-testid="' + testId + '" ' : '') + 'role="img" aria-hidden="true" class="' +
+      classes + '"><use href="' + getGitLabIconSprite() + '#' + name + '"></use></svg>';
+  }
+
+  function mergeRequestIconSvg() {
+    return gitlabIconSvg('merge-request', 'gl-button-icon gl-icon s16 gl-fill-current', 'merge-request-icon');
+  }
+
+  function clockIconSvg() {
+    return gitlabIconSvg('clock', 'gl-button-icon gl-icon s16 gl-fill-current', 'clock-icon');
+  }
+
   const HOST_CONFIG = {};
   const NOT_FOUND_SENTINEL = { notFound: true };
+  const NOT_FOUND_TTL_MS = 10 * 60 * 1000; // „keine Buchungen" nur kurz cachen, damit neue Buchungen bald auftauchen
+
+  /******************************************************************
+   * Inhalt (alles in einer Datei, Reihenfolge von oben nach unten)
+   *  1. Globale Settings / State, Toast, Retry-Logik
+   *  2. Utils: Storage, Versionen, Release-Check, Logging, Styles
+   *  3. Theme-Erkennung, Parsing (Portal-HTML), Request-Helfer
+   *  4. Rendering: Progress, MR-Badge, Verweildauer
+   *  5. Requests & Board-/Detail-/MR-Scan
+   *  6. Toolbar / Einstellungen, Init
+   ******************************************************************/
+
+  // Zentrale Selektoren: Komma-Listen sind Fallbacks, damit GitLab-UI-Änderungen an einer Stelle auffallen
+  const SEL = {
+    boardsApp: '.boards-app',
+    boardList: 'div[data-testid="board-list"]',
+    boardCard: 'li[data-testid="board-card"].board-card',
+    boardListHeader: 'header[data-testid="board-list-header"]',
+    boardListButtons: '.board-list-button-group',
+    listTitleLabelText: '.board-title-text .gl-label-text',
+    listTitle: '.board-title-text',
+    listTitleLabel: '.board-title-text .gl-label',
+    issueCountBadge: '[data-testid="issue-count-badge"]',
+    cardNumber: '.board-card-number',
+    cardNumberText: '.board-card-number span, .board-card-number',
+    cardFooter: '.board-card-footer',
+    cardBody: '.gl-p-4',
+    detailWrapper: '.work-item-attributes-wrapper',
+    detailAssignees: '[data-testid="work-item-assignees"]',
+    mrTitle: 'h1[data-testid="title-content"]',
+    mrAssigneeBlock: '[data-testid="assignee-block-container"]',
+    breadcrumbsWrapper: '#js-vue-page-breadcrumbs-wrapper',
+    breadcrumbsInjected: '#js-injected-page-breadcrumbs'
+  };
+  const TOOLBAR_TARGET_SELECTORS = [SEL.breadcrumbsInjected, '.panel-header-inner-actions', '.top-bar-container', '.top-bar-fixed'];
+  const warnedSelectors = {};
+
+  function qs(root, key) {
+    const el = (root || document).querySelector(SEL[key]);
+    if (!el && debugEnabled && !warnedSelectors[key]) {
+      warnedSelectors[key] = true;
+      console.warn(LOG_PREFIX, 'Selektor ohne Treffer (GitLab-UI geändert?):', key, SEL[key]);
+    }
+    return el;
+  }
+
+  function qsa(root, key) {
+    return (root || document).querySelectorAll(SEL[key]);
+  }
+
+  // Einmalig injiziertes Stylesheet für Dinge, die Inline-Styles nicht können (:focus-visible, Media Queries)
+  function ensureStylesheet() {
+    if (document.getElementById('ambient-progress-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'ambient-progress-styles';
+    style.textContent =
+      '.ambient-btn{min-width:24px;min-height:24px;box-sizing:border-box}' +
+      '#ambient-progress-toolbar button:focus-visible,#ambient-progress-toolbar summary:focus-visible,' +
+      '#ambient-progress-toolbar input:focus-visible,#ambient-progress-toolbar textarea:focus-visible,' +
+      '.ambient-btn:focus-visible,.ambient-mr-badge:focus-visible,.ambient-progress-bar:focus-visible,' +
+      '.ambient-progress-list-toggle:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}' +
+      '.ambient-switch-input:focus-visible+.ambient-switch-slider{outline:2px solid #60a5fa;outline-offset:2px}' +
+      '.ambient-sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}' +
+      '@media (prefers-reduced-motion: reduce){#ambient-progress-toolbar *,#ambient-progress-toast{transition:none !important}}';
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  // Lokalisierung: Sprache der GitLab-Seite (Fallback de-DE)
+  function uiLocale() {
+    return (document.documentElement && document.documentElement.lang) || 'de-DE';
+  }
+
+  // Parallele Requests begrenzen (Portal und GitLab-API getrennt)
+  function createLimiter(max) {
+    let active = 0;
+    const queue = [];
+
+    function next() {
+      while (active < max && queue.length) {
+        const job = queue.shift();
+        active += 1;
+        Promise.resolve().then(job.fn).then(job.resolve, job.reject).then(function () {
+          active -= 1;
+          next();
+        });
+      }
+    }
+
+    return function (fn) {
+      return new Promise(function (resolve, reject) {
+        queue.push({fn: fn, resolve: resolve, reject: reject});
+        next();
+      });
+    };
+  }
+
+  const MAX_PORTAL_CONCURRENCY = 5;
+  const MAX_GITLAB_CONCURRENCY = 6;
+  const portalLimiter = createLimiter(MAX_PORTAL_CONCURRENCY);
+  const gitlabLimiter = createLimiter(MAX_GITLAB_CONCURRENCY);
+  const inflightPortalRequests = {}; // url → Promise
+
+  function isNumericId(value) {
+    return /^\d+$/.test(String(value));
+  }
+
+  // Einziger Einstieg für GitLab-API-Calls: nur same-origin Pfade, CSRF-Token nur bei schreibenden Requests
+  function glFetch(path, options) {
+    if (typeof path !== 'string' || path.charAt(0) !== '/' || path.indexOf('//') === 0) {
+      return Promise.reject(new Error('Ungültiger GitLab-Pfad'));
+    }
+    const opts = Object.assign({credentials: 'same-origin'}, options || {});
+    const method = String(opts.method || 'GET').toUpperCase();
+    if (method !== 'GET') {
+      const token = getCsrfToken();
+      if (!token) {
+        return Promise.reject(new Error('CSRF-Token fehlt'));
+      }
+      opts.headers = Object.assign({'Content-Type': 'application/json', 'X-CSRF-Token': token}, opts.headers || {});
+    }
+    return fetch(path, opts);
+  }
+
+  // Externe Links nur über https (Portal) oder same-origin (GitLab) öffnen
+  function openExternal(url) {
+    try {
+      const parsed = new URL(url, window.location.href);
+      if (parsed.protocol !== 'https:' && parsed.origin !== window.location.origin) return;
+      window.open(parsed.href, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      // ungültige URL ignorieren
+    }
+  }
+
+  // JSON-Storage: ein Ort für try/catch, Fehler (z. B. Quota) werden geloggt statt verschluckt
+  function storageRead(key, fallback) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (raw === null || raw === undefined) return fallback;
+      const parsed = JSON.parse(raw);
+      return parsed === null || parsed === undefined ? fallback : parsed;
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  function storageWrite(key, value) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (e) {
+      error('localStorage-Schreibfehler für', key, e);
+      return false;
+    }
+  }
+
+  function storageRemove(key) {
+    try {
+      window.localStorage.removeItem(key);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function relativeLuminance(rgb) {
+    return (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+  }
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
   const PORTAL_WARNING_COOLDOWN_MS = 2 * 60 * 1000;
@@ -67,7 +255,6 @@
   let useSecondProjectIdToggleCheckbox = null;
   let lastRefreshLabelElement = null;
   let manualRefreshButtonElement = null;
-  let forceRefreshMode = false;
   let toolbarInitialProjectIdValue = '';
   let toolbarInitialPortalUrlValue = '';
   let ticketActionsInputElement = null;
@@ -110,21 +297,13 @@
   let features = readFeatures();
 
   function readFeatures() {
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem(LS_KEY_FEATURES) || '{}');
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch (e) {
-      return {};
-    }
+    const parsed = storageRead(LS_KEY_FEATURES, {});
+    return typeof parsed === 'object' ? parsed : {};
   }
 
   function saveFeature(key, value) {
     features[key] = value;
-    try {
-      window.localStorage.setItem(LS_KEY_FEATURES, JSON.stringify(features));
-    } catch (e) {
-      // ignore
-    }
+    storageWrite(LS_KEY_FEATURES, features);
   }
 
   // Default an; Unter-Features nur aktiv, wenn das Eltern-Feature aktiv ist
@@ -157,12 +336,21 @@
 
   const LOG_PREFIX = '[GitLab Progress]';
   const PROGRESS_CACHE_TTL_MS = 60 * 60 * 1000;
-  const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
+  const MR_LIST_CACHE_TTL_MS = 5 * 60 * 1000; // in-memory, kein localStorage nötig
+  const COLUMN_AGE_CACHE_TTL_MS = 5 * 60 * 1000;
+  const SCAN_DEBOUNCE_MS = 150;
+  const NEGATIVE_CACHE_MS = 30 * 1000; // nach Fehlern nicht sofort neu anfragen
+  const MAX_FETCH_RETRIES = 3;
+  const PORTAL_REQUEST_TIMEOUT_MS = 15 * 1000;
+  const MAX_PORTAL_RESPONSE_CHARS = 2 * 1000 * 1000;
+  const MAX_HOURS_VALUE = 100000;
+  const REFRESH_MARK_THROTTLE_MS = 5 * 1000;
   const PROJECT_BLOCK_COOLDOWN_MS = 5 * 60 * 1000;
   const MAX_NEW_FETCHES_PER_SCAN = 80;
   const RATE_LIMIT_TOAST_COOLDOWN_MS = 2 * 60 * 1000;
   const RATE_LIMIT_WARNING_MIN_VISIBLE_MS = 60 * 1000;
-  const progressCache = {}; // key: projectId + ':' + issueIid → {data, timestamp}
+  const progressCache = {}; // key: projectId + ':' + issueIid → {data, timestamp, ttl?}
+  let progressCacheFlushTimer = null;
   hydrateProgressCacheFromStorage();
 
   function ensureToastElement() {
@@ -171,6 +359,7 @@
     el.id = 'ambient-progress-toast';
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
+    el.setAttribute('aria-atomic', 'true');
     applyStyles(el, {
       position: 'fixed',
       top: '1rem',
@@ -213,6 +402,9 @@
       background: variantStyles.background,
       color: variantStyles.color
     });
+    const isAlert = variant === 'warning';
+    el.setAttribute('role', isAlert ? 'alert' : 'status');
+    el.setAttribute('aria-live', isAlert ? 'assertive' : 'polite');
     el.textContent = text;
     void el.offsetWidth;
     el.style.transform = 'translateX(0)';
@@ -222,7 +414,7 @@
     }
     toastHideTimer = setTimeout(function () {
       hideToast();
-    }, duration);
+    }, Math.max(duration, text.length * 60));
   }
 
   function showPortalWarningToast() {
@@ -235,7 +427,7 @@
     }
     lastPortalWarningAt = now;
     showToast({
-      text: 'Portal-Base URL fehlt -> Projekt-Konfiguration öffnen und' +
+      text: 'Portal-Base URL fehlt oder ist ungültig (nur https) -> Projekt-Konfiguration öffnen und' +
         ' eintragen.',
       variant: 'warning'
     });
@@ -283,7 +475,9 @@
       blockedAt: Date.now()
     };
     showToast({
-      text: 'Portal-Requests blockiert (Status ' + status + ') – bitte Portal-Base URL prüfen.',
+      text: Number(status) === 401
+        ? 'Portal: nicht angemeldet – bitte im Portal einloggen und danach neu laden.'
+        : 'Portal-Requests blockiert (Status ' + status + ') – bitte Portal-Base URL prüfen.',
       variant: 'warning'
     });
   }
@@ -310,23 +504,12 @@
   }
 
   function readListSelectionsState() {
-    try {
-      const raw = window.localStorage.getItem(LS_KEY_LIST_SELECTIONS);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return {};
-      return parsed;
-    } catch (e) {
-      return {};
-    }
+    const parsed = storageRead(LS_KEY_LIST_SELECTIONS, {});
+    return typeof parsed === 'object' ? parsed : {};
   }
 
   function writeListSelectionsState(state) {
-    try {
-      window.localStorage.setItem(LS_KEY_LIST_SELECTIONS, JSON.stringify(state));
-    } catch (e) {
-      // ignore
-    }
+    storageWrite(LS_KEY_LIST_SELECTIONS, state);
   }
 
   function readListSelectionEntry(projectKey) {
@@ -358,23 +541,15 @@
   function loadAgeHighlightLookup(projectKey) {
     if (projectKey === ageHighlightProjectKey) return;
     ageHighlightProjectKey = projectKey;
-    try {
-      const state = JSON.parse(window.localStorage.getItem(LS_KEY_AGE_HIGHLIGHT_LISTS) || '{}');
-      ageHighlightLookup = (state && state[projectKey]) || {};
-    } catch (e) {
-      ageHighlightLookup = {};
-    }
+    const state = storageRead(LS_KEY_AGE_HIGHLIGHT_LISTS, {});
+    ageHighlightLookup = (state && state[projectKey]) || {};
   }
 
   function saveAgeHighlightLookup() {
     if (!ageHighlightProjectKey) return;
-    try {
-      const state = JSON.parse(window.localStorage.getItem(LS_KEY_AGE_HIGHLIGHT_LISTS) || '{}') || {};
-      state[ageHighlightProjectKey] = ageHighlightLookup;
-      window.localStorage.setItem(LS_KEY_AGE_HIGHLIGHT_LISTS, JSON.stringify(state));
-    } catch (e) {
-      // ignore
-    }
+    const state = storageRead(LS_KEY_AGE_HIGHLIGHT_LISTS, {});
+    state[ageHighlightProjectKey] = ageHighlightLookup;
+    storageWrite(LS_KEY_AGE_HIGHLIGHT_LISTS, state);
   }
 
   function writeListSelectionEntry(projectKey, includeLookup, explicit) {
@@ -388,39 +563,27 @@
   }
 
   function readReleaseInfoFromStorage() {
-    try {
-      const raw = window.localStorage.getItem(LS_KEY_RELEASE_INFO);
-      if (!raw) {
-        return null;
-      }
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') {
-        return null;
-      }
-      const timestamp = Number(parsed.checkedAt);
-      if (isNaN(timestamp)) {
-        return null;
-      }
-      return {
-        version: normalizeVersionValue(parsed.version),
-        htmlUrl: parsed.htmlUrl || RAW_SCRIPT_URL,
-        checkedAt: timestamp
-      };
-    } catch (e) {
+    const parsed = storageRead(LS_KEY_RELEASE_INFO, null);
+    if (!parsed || typeof parsed !== 'object') {
       return null;
     }
+    const timestamp = Number(parsed.checkedAt);
+    if (isNaN(timestamp)) {
+      return null;
+    }
+    return {
+      version: normalizeVersionValue(parsed.version),
+      htmlUrl: parsed.htmlUrl || RAW_SCRIPT_URL,
+      checkedAt: timestamp
+    };
   }
 
   function writeReleaseInfoToStorage(info) {
-    try {
-      if (!info || !info.version) {
-        window.localStorage.removeItem(LS_KEY_RELEASE_INFO);
-        return;
-      }
-      window.localStorage.setItem(LS_KEY_RELEASE_INFO, JSON.stringify(info));
-    } catch (e) {
-      // ignore
+    if (!info || !info.version) {
+      storageRemove(LS_KEY_RELEASE_INFO);
+      return;
     }
+    storageWrite(LS_KEY_RELEASE_INFO, info);
   }
 
   function getCachedReleaseInfo() {
@@ -488,6 +651,21 @@
     return false;
   }
 
+  let gearButtonElement = null;
+
+  // Die roten Punkte am Zahnrad sind aria-hidden → Zustand zusätzlich im Label ansagen
+  function updateGearLabel() {
+    if (!gearButtonElement) return;
+    const parts = ['Progress-Einstellungen'];
+    if (releaseNotificationElements.badge && releaseNotificationElements.badge.style.display !== 'none') {
+      parts.push('Update verfügbar');
+    }
+    if (rateLimitNotificationElements.badge && rateLimitNotificationElements.badge.style.display !== 'none') {
+      parts.push('Rate-Limit-Warnung');
+    }
+    gearButtonElement.setAttribute('aria-label', parts[0] + (parts.length > 1 ? ' (' + parts.slice(1).join(', ') + ')' : ''));
+  }
+
   function updateReleaseNotificationUI(info) {
     const elements = releaseNotificationElements;
     if (!elements.badge || !elements.messageRow || !elements.messageText || !elements.divider) {
@@ -514,38 +692,27 @@
       elements.messageRow.style.display = 'none';
       elements.divider.style.display = 'none';
     }
+    updateGearLabel();
   }
 
   function readRateLimitWarningFromStorage() {
-    try {
-      const raw = window.localStorage.getItem(LS_KEY_RATE_LIMIT_WARNING);
-      if (!raw) {
-        return null;
-      }
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object' || !parsed.active) {
-        return null;
-      }
-      return {
-        active: true,
-        triggeredAt: Number(parsed.triggeredAt) || null,
-        listCount: Number(parsed.listCount) || null
-      };
-    } catch (e) {
+    const parsed = storageRead(LS_KEY_RATE_LIMIT_WARNING, null);
+    if (!parsed || typeof parsed !== 'object' || !parsed.active) {
       return null;
     }
+    return {
+      active: true,
+      triggeredAt: Number(parsed.triggeredAt) || null,
+      listCount: Number(parsed.listCount) || null
+    };
   }
 
   function writeRateLimitWarningToStorage(state) {
-    try {
-      if (!state || !state.active) {
-        window.localStorage.removeItem(LS_KEY_RATE_LIMIT_WARNING);
-        return;
-      }
-      window.localStorage.setItem(LS_KEY_RATE_LIMIT_WARNING, JSON.stringify(state));
-    } catch (e) {
-      // ignore
+    if (!state || !state.active) {
+      storageRemove(LS_KEY_RATE_LIMIT_WARNING);
+      return;
     }
+    storageWrite(LS_KEY_RATE_LIMIT_WARNING, state);
   }
 
   function getCachedRateLimitWarning() {
@@ -582,6 +749,7 @@
       elements.messageRow.style.display = 'none';
       elements.divider.style.display = 'none';
     }
+    updateGearLabel();
   }
 
   function fetchLatestReleaseInfo() {
@@ -595,7 +763,7 @@
             warn('Release-Check meldet HTTP ' + response.status);
             return;
           }
-          const versionMatch = response.responseText.match(/\/\/\s*@version\s+([^\\s]+)/);
+          const versionMatch = response.responseText.match(/\/\/\s*@version\s+(\S+)/);
           if (!versionMatch || versionMatch.length < 2) {
             warn('Release-Check konnte Version nicht finden');
             return;
@@ -692,43 +860,23 @@
     }
   }
 
+  let lastRefreshMarkAt = 0;
+
+  // Höchstens alle paar Sekunden schreiben – bei vielen Karten kommen sonst dutzende Writes pro Scan
   function markPortalRefreshTimestamp() {
-    writeLastRefreshTimestamp(Date.now());
-  }
-
-  function shouldPerformPortalRequest(hasCache = true) {
-    if (forceRefreshMode) {
-      return true;
-    }
-    if (!hasCache) {
-      return true;
-    }
-    const last = readLastRefreshTimestamp();
-    if (!last) {
-      return true;
-    }
-    return Date.now() - last >= REFRESH_INTERVAL_MS;
-
+    const now = Date.now();
+    if (now - lastRefreshMarkAt < REFRESH_MARK_THROTTLE_MS) return;
+    lastRefreshMarkAt = now;
+    writeLastRefreshTimestamp(now);
   }
 
   function readProjectConfigsState() {
-    try {
-      const raw = window.localStorage.getItem(LS_KEY_PROJECT_CONFIG);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return {};
-      return parsed;
-    } catch (e) {
-      return {};
-    }
+    const parsed = storageRead(LS_KEY_PROJECT_CONFIG, {});
+    return typeof parsed === 'object' ? parsed : {};
   }
 
   function writeProjectConfigsState(state) {
-    try {
-      window.localStorage.setItem(LS_KEY_PROJECT_CONFIG, JSON.stringify(state));
-    } catch (e) {
-      // ignore
-    }
+    storageWrite(LS_KEY_PROJECT_CONFIG, state);
   }
 
   function readProjectConfigEntry(projectKey) {
@@ -749,35 +897,55 @@
   }
 
   function readProgressCacheState() {
-    try {
-      const raw = window.localStorage.getItem(LS_KEY_PROGRESS_CACHE);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return null;
-      return parsed;
-    } catch (e) {
-      return null;
-    }
+    const parsed = storageRead(LS_KEY_PROGRESS_CACHE, null);
+    return parsed && typeof parsed === 'object' ? parsed : null;
   }
 
-  function writeProgressCacheState(state) {
-    try {
-      const snapshot = {};
-      for (const key in state) {
-        if (!Object.prototype.hasOwnProperty.call(state, key)) continue;
-        const entry = state[key];
-        if (!entry || typeof entry !== 'object') continue;
-        const timestamp = Number(entry.timestamp);
-        if (!timestamp || !entry.data) continue;
-        snapshot[key] = {
-          timestamp,
-          data: entry.data
-        };
-      }
-      window.localStorage.setItem(LS_KEY_PROGRESS_CACHE, JSON.stringify(snapshot));
-    } catch (e) {
-      // ignore
+  function isCacheEntryFresh(entry) {
+    const timestamp = Number(entry && entry.timestamp);
+    if (!timestamp) return false;
+    return Date.now() - timestamp <= (Number(entry.ttl) || PROGRESS_CACHE_TTL_MS);
+  }
+
+  // merge: Einträge anderer Tabs übernehmen (neuere gewinnen), statt sie zu überschreiben
+  function writeProgressCacheState(state, merge) {
+    const snapshot = {};
+    const stored = merge ? readProgressCacheState() : null;
+    if (stored) {
+      Object.keys(stored).forEach(function (key) {
+        if (isCacheEntryFresh(stored[key]) && stored[key].data) {
+          snapshot[key] = stored[key];
+        }
+      });
     }
+    for (const key in state) {
+      if (!Object.prototype.hasOwnProperty.call(state, key)) continue;
+      const entry = state[key];
+      if (!entry || typeof entry !== 'object') continue;
+      const timestamp = Number(entry.timestamp);
+      if (!timestamp || !entry.data) continue;
+      if (snapshot[key] && Number(snapshot[key].timestamp) > timestamp) continue;
+      snapshot[key] = {
+        timestamp,
+        ttl: entry.ttl || undefined,
+        data: entry.data
+      };
+    }
+    storageWrite(LS_KEY_PROGRESS_CACHE, snapshot);
+  }
+
+  // Persistierung bündeln: ein Write pro ~0,5 s statt einem pro Karte
+  function scheduleProgressCachePersist() {
+    if (progressCacheFlushTimer) return;
+    progressCacheFlushTimer = setTimeout(flushProgressCache, 500);
+  }
+
+  function flushProgressCache() {
+    if (progressCacheFlushTimer) {
+      clearTimeout(progressCacheFlushTimer);
+      progressCacheFlushTimer = null;
+    }
+    writeProgressCacheState(progressCache, true);
   }
 
   function readLastBoardIdentifierFromStorage() {
@@ -843,21 +1011,24 @@
   function hydrateProgressCacheFromStorage() {
     const stored = readProgressCacheState();
     if (!stored) return;
-    const now = Date.now();
+    let dropped = false;
     for (const key in stored) {
       if (!Object.prototype.hasOwnProperty.call(stored, key)) continue;
       const entry = stored[key];
       if (!entry || typeof entry !== 'object') continue;
-      const timestamp = Number(entry.timestamp);
-      if (!timestamp || now - timestamp > PROGRESS_CACHE_TTL_MS) {
+      if (!isCacheEntryFresh(entry)) {
+        dropped = true;
         continue;
       }
       progressCache[key] = {
         data: entry.data,
-        timestamp: timestamp
+        timestamp: Number(entry.timestamp),
+        ttl: entry.ttl
       };
     }
-    writeProgressCacheState(progressCache);
+    if (dropped) {
+      scheduleProgressCachePersist();
+    }
   }
 
   function log(...args) {
@@ -917,6 +1088,16 @@
     return merged;
   }
 
+  const BAR_COLORS = {
+    spent: '#6FBF73',
+    spentHover: '#57A55D',
+    neutral: '#D9D4C7',
+    bookedFallback: '#2563eb',
+    over: '#dc3545'
+  };
+  // Zweites Portal-Projekt: gleiche Palette, nur das „gebucht"-Segment in Orange
+  const BAR_COLORS_SECOND = Object.assign({}, BAR_COLORS, {spent: '#f97316', spentHover: '#ea580c'});
+
   const PROGRESS_BAR_DEFAULTS = {
     bar: {
       position: 'relative',
@@ -944,14 +1125,16 @@
     centerLabel: {
       fontWeight: '600'
     },
-    colors: {
-      spent: '#6FBF73',
-      spentHover: '#57A55D',
-      neutral: '#D9D4C7',
-      bookedFallback: '#2563eb',
-      over: '#dc3545'
-    }
+    colors: BAR_COLORS
   };
+
+  // Text-Alternative für Screenreader und Tooltip (Farben allein tragen keine Information)
+  function describeBar(barOuter, label) {
+    barOuter.classList.add('ambient-progress-bar');
+    barOuter.setAttribute('role', 'img');
+    barOuter.setAttribute('aria-label', 'Portal-Stunden: ' + label);
+    barOuter.title = label;
+  }
 
   function createProgressBarElements(progressData, customStyles) {
     if (!progressData) return null;
@@ -964,6 +1147,7 @@
     const textLayer = document.createElement('div');
     applyStyles(textLayer, mergeStyles(PROGRESS_BAR_DEFAULTS.textLayer, styles.textLayer));
 
+    let ariaLabel = '';
     const spentLabelStyle = mergeStyles(PROGRESS_BAR_DEFAULTS.label, styles.spentLabel);
     const remainingLabelStyle = mergeStyles(PROGRESS_BAR_DEFAULTS.label, styles.remainingLabel);
     const centerLabelStyle = mergeStyles(PROGRESS_BAR_DEFAULTS.centerLabel, styles.centerLabel);
@@ -983,6 +1167,7 @@
       barOuter.appendChild(neutralBar);
       appendCenterText('Nicht gefunden');
       barOuter.appendChild(textLayer);
+      describeBar(barOuter, 'Portal: nicht gefunden');
       return barOuter;
     }
 
@@ -996,6 +1181,7 @@
       });
       barOuter.appendChild(bookedBar);
       appendCenterText(bookedText);
+      ariaLabel = bookedText;
     } else if (progressData.over) {
       const overBar = document.createElement('div');
       applyStyles(overBar, {
@@ -1004,7 +1190,7 @@
         background: colors.over
       });
       barOuter.appendChild(overBar);
-      let centerText = 'Over: ' + progressData.over;
+      let centerText = '⚠ Over: ' + progressData.over; // Symbol, damit „über Budget" nicht nur über die Farbe erkennbar ist
       if (progressData.booked) {
         const bookedHours = extractHourNumber(progressData.booked);
         const overHours = extractHourNumber(progressData.over);
@@ -1019,6 +1205,7 @@
         centerText += ')';
       }
       appendCenterText(centerText);
+      ariaLabel = centerText;
     } else {
       const spentNum = extractHourNumber(progressData.spent);
       const remainingNum = extractHourNumber(progressData.remaining);
@@ -1071,9 +1258,11 @@
       textLayer.appendChild(
         createTextSpan(progressData.remaining || '—', remainingLabelStyle)
       );
+      ariaLabel = 'Gebucht ' + (progressData.spent || '—') + ', verbleibend ' + (progressData.remaining || '—');
     }
 
     barOuter.appendChild(textLayer);
+    describeBar(barOuter, ariaLabel);
     return barOuter;
   }
 
@@ -1130,12 +1319,13 @@
     button.title = 'Im Portal öffnen';
     button.setAttribute('aria-label', 'Ticket im Portal öffnen');
     applyStyles(button, mergeStyles(PORTAL_LINK_BUTTON_DEFAULT_STYLES, overrides));
+    button.className = 'ambient-btn';
     button.addEventListener(
       'click',
       function (ev) {
         ev.stopPropagation();
         ev.preventDefault();
-        window.open(url, '_blank', 'noopener,noreferrer');
+        openExternal(url);
       },
       true
     );
@@ -1153,12 +1343,13 @@
     button.style.display = 'inline-flex';
     button.style.alignItems = 'center';
     button.style.justifyContent = 'center';
+    button.className = 'ambient-btn';
     button.addEventListener(
       'click',
       function (ev) {
         ev.stopPropagation();
         ev.preventDefault();
-        window.open(url, '_blank', 'noopener,noreferrer');
+        openExternal(url);
       },
       true
     );
@@ -1182,9 +1373,8 @@
   function getProgressCacheEntry(cacheKey) {
     const entry = progressCache[cacheKey];
     if (!entry) return null;
-    if (Date.now() - entry.timestamp > PROGRESS_CACHE_TTL_MS) {
-      delete progressCache[cacheKey];
-      writeProgressCacheState(progressCache);
+    if (!isCacheEntryFresh(entry)) {
+      delete progressCache[cacheKey]; // beim nächsten Persistieren verschwindet der Eintrag auch aus dem Storage
       return null;
     }
     return entry.data;
@@ -1198,7 +1388,7 @@
     const primaryKey = buildProgressCacheKey(projectSettings, issueIid);
     if (primaryKey) {
       const primaryCached = getProgressCacheEntry(primaryKey);
-      if (primaryCached) {
+      if (primaryCached && !primaryCached.notFound) {
         return primaryCached;
       }
     }
@@ -1208,7 +1398,7 @@
       if (!Object.prototype.hasOwnProperty.call(progressCache, key)) continue;
       if (!key.endsWith(suffix)) continue;
       const candidate = getProgressCacheEntry(key);
-      if (candidate) {
+      if (candidate && !candidate.notFound) {
         log('Detail-Cache-Fallback nutzt Board-Cache', key, 'für Issue', issueIid);
         return candidate;
       }
@@ -1217,12 +1407,13 @@
     return null;
   }
 
-  function setProgressCacheEntry(cacheKey, data) {
+  function setProgressCacheEntry(cacheKey, data, ttl) {
     progressCache[cacheKey] = {
       data,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      ttl: ttl || undefined
     };
-    writeProgressCacheState(progressCache);
+    scheduleProgressCachePersist();
   }
 
   // Leert nur die Einträge des aktuellen Boards – andere Boards behalten ihren Cache
@@ -1233,7 +1424,7 @@
         delete progressCache[key];
       }
     });
-    writeProgressCacheState(progressCache);
+    writeProgressCacheState(progressCache, false);
     writeLastRefreshTimestamp(null);
   }
 
@@ -1473,7 +1664,7 @@
       if (themeBg) {
         const rgb = parseCssColorToRgb(themeBg);
         if (rgb) {
-          const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+          const luminance = relativeLuminance(rgb);
           const isDark = luminance <= 0.55;
           log('isGitLabDarkModeActive', {
             source: 'theme-var',
@@ -1491,7 +1682,7 @@
     if (computedBg) {
       const rgb = parseCssColorToRgb(computedBg);
       if (rgb) {
-        const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+        const luminance = relativeLuminance(rgb);
         const isDark = luminance <= 0.55;
         log('isGitLabDarkModeActive', {
           computedBg,
@@ -1611,7 +1802,7 @@
       return fallbackLight;
     }
 
-    const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+    const luminance = relativeLuminance(rgb);
     const chosen = luminance > 0.55 ? fallbackDark : fallbackLight;
 
     log('getContrastTextColor', {
@@ -1626,19 +1817,19 @@
 
   function getBoardListHeaderElement(boardListElem) {
     if (!boardListElem) return null;
-    return boardListElem.querySelector('header[data-testid="board-list-header"]');
+    return boardListElem.querySelector(SEL.boardListHeader);
   }
 
   function getListNameFromBoardListElem(boardListElem, headerOverride) {
     const header = headerOverride || getBoardListHeaderElement(boardListElem);
     if (!header) return null;
     try {
-      const labelSpan = header.querySelector('.board-title-text .gl-label-text');
+      const labelSpan = header.querySelector(SEL.listTitleLabelText);
       if (labelSpan && labelSpan.textContent) {
         return labelSpan.textContent.replace(/\s+/g, ' ').trim();
       }
 
-      const h2 = header.querySelector('.board-title-text');
+      const h2 = header.querySelector(SEL.listTitle);
       if (h2 && h2.textContent) {
         return h2.textContent.replace(/\s+/g, ' ').trim();
       }
@@ -1651,7 +1842,7 @@
   // Ganzer Label-Text inkl. Scope (z. B. "workflow::Design Review"), Fallback Listenname
   function getColumnLabelText(boardListElem, headerOverride) {
     const header = headerOverride || getBoardListHeaderElement(boardListElem);
-    const labelElem = header && header.querySelector('.board-title-text .gl-label');
+    const labelElem = header && header.querySelector(SEL.listTitleLabel);
     return labelElem ? labelElem.textContent.replace(/\s+/g, ' ').trim() : getListNameFromBoardListElem(boardListElem, header);
   }
 
@@ -1673,7 +1864,7 @@
     if (iid) return iid;
 
     try {
-      const numberSpan = cardElem.querySelector('.board-card-number span');
+      const numberSpan = cardElem.querySelector(SEL.cardNumber + ' span');
       if (numberSpan && numberSpan.textContent) {
         const m = numberSpan.textContent.match(/#(\d+)/);
         if (m) return m[1];
@@ -1689,19 +1880,27 @@
     return mrs.filter(function (mr) { return re.test(mr.title); });
   }
 
+  // Nur https, keine Zugangsdaten in der URL; Query/Fragment werden verworfen. Ungültig → null.
   function normalizePortalBaseUrl(value) {
     if (!value) {
       return null;
     }
-    let normalized = String(value).trim();
-    if (!normalized) {
+    let raw = String(value).trim();
+    if (!raw) {
       return null;
     }
-    normalized = normalized.replace(/\/+$/, '');
-    if (!/^https?:\/\//i.test(normalized)) {
-      normalized = 'https://' + normalized;
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {
+      raw = 'https://' + raw;
     }
-    return normalized;
+    try {
+      const parsed = new URL(raw);
+      if (parsed.protocol !== 'https:' || parsed.username || parsed.password || !parsed.hostname) {
+        return null;
+      }
+      return parsed.origin + parsed.pathname.replace(/\/+$/, '');
+    } catch (e) {
+      return null;
+    }
   }
 
   function getPortalBaseUrl(projectSettings) {
@@ -1748,14 +1947,25 @@
     );
   }
 
-  // Zahl aus "16.25h" / "72,25h" extrahieren
+  // Zahl aus "16.25h" / "72,25h" / "1.234,5h" / "1,234.5h" extrahieren; unplausible Werte → null
   function extractHourNumber(text) {
     if (!text) return null;
-    const norm = String(text).replace(',', '.');
-    const m = norm.match(/-?[\d.]+/);
+    const m = String(text).match(/-?\d[\d.,]*/);
     if (!m) return null;
-    const v = parseFloat(m[0]);
-    if (isNaN(v)) return null;
+    let token = m[0];
+    const lastComma = token.lastIndexOf(',');
+    const lastDot = token.lastIndexOf('.');
+    if (lastComma !== -1 && lastDot !== -1) {
+      // beides vorhanden: das hintere Zeichen ist das Dezimaltrennzeichen
+      token = lastComma > lastDot
+        ? token.replace(/\./g, '').replace(',', '.')
+        : token.replace(/,/g, '');
+    } else if (lastComma !== -1) {
+      token = token.replace(',', '.');
+    }
+    token = token.replace(/\.(?=.*\.)/g, ''); // mehrere Punkte: nur der letzte bleibt
+    const v = parseFloat(token);
+    if (!Number.isFinite(v) || Math.abs(v) > MAX_HOURS_VALUE) return null;
     return v;
   }
 
@@ -1786,7 +1996,9 @@
 
   function sumHourNumbersFromText(text) {
     if (!text) return null;
-    const matches = text.match(/\b\d+(?:[.,]\d+)?(?![\d.,])/g);
+    // Zahlen mit „h" sind Stunden; reine Zahlen (z. B. „3 Einträge") nur, wenn es keine Stundenangabe gibt
+    const hourMatches = text.match(/\b\d+(?:[.,]\d+)?(?=\s*h\b)/gi);
+    const matches = hourMatches && hourMatches.length ? hourMatches : text.match(/\b\d+(?:[.,]\d+)?(?![\d.,])/g);
     if (!matches || matches.length === 0) return null;
     let sum = 0;
     let found = false;
@@ -1952,6 +2164,7 @@
     const candidates = doc.querySelectorAll('th, td, div, span, p, label');
     for (let i = 0; i < candidates.length; i++) {
       const el = candidates[i];
+      if (el.children.length) continue; // nur Blattelemente, sonst frisst der Treffer den Text des ganzen Containers
       const text = normalizeWhitespace(el.textContent);
       if (!text) continue;
 
@@ -2069,10 +2282,7 @@
    * Rendering: Progressbar in der Kartenmitte + Link-Button
    ******************************************************************/
 
-  function injectProgressIntoCard(cardElem, progressData, progressData2) {
-    if (!cardElem || (!progressData && !progressData2)) return;
-    if (!isCardInActiveColumn(cardElem)) return;
-
+  function getOrCreateBadgeContainer(cardElem) {
     let container = cardElem.querySelector('.ambient-progress-badge');
 
     if (!container) {
@@ -2087,8 +2297,8 @@
         zIndex: '20'
       });
 
-      const wrappingDiv = cardElem.querySelector('.gl-p-4');
-      const footer = cardElem.querySelector('.board-card-footer');
+      const wrappingDiv = cardElem.querySelector(SEL.cardBody);
+      const footer = cardElem.querySelector(SEL.cardFooter);
 
       if (footer && wrappingDiv) {
         wrappingDiv.insertBefore(container, footer);
@@ -2098,7 +2308,14 @@
         cardElem.appendChild(container);
       }
     }
+    return container;
+  }
 
+  function injectProgressIntoCard(cardElem, progressData, progressData2) {
+    if (!cardElem || (!progressData && !progressData2)) return;
+    if (!isCardInActiveColumn(cardElem)) return;
+
+    const container = getOrCreateBadgeContainer(cardElem);
     container.style.display = showEnabled ? '' : 'none';
     container.innerHTML = '';
 
@@ -2163,15 +2380,7 @@
         gap: '6px'
       });
 
-      const theme2Styles = Object.assign({}, theme.styles, {
-        colors: {
-          spent: '#f97316',
-          spentHover: '#ea580c',
-          neutral: '#D9D4C7',
-          bookedFallback: '#2563eb',
-          over: '#dc3545'
-        }
-      });
+      const theme2Styles = Object.assign({}, theme.styles, {colors: BAR_COLORS_SECOND});
 
       const barOuter2 = createProgressBarElements(progressData2, theme2Styles);
 
@@ -2202,17 +2411,20 @@
    * MR-Badge auf Karten
    ******************************************************************/
 
-  const MR_LIST_CACHE_TTL_MS = 5 * 60 * 1000; // ponytail: in-memory only, kein localStorage nötig
   const mrListCache = {}; // key: projectPath → {mrs: [{iid, title, web_url}], timestamp}
 
   let currentUserPromise = null;
 
   function getCurrentUser() {
     if (!currentUserPromise) {
-      currentUserPromise = fetch('/api/v4/user', {credentials: 'include'})
+      currentUserPromise = glFetch('/api/v4/user')
         .then(function (res) {
           if (!res.ok) throw new Error('Aktueller User Status ' + res.status);
           return res.json();
+        })
+        .catch(function (err) {
+          currentUserPromise = null; // nächster Versuch darf erneut laden
+          throw err;
         });
     }
     return currentUserPromise;
@@ -2224,16 +2436,12 @@
   }
 
   function assignCurrentUserAsReviewer(projectPath, mrIid) {
+    if (!isNumericId(mrIid)) return Promise.reject(new Error('Ungültige MR-IID'));
     return getCurrentUser().then(function (user) {
       const url = '/api/v4/projects/' + encodeURIComponent(projectPath) +
         '/merge_requests/' + mrIid;
-      return fetch(url, {
+      return glFetch(url, {
         method: 'PUT',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': getCsrfToken()
-        },
         body: JSON.stringify({reviewer_ids: [user.id]})
       }).then(function (res) {
         if (!res.ok) throw new Error('Reviewer zuweisen Status ' + res.status);
@@ -2242,21 +2450,28 @@
     });
   }
 
+  const MR_LIST_FAILURE_BACKOFF_MS = NEGATIVE_CACHE_MS;
+  const mrListFailedAt = {}; // projectPath → Zeitpunkt des letzten Fehlers
+
+  // Cache hält die Promise: viele Karten gleichzeitig lösen genau einen Request aus
   function loadMergeRequestsForProject(projectPath) {
     const cached = mrListCache[projectPath];
     if (cached && Date.now() - cached.timestamp <= MR_LIST_CACHE_TTL_MS) {
-      return Promise.resolve(cached.mrs);
+      return cached.promise;
+    }
+    if (mrListFailedAt[projectPath] && Date.now() - mrListFailedAt[projectPath] < MR_LIST_FAILURE_BACKOFF_MS) {
+      return Promise.reject(new Error('MR-Liste: letzter Versuch fehlgeschlagen, warte kurz'));
     }
     const url = '/api/v4/projects/' + encodeURIComponent(projectPath) +
       '/merge_requests?per_page=100&order_by=updated_at';
-    return fetch(url, {credentials: 'include'})
+    const promise = gitlabLimiter(function () { return glFetch(url); })
       .then(function (res) {
         if (!res.ok) throw new Error('MR-Liste Status ' + res.status);
         return res.json();
       })
       .then(function (list) {
         // ponytail: per_page=100, keine Paginierung – bei >100 offenen MRs fehlen ältere
-        const mrs = list.map(function (mr) {
+        return list.map(function (mr) {
           return {
             iid: mr.iid,
             title: mr.title,
@@ -2266,49 +2481,58 @@
             reviewers: mr.reviewers || []
           };
         });
-        mrListCache[projectPath] = {mrs: mrs, timestamp: Date.now()};
-        return mrs;
+      })
+      .catch(function (err) {
+        delete mrListCache[projectPath];
+        mrListFailedAt[projectPath] = Date.now();
+        throw err;
       });
+    mrListCache[projectPath] = {promise: promise, timestamp: Date.now()};
+    return promise;
   }
 
   /******************************************************************
    * Verweildauer in Spalte
    ******************************************************************/
 
-  const columnEnteredAtCache = {}; // key: projectPath#iid#list → Promise<Date|null>
+  const columnEnteredAtCache = {}; // key: projectPath#iid#list → {promise: Promise<Date|null>, timestamp}
 
   function normalizeLabelNameForMatching(name) {
     return normalizeListNameForMatching(String(name || '').replace(/::/g, ' ').replace(/\s+/g, ' '));
   }
 
   function loadColumnEnteredAt(projectPath, issueIid, listName) {
+    if (!isNumericId(issueIid)) return Promise.reject(new Error('Ungültige Issue-IID'));
     const key = projectPath + '#' + issueIid + '#' + listName;
-    if (!columnEnteredAtCache[key]) {
-      const target = normalizeLabelNameForMatching(listName);
-      const url = '/api/v4/projects/' + encodeURIComponent(projectPath) +
-        '/issues/' + issueIid + '/resource_label_events?per_page=100';
-      // ponytail: per_page=100, keine Paginierung – bei >100 Label-Events fehlen neuere
-      columnEnteredAtCache[key] = fetch(url, {credentials: 'include'})
-        .then(function (res) {
-          if (!res.ok) throw new Error('Label-Events Status ' + res.status);
-          return res.json();
-        })
-        .then(function (events) {
-          let latest = null;
-          events.forEach(function (ev) {
-            if (ev.action !== 'add' || !ev.label) return;
-            if (normalizeLabelNameForMatching(ev.label.name) !== target) return;
-            const date = new Date(ev.created_at);
-            if (!latest || date > latest) latest = date;
-          });
-          return latest;
-        })
-        .catch(function (err) {
-          delete columnEnteredAtCache[key];
-          throw err;
-        });
+    const cached = columnEnteredAtCache[key];
+    if (cached && Date.now() - cached.timestamp <= COLUMN_AGE_CACHE_TTL_MS) {
+      return cached.promise;
     }
-    return columnEnteredAtCache[key];
+    const target = normalizeLabelNameForMatching(listName);
+    const url = '/api/v4/projects/' + encodeURIComponent(projectPath) +
+      '/issues/' + issueIid + '/resource_label_events?per_page=100';
+    // ponytail: per_page=100, keine Paginierung – bei >100 Label-Events fehlen neuere
+    const promise = gitlabLimiter(function () { return glFetch(url); })
+      .then(function (res) {
+        if (!res.ok) throw new Error('Label-Events Status ' + res.status);
+        return res.json();
+      })
+      .then(function (events) {
+        let latest = null;
+        events.forEach(function (ev) {
+          if (ev.action !== 'add' || !ev.label) return;
+          if (normalizeLabelNameForMatching(ev.label.name) !== target) return;
+          const date = new Date(ev.created_at);
+          if (!latest || date > latest) latest = date;
+        });
+        return latest;
+      })
+      .catch(function (err) {
+        delete columnEnteredAtCache[key];
+        throw err;
+      });
+    columnEnteredAtCache[key] = {promise: promise, timestamp: Date.now()};
+    return promise;
   }
 
   function formatDuration(ms) {
@@ -2320,17 +2544,21 @@
   }
 
   // Schrift der Issue-ID (#1234) übernehmen, damit MR-ID und Verweildauer identisch aussehen
+  let issueNumberFontStylesCache = null; // gilt für einen Scan-Durchlauf, vermeidet getComputedStyle pro Karte
+
   function getIssueNumberFontStyles(footer) {
-    const numberText = footer && footer.querySelector('.board-card-number span, .board-card-number');
+    if (issueNumberFontStylesCache) return Object.assign({}, issueNumberFontStylesCache);
+    const numberText = footer && footer.querySelector(SEL.cardNumberText);
     if (!numberText) return {fontSize: '12px', lineHeight: '1'};
     const c = getComputedStyle(numberText);
-    return {fontFamily: c.fontFamily, fontSize: c.fontSize, fontWeight: c.fontWeight, lineHeight: '1'};
+    issueNumberFontStylesCache = {fontFamily: c.fontFamily, fontSize: c.fontSize, fontWeight: c.fontWeight, lineHeight: '1'};
+    return Object.assign({}, issueNumberFontStylesCache);
   }
 
   // Für asynchron zurückkommende Requests: Spalte inzwischen ausgeschaltet → nichts mehr einfügen
   function isCardInActiveColumn(cardElem) {
     if (!showEnabled || !cardElem.isConnected) return false;
-    const boardListElem = cardElem.closest('div[data-testid="board-list"]');
+    const boardListElem = cardElem.closest(SEL.boardList);
     const header = boardListElem && getBoardListHeaderElement(boardListElem);
     const toggle = header && header.querySelector('.ambient-progress-list-toggle');
     return !toggle || toggle.dataset.ambientActive === 'true';
@@ -2346,19 +2574,26 @@
     cardElem.style.boxShadow = '';
   }
 
+  // Karten in nicht ausgewählten Spalten einmal aufräumen und markieren, damit Scans sie überspringen
+  function markCardSkipped(cardElem) {
+    if (cardElem.hasAttribute('data-ambient-skip')) return;
+    clearCardInjections(cardElem);
+    cardElem.setAttribute('data-ambient-skip', '1');
+  }
+
   function injectColumnAgeIntoCard(cardElem, enteredAt) {
-    const boardListElem = cardElem.closest('div[data-testid="board-list"]');
+    const boardListElem = cardElem.closest(SEL.boardList);
     let el = cardElem.querySelector('.ambient-column-age');
     if (!enteredAt) {
       if (el) el.remove();
       cardElem.removeAttribute('data-ambient-entered-at');
-      updateColumnAgeAverage(boardListElem);
+      scheduleColumnAgeAverage(boardListElem);
       return;
     }
     if (!el) {
-      const footer = cardElem.querySelector('.board-card-footer');
+      const footer = cardElem.querySelector(SEL.cardFooter);
       if (!footer) return;
-      const numberElem = footer.querySelector('.board-card-number');
+      const numberElem = footer.querySelector(SEL.cardNumber);
       el = document.createElement('span');
       el.className = 'ambient-column-age';
       // gleiche Optik wie MR-Badge (Farbe der Ticketnummer, 12px bold)
@@ -2373,7 +2608,7 @@
         opacity: '1'
       });
       const icon = document.createElement('span');
-      icon.innerHTML = CLOCK_ICON_SVG;
+      icon.innerHTML = clockIconSvg();
       applyStyles(icon, {width: '14px', height: '14px', display: 'inline-flex', alignItems: 'center'});
       const iconSvg = icon.querySelector('svg');
       if (iconSvg) applyStyles(iconSvg, {width: '14px', height: '14px', margin: '0'});
@@ -2387,7 +2622,18 @@
     }
     el.style.display = showEnabled ? 'inline-flex' : 'none';
     cardElem.setAttribute('data-ambient-entered-at', String(enteredAt.getTime()));
-    updateColumnAgeAverage(boardListElem);
+    scheduleColumnAgeAverage(boardListElem);
+  }
+
+  const columnAgeAverageTimers = new WeakMap();
+
+  // Pro Spalte höchstens ein Update pro Frame, statt eines pro eintreffender Karte (sonst O(n²) DOM-Arbeit)
+  function scheduleColumnAgeAverage(boardListElem) {
+    if (!boardListElem || columnAgeAverageTimers.has(boardListElem)) return;
+    columnAgeAverageTimers.set(boardListElem, setTimeout(function () {
+      columnAgeAverageTimers.delete(boardListElem);
+      updateColumnAgeAverage(boardListElem);
+    }, 50));
   }
 
   // Ø über alle aktuell geladenen Karten der Spalte; läuft bei jeder neu geladenen Karte erneut
@@ -2410,8 +2656,11 @@
       const age = now - enteredAt.getTime();
       const aboveAvg = avg !== null && age > avg;
       el.querySelector('.ambient-column-age-text').textContent = formatDuration(age);
-      el.title = 'In dieser Spalte seit ' + enteredAt.toLocaleString('de-DE');
-      card.toggleAttribute('data-ambient-above-avg', highlight && aboveAvg);
+      const marked = highlight && aboveAvg;
+      const enteredText = 'In dieser Spalte seit ' + enteredAt.toLocaleString(uiLocale());
+      el.title = enteredText + (marked ? ' (länger als der Spalten-Ø)' : '');
+      el.setAttribute('aria-label', el.title);
+      card.toggleAttribute('data-ambient-above-avg', marked);
       setColumnAgeBorder(card, el.style.display !== 'none');
     });
   }
@@ -2426,7 +2675,7 @@
     if (!isFeatureOn('columnAvg')) avg = null;
     const header = getBoardListHeaderElement(boardListElem);
     // Neben GitLabs Issue-Zähler, mit denselben Utility-Klassen wie der Zähler selbst
-    const countBadge = header && header.querySelector('[data-testid="issue-count-badge"]');
+    const countBadge = header && header.querySelector(SEL.issueCountBadge);
     if (!countBadge) return;
     let el = countBadge.querySelector('.ambient-column-avg');
     if (avg === null) {
@@ -2462,7 +2711,7 @@
   }
 
   function injectMrBadgeIntoCard(cardElem, matches, projectPath, issueIid) {
-    const footer = cardElem.querySelector('.board-card-footer');
+    const footer = cardElem.querySelector(SEL.cardFooter);
     if (!footer) return;
     const existing = footer.querySelector('.ambient-mr-badge');
     if (existing) existing.remove();
@@ -2487,11 +2736,11 @@
         }
         ev.stopPropagation();
         ev.preventDefault();
-        window.open(targetUrl, '_blank', 'noopener,noreferrer');
+        openExternal(targetUrl);
       },
       true
     );
-    const numberElem = footer.querySelector('.board-card-number');
+    const numberElem = footer.querySelector(SEL.cardNumber);
     const matchedColor = numberElem ? getComputedStyle(numberElem).color : 'inherit';
     const allMerged = matches.every(function (m) { return m.state === 'merged'; });
     const badgeColor = allMerged ? '#8e8e93' : matchedColor;
@@ -2510,7 +2759,7 @@
     attachHoverEffect(el, {opacity: allMerged ? '0.8' : '1'});
 
     const icon = document.createElement('span');
-    icon.innerHTML = MERGE_REQUEST_ICON_SVG;
+    icon.innerHTML = mergeRequestIconSvg();
     applyStyles(icon, {width: '16px', height: '16px', display: 'inline-flex'});
     el.appendChild(icon);
 
@@ -2629,12 +2878,7 @@
         appendPlaceholder('Reviewer', true, function () {
           assignCurrentUserAsReviewer(projectPath, mrIid)
             .then(function (user) {
-              matches[0].reviewers = [user];
-              const cachedEntry = mrListCache[projectPath];
-              if (cachedEntry) {
-                const cachedMr = cachedEntry.mrs.find(function (m) { return m.iid === mrIid; });
-                if (cachedMr) cachedMr.reviewers = [user];
-              }
+              matches[0].reviewers = [user]; // matches zeigt auf dieselben Objekte wie der gecachte MR-Listen-Eintrag
               injectMrBadgeIntoCard(cardElem, matches, projectPath, issueIid);
             })
             .catch(function (err) {
@@ -2671,69 +2915,103 @@
    * Requests
    ******************************************************************/
 
-  function loadProgressData(url, issueIid) {
-    return new Promise(function (resolve, reject) {
-      GM_xmlhttpRequest({
-        method: 'GET',
-        url: url,
-        headers: {},
-        withCredentials: true,
-        onload: function (response) {
-          if (debugEnabled) {
-            log('Response-Status für Issue', issueIid, ':', response.status);
-          }
-          if (response.status !== 200) {
-            warn('Antwort != 200 für Issue', issueIid, 'Status:', response.status);
-            reject({status: response.status});
-            return;
-          }
-          const progressData = parseProgressHtml(response.responseText);
-          if (!progressData) {
-            log(
-              'Konnte progress-Daten nicht aus HTML extrahieren (evtl. Login-Page oder keine Buchungen). Issue',
-              issueIid
-            );
-            resolve(null);
-            return;
-          }
-          log('Progress-Daten erhalten für Issue', issueIid, progressData);
-          resolve(progressData);
-        },
-        onerror: function (err) {
-          reject(err);
-        }
-      });
-    });
+  function looksLikeLoginPage(response) {
+    if (/\/(accounts\/)?(login|signin)\b/i.test(String(response.finalUrl || ''))) return true;
+    return /<input[^>]+type=["']?password/i.test(String(response.responseText || '').slice(0, 20000));
   }
 
+  // Ablehnungen tragen {status} (HTTP/Login → blockiert das Projekt) oder {network|timeout} (vorübergehend)
+  function loadProgressData(url, issueIid) {
+    if (inflightPortalRequests[url]) {
+      return inflightPortalRequests[url];
+    }
+    const promise = portalLimiter(function () {
+      return new Promise(function (resolve, reject) {
+        GM_xmlhttpRequest({
+          method: 'GET',
+          url: url,
+          headers: {},
+          withCredentials: true,
+          timeout: PORTAL_REQUEST_TIMEOUT_MS,
+          onload: function (response) {
+            if (debugEnabled) {
+              log('Response-Status für Issue', issueIid, ':', response.status);
+            }
+            if (response.status !== 200) {
+              warn('Antwort != 200 für Issue', issueIid, 'Status:', response.status);
+              reject({status: response.status});
+              return;
+            }
+            if (looksLikeLoginPage(response)) {
+              warn('Portal liefert Login-Seite für Issue', issueIid);
+              reject({status: 401, login: true});
+              return;
+            }
+            if (String(response.responseText || '').length > MAX_PORTAL_RESPONSE_CHARS) {
+              warn('Portal-Antwort zu groß für Issue', issueIid);
+              reject({tooLarge: true});
+              return;
+            }
+            const progressData = parseProgressHtml(response.responseText);
+            if (!progressData) {
+              log('Keine progress-Daten im HTML (keine Buchungen). Issue', issueIid);
+              resolve(null);
+              return;
+            }
+            log('Progress-Daten erhalten für Issue', issueIid, progressData);
+            resolve(progressData);
+          },
+          onerror: function () {
+            reject({network: true});
+          },
+          ontimeout: function () {
+            reject({timeout: true});
+          },
+          onabort: function () {
+            reject({aborted: true});
+          }
+        });
+      });
+    });
+    inflightPortalRequests[url] = promise;
+    const cleanup = function () {
+      delete inflightPortalRequests[url];
+    };
+    promise.then(cleanup, cleanup);
+    return promise;
+  }
+
+  const fetchRetryState = {}; // cacheKey → {attempts, retryAt}
+
+  // Gibt true zurück, wenn Portal-Requests gestartet wurden (zählt für das Scan-Limit)
   function fetchAndDisplayProgress(hostConfig, projectSettings, issueIid, cardElem) {
-    if (!issueIid || !cardElem) return;
+    if (!issueIid || !cardElem) return false;
 
     const projectKey = projectSettings && projectSettings.projectKey;
     if (isProjectRequestBlocked(projectKey)) {
       log('Requests pausiert für Projekt', projectSettings ? projectSettings.projectPath : '<unbekannt>');
-      return;
+      return false;
     }
 
     const projectId = projectSettings.projectId;
     if (!projectId) {
       warn('Kein projectId für', projectSettings.projectPath, '; progress wird nicht geladen.');
-      return;
+      return false;
     }
     const cacheKey = buildProgressCacheKey(projectSettings, issueIid);
     if (!cacheKey) {
       warn('Konnte Cache-Schlüssel nicht bestimmen für Issue', issueIid);
-      return;
+      return false;
     }
 
     const url = buildPortalUrl(projectSettings, issueIid);
     if (!url) {
       warn(
-        'Keine Portal-Basis konfiguriert für',
+        'Keine (gültige) Portal-Basis konfiguriert für',
         projectSettings.projectPath,
         '; Fortschritt wird nicht geladen.'
       );
-      return;
+      return false;
     }
     cardElem.setAttribute('data-ambient-progress-url', url);
     const timesheetUrl = buildTimesheetUrl(projectSettings, issueIid);
@@ -2765,19 +3043,21 @@
         ? null
         : cached;
       injectProgressIntoCard(cardElem, effectiveCached, cachedSecondary);
-      return;
+      return false;
     }
 
     if (!showEnabled) {
-      return;
+      return false;
     }
 
-    if (!shouldPerformPortalRequest(false)) {
-      log('Portal-Request ausgelassen (letzte Aktualisierung < 1h) für Issue', issueIid);
-      return;
+    // Nach Fehlschlägen kurz warten, danach (begrenzt) erneut versuchen
+    const retryState = fetchRetryState[cacheKey] || (fetchRetryState[cacheKey] = {attempts: 0, retryAt: 0});
+    if (Date.now() < retryState.retryAt) {
+      cardElem.removeAttribute('data-ambient-progress-processed');
+      return false;
     }
 
-    log('Hole Progress-Daten für Issue', issueIid, '→', url);
+    log('Hole Progress-Daten für Issue', issueIid);
 
     const promises = [loadProgressData(url, issueIid)];
     if (projectSettings.useSecondPortalProjectId && projectSettings.projectId2) {
@@ -2785,26 +3065,48 @@
         url2 = buildPortalUrl(projectSettings, issueIid, projectSettings.projectId2);
       }
       if (url2) {
-        log('Hole auch Progress-Daten für zweites Portal-Projekt', issueIid, '→', url2);
+        log('Hole auch Progress-Daten für zweites Portal-Projekt', issueIid);
         promises.push(loadProgressData(url2, issueIid));
       }
     }
 
     Promise.allSettled(promises)
       .then(function (results) {
-        clearProjectRequestBlock(projectKey);
+        const fulfilled = results.filter(function (r) { return r.status === 'fulfilled'; });
+        const rejected = results.filter(function (r) { return r.status === 'rejected'; });
+        if (fulfilled.length) {
+          clearProjectRequestBlock(projectKey);
+        }
+        rejected.forEach(function (r) {
+          error('Request-Fehler für Issue ' + issueIid + ':', r.reason);
+          if (r.reason && r.reason.status) {
+            blockProjectRequests(projectKey, r.reason.status);
+          }
+        });
+
         const progressData = results[0].status === 'fulfilled' ? results[0].value : null;
         const progressData2 = results[1] && results[1].status === 'fulfilled' ? results[1].value : null;
 
         if (!progressData && !progressData2) {
-          if (projectSettings.useSecondPortalProjectId) {
-            setProgressCacheEntry(cacheKey, NOT_FOUND_SENTINEL);
-            injectProgressIntoCard(cardElem, NOT_FOUND_SENTINEL, null);
-            markPortalRefreshTimestamp();
+          if (rejected.length) {
+            // vorübergehender Fehler: nicht cachen, später erneut versuchen (begrenzt)
+            retryState.attempts += 1;
+            retryState.retryAt = Date.now() + NEGATIVE_CACHE_MS;
+            if (retryState.attempts < MAX_FETCH_RETRIES) {
+              cardElem.removeAttribute('data-ambient-progress-processed');
+            }
+            return;
           }
+          // sauber „keine Buchungen": kurz cachen, damit nicht jeder Reload alle Karten neu abfragt
+          setProgressCacheEntry(cacheKey, NOT_FOUND_SENTINEL, NOT_FOUND_TTL_MS);
+          if (projectSettings.useSecondPortalProjectId) {
+            injectProgressIntoCard(cardElem, NOT_FOUND_SENTINEL, null);
+          }
+          markPortalRefreshTimestamp();
           return;
         }
 
+        delete fetchRetryState[cacheKey];
         if (progressData) {
           setProgressCacheEntry(cacheKey, progressData);
         }
@@ -2816,11 +3118,9 @@
         markPortalRefreshTimestamp();
       })
       .catch(function (err) {
-        error('Request-Fehler für Issue ' + issueIid + ':', err);
-        if (err && err.status) {
-          blockProjectRequests(projectSettings.projectKey, err.status);
-        }
+        error('Fehler beim Verarbeiten der Portal-Antwort für Issue ' + issueIid + ':', err);
       });
+    return true;
   }
 
   /******************************************************************
@@ -2832,8 +3132,9 @@
 
   function scanBoard(hostConfig, projectSettings) {
     scanRunCounter += 1;
+    issueNumberFontStylesCache = null;
 
-    const rootBoardsApp = document.querySelector('.boards-app');
+    const rootBoardsApp = document.querySelector(SEL.boardsApp);
     if (!rootBoardsApp) {
       log(
         'scanBoard run #' +
@@ -2843,9 +3144,12 @@
       return;
     }
 
-    const boardLists = rootBoardsApp.querySelectorAll('div[data-testid="board-list"]');
+    const boardLists = rootBoardsApp.querySelectorAll(SEL.boardList);
     log('scanBoard run #' + scanRunCounter + ', Listen gefunden:', boardLists.length);
-    if (!boardLists.length) return;
+    if (!boardLists.length) {
+      qs(document, 'boardList'); // einmalige Warnung im Debug-Modus, falls GitLab das Markup geändert hat
+      return;
+    }
 
     if (!showEnabled) {
       rootBoardsApp.querySelectorAll('.ambient-progress-list-toggle').forEach(function (button) {
@@ -2889,29 +3193,27 @@
         avgElem.remove();
       }
 
-      log('Liste #' + li + ' Name:', '"' + displayListName + '"', '→ allowed:', isAllowed);
-
-      const cards = boardListElem.querySelectorAll('li[data-testid="board-card"].board-card');
-      if (isAllowed) {
-        log('  → Karten in erlaubter Liste "' + displayListName + '":', cards.length);
+      const cards = boardListElem.querySelectorAll(SEL.boardCard);
+      if (debugEnabled) {
+        log('Liste #' + li + ' "' + displayListName + '" allowed: ' + isAllowed + ', Karten: ' + cards.length);
       }
 
       for (let k = 0; k < cards.length; k++) {
         const cardElem = cards[k];
         if (!isAllowed) {
-          clearCardInjections(cardElem);
+          markCardSkipped(cardElem);
           continue;
         }
+        cardElem.removeAttribute('data-ambient-skip');
 
         if (cardElem.getAttribute('data-ambient-progress-processed') === '1') {
           continue;
         }
 
         const issueIid = getIssueIidFromCard(cardElem);
-        log('    Karte #' + k + ', IssueIID:', issueIid);
 
         if (!issueIid) {
-          warn('    Konnte Issue-IID für Karte nicht bestimmen, Karte wird übersprungen.');
+          warn('Konnte Issue-IID für Karte nicht bestimmen, Karte wird übersprungen.');
           cardElem.setAttribute('data-ambient-progress-processed', '1');
           continue;
         }
@@ -2934,18 +3236,23 @@
         }
 
         cardElem.setAttribute('data-ambient-progress-processed', '1');
-        fetchAndDisplayProgress(hostConfig, projectSettings, issueIid, cardElem);
-        newFetchesThisScan++;
-        totalFetchesSincePageLoad++;
+        if (fetchAndDisplayProgress(hostConfig, projectSettings, issueIid, cardElem)) {
+          newFetchesThisScan++;
+          totalFetchesSincePageLoad++;
+        }
       }
     }
 
-    log(
-      'scanBoard run #' + scanRunCounter + ': ' + newFetchesThisScan +
-      '/' + MAX_NEW_FETCHES_PER_SCAN + ' neue Fetches ausgelöst' +
-      (limitReached ? ' (Limit erreicht).' : '.') +
-      ' Gesamt seit Seitenaufruf: ' + totalFetchesSincePageLoad + '.'
-    );
+    if (debugEnabled) {
+      log(
+        'scanBoard run #' + scanRunCounter + ': Listen ' + boardLists.length +
+        ', Karten ' + rootBoardsApp.querySelectorAll(SEL.boardCard).length +
+        ', Badges ' + rootBoardsApp.querySelectorAll('.ambient-progress-badge').length +
+        ', neue Fetches ' + newFetchesThisScan + '/' + MAX_NEW_FETCHES_PER_SCAN +
+        (limitReached ? ' (Limit erreicht)' : '') +
+        ', gesamt seit Seitenaufruf ' + totalFetchesSincePageLoad
+      );
+    }
 
     if (limitReached) {
       log(
@@ -2980,7 +3287,14 @@
     return search.includes('show=');
   }
 
+  let lastDetailHref = null;
+  let lastMrHref = null;
+
   function scanIssueDetail(hostConfig, projectSettings) {
+    if (window.location.href !== lastDetailHref) {
+      lastDetailHref = window.location.href;
+      resetDetailRetryState(); // SPA-Navigation: neue Ansicht bekommt wieder alle Versuche
+    }
     if (!hostConfig || !projectSettings) {
       log('scanIssueDetail übersprungen (Host/Project fehlt).');
       return;
@@ -2996,7 +3310,7 @@
       return;
     }
 
-    const wrapperList = document.querySelectorAll('.work-item-attributes-wrapper');
+    const wrapperList = document.querySelectorAll(SEL.detailWrapper);
     if (!wrapperList || !wrapperList.length) {
       log('scanIssueDetail: Attribute-Wrapper nicht gefunden.');
       scheduleDetailRetry(hostConfig, projectSettings);
@@ -3046,7 +3360,7 @@
   }
 
   function getIssueIidFromMRTitle() {
-    const titleEl = document.querySelector('h1[data-testid="title-content"]');
+    const titleEl = document.querySelector(SEL.mrTitle);
     if (!titleEl) return null;
 
     // Priorität 1: <a data-iid="..."> Link im Titel
@@ -3056,10 +3370,10 @@
       if (iid) return iid;
     }
 
-    // Priorität 2: Text-Pattern "#<ID>" im Titel
+    // Priorität 2: Text-Pattern "#<ID>" im Titel – nur eindeutig (genau eine verschiedene ID), sonst raten wir falsch
     const text = titleEl.textContent || '';
-    const match = text.match(/#(\d+)/);
-    return match ? match[1] : null;
+    const ids = (text.match(/#(\d+)/g) || []).filter(function (id, i, all) { return all.indexOf(id) === i; });
+    return ids.length === 1 ? ids[0].slice(1) : null;
   }
 
   // "[Label]\n/quick\n/actions" → [{label, body}]
@@ -3086,24 +3400,19 @@
 
   // Postet Quick Actions als Kommentar aufs Ticket – nutzt die GitLab-Session, kein Token.
   function runTicketAction(projectPath, issueIid, body) {
-    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
-    return fetch(
+    if (!isNumericId(issueIid)) return Promise.reject(new Error('Ungültige Issue-IID'));
+    return glFetch(
       '/api/v4/projects/' + encodeURIComponent(projectPath) + '/issues/' + issueIid + '/notes',
-      {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfMeta ? csrfMeta.getAttribute('content') : ''
-        },
-        body: JSON.stringify({body: body})
-      }
+      {method: 'POST', body: JSON.stringify({body: body})}
     ).then(function (res) {
       if (!res.ok) {
         throw new Error('HTTP ' + res.status);
       }
     });
   }
+
+  // Quick Actions, die Tickets schließen/umhängen, vor dem Absenden bestätigen lassen
+  const DESTRUCTIVE_QUICK_ACTION = /^\/(close|reopen|merge|delete|move)\b/im;
 
   function createTicketActionsRow(projectSettings, issueIid) {
     const actions = parseTicketActions(projectSettings && projectSettings.ticketActions);
@@ -3123,8 +3432,14 @@
       button.textContent = action.label;
       button.title = action.body;
       applyStyles(button, PORTAL_LINK_BUTTON_DEFAULT_STYLES);
+      button.className = 'ambient-btn';
       button.addEventListener('click', function (ev) {
         ev.preventDefault();
+        if (button.disabled) return;
+        if (DESTRUCTIVE_QUICK_ACTION.test(action.body) &&
+          !window.confirm('„' + action.label + '“ auf #' + issueIid + ' ausführen?\n\n' + action.body)) {
+          return;
+        }
         button.disabled = true;
         runTicketAction(projectSettings.projectPath, issueIid, action.body)
           .then(function () {
@@ -3241,11 +3556,7 @@
         return;
       }
       assigneeBlock.setAttribute('data-ambient-progress-url', url);
-      if (!shouldPerformPortalRequest(false)) {
-        log('MR-Detail-Request ausgelassen (letzte Aktualisierung < 1h) für Issue', issueIid);
-        return;
-      }
-      log('MR-Detail lädt Progress-Daten (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ') →', url);
+      log('MR-Detail lädt Progress-Daten (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ')');
       totalFetchesSincePageLoad++;
       loadProgressData(url, issueIid)
         .then(function (progressData) {
@@ -3291,8 +3602,9 @@
    ******************************************************************/
 
   function loadMergeRequestDetails(projectPath, mrIid) {
+    if (!isNumericId(mrIid)) return Promise.reject(new Error('Ungültige MR-IID'));
     const url = '/api/v4/projects/' + encodeURIComponent(projectPath) + '/merge_requests/' + mrIid;
-    return fetch(url, {credentials: 'include'})
+    return glFetch(url)
       .then(function (res) {
         if (!res.ok) throw new Error('MR-Status ' + res.status);
         return res.json();
@@ -3312,8 +3624,9 @@
   }
 
   function loadIssueAssignees(projectPath, issueIid) {
+    if (!isNumericId(issueIid)) return Promise.reject(new Error('Ungültige Issue-IID'));
     const url = '/api/v4/projects/' + encodeURIComponent(projectPath) + '/issues/' + issueIid;
-    return fetch(url, {credentials: 'include'})
+    return glFetch(url)
       .then(function (res) {
         if (!res.ok) throw new Error('Issue-Status ' + res.status);
         return res.json();
@@ -3324,14 +3637,10 @@
   }
 
   function updateIssueAssignee(projectPath, issueIid, userId) {
+    if (!isNumericId(issueIid)) return Promise.reject(new Error('Ungültige Issue-IID'));
     const url = '/api/v4/projects/' + encodeURIComponent(projectPath) + '/issues/' + issueIid;
-    return fetch(url, {
+    return glFetch(url, {
       method: 'PUT',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': getCsrfToken()
-      },
       body: JSON.stringify({assignee_ids: [userId]})
     }).then(function (res) {
       if (!res.ok) throw new Error('Assignee-Update-Status ' + res.status);
@@ -3472,6 +3781,10 @@
   }
 
   function scanMergeRequestPage(hostConfig, projectSettings) {
+    if (window.location.href !== lastMrHref) {
+      lastMrHref = window.location.href;
+      resetMRRetryState();
+    }
     if (!hostConfig || !projectSettings) {
       log('scanMergeRequestPage übersprungen (Host/Project fehlt).');
       return;
@@ -3487,7 +3800,7 @@
       return;
     }
 
-    const assigneeBlock = document.querySelector('[data-testid="assignee-block-container"]');
+    const assigneeBlock = document.querySelector(SEL.mrAssigneeBlock);
     if (!assigneeBlock) {
       log('scanMergeRequestPage: Assignee-Block nicht gefunden, retry...');
       scheduleMRRetry(hostConfig, projectSettings);
@@ -3580,11 +3893,7 @@
         return;
       }
       detailWrapperElem.setAttribute('data-ambient-progress-url', url);
-      if (!shouldPerformPortalRequest(false)) {
-        log('Detail-Request ausgelassen (letzte Aktualisierung < 1h) für Issue', issueIid);
-        return;
-      }
-      log('Ticket-Detail lädt Progress-Daten (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ') →', url);
+      log('Ticket-Detail lädt Progress-Daten (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ')');
       totalFetchesSincePageLoad++;
       loadProgressData(url, issueIid)
         .then(function (progressData) {
@@ -3637,7 +3946,7 @@
         borderRadius: '10px',
         background: windowBackground
       });
-      const assigneesSection = detailWrapperElem.querySelector('[data-testid="work-item-assignees"]');
+      const assigneesSection = detailWrapperElem.querySelector(SEL.detailAssignees);
       if (assigneesSection) {
         detailWrapperElem.insertBefore(container, assigneesSection);
       } else if (detailWrapperElem.firstChild) {
@@ -3697,7 +4006,7 @@
   ) {
     if (!header || !listName || !listNameLower) return;
     // Als Icon-Button in GitLabs Button-Gruppe (+ / ⚙); eingeklappte Spalten blenden die Gruppe selbst aus
-    const buttonGroup = header.querySelector('.board-list-button-group');
+    const buttonGroup = header.querySelector(SEL.boardListButtons);
     if (!buttonGroup) return;
 
     let button = buttonGroup.querySelector('button.ambient-progress-list-toggle');
@@ -3763,7 +4072,11 @@
     }, 50);
   }
 
+  let switchIdCounter = 0;
+
   function makeSwitch(labelText, checked, onChange) {
+    switchIdCounter += 1;
+    const labelId = 'ambient-switch-label-' + switchIdCounter;
     const wrapper = document.createElement('div');
     applyStyles(wrapper, {
       display: 'flex',
@@ -3773,6 +4086,7 @@
     });
 
     const labelSpan = document.createElement('span');
+    labelSpan.id = labelId;
     labelSpan.textContent = labelText;
     applyStyles(labelSpan, {
       opacity: '0.85',
@@ -3787,6 +4101,7 @@
     });
 
     const slider = document.createElement('span');
+    slider.className = 'ambient-switch-slider';
     applyStyles(slider, {
       position: 'absolute',
       top: '0',
@@ -3815,6 +4130,9 @@
 
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
+    checkbox.className = 'ambient-switch-input';
+    checkbox.setAttribute('role', 'switch');
+    checkbox.setAttribute('aria-labelledby', labelId);
     checkbox.checked = checked;
     applyStyles(checkbox, {
       position: 'absolute',
@@ -3838,8 +4156,9 @@
       onChange(checkbox.checked);
     });
 
-    switchWrapper.appendChild(slider);
+    // Checkbox vor dem Slider, damit `.ambient-switch-input:focus-visible + .ambient-switch-slider` greift
     switchWrapper.appendChild(checkbox);
+    switchWrapper.appendChild(slider);
 
     wrapper.appendChild(labelSpan);
     wrapper.appendChild(switchWrapper);
@@ -3852,7 +4171,7 @@
 
     const windowBackground = getGitLabWindowBackgroundColor(true);
 
-    const targetSelectors = ['#js-injected-page-breadcrumbs', '.panel-header-inner-actions', '.top-bar-container', '.top-bar-fixed'];
+    const targetSelectors = TOOLBAR_TARGET_SELECTORS;
     let insertParent = null;
     for (let si = 0; si < targetSelectors.length; si++) {
       const candidate = document.querySelector(targetSelectors[si]);
@@ -3940,7 +4259,7 @@
       }
     }
 
-    const globalSection = createGlobalSettingsSection(mrLinksToggle, debugToggle, function () {
+    const globalSection = createGlobalSettingsSection(mrLinksToggle, debugToggle, projectSettings, function () {
       rerenderFeatures();
       if (refreshAgeHighlightSection) refreshAgeHighlightSection();
     });
@@ -3956,6 +4275,10 @@
     const gearButton = document.createElement('button');
     gearButton.type = 'button';
     gearButton.setAttribute('aria-label', 'Progress-Einstellungen');
+    gearButton.setAttribute('aria-haspopup', 'dialog');
+    gearButton.setAttribute('aria-expanded', 'false');
+    gearButton.setAttribute('aria-controls', 'ambient-progress-settings');
+    gearButtonElement = gearButton;
     gearButton.setAttribute('title', 'Einstellungen');
     gearButton.setAttribute('data-testid', 'base-dropdown-toggle');
     const gearIcon = document.createElement('span');
@@ -4039,13 +4362,16 @@
     rateLimitNotificationElements.badge = rateLimitBadge;
 
     const dropdown = document.createElement('div');
+    dropdown.id = 'ambient-progress-settings';
+    dropdown.setAttribute('role', 'dialog');
+    dropdown.setAttribute('aria-label', 'Progress-Einstellungen');
     applyStyles(dropdown, {
       position: 'absolute',
       top: 'calc(100% + 6px)',
       right: '0',
       background: windowBackground,
       color: toolbarTextColor,
-      border: '1px solid #2f374c',
+      border: '1px solid var(--gl-border-color-default, #2f374c)',
       borderRadius: '8px',
       boxShadow: '0 10px 25px rgba(15, 23, 42, 0.35)',
       display: 'flex',
@@ -4054,12 +4380,14 @@
       gap: '0',
       padding: '0.75rem',
       width: '320px',
+      maxWidth: 'calc(100vw - 2rem)',
       maxHeight: 'calc(100vh - 80px)',
       overflowY: 'auto',
       opacity: '0',
       transform: 'translateY(-8px) scale(0.97)',
       pointerEvents: 'none',
-      transition: 'opacity 0.2s ease, transform 0.2s ease'
+      visibility: 'hidden', // geschlossen auch aus Tab-Reihenfolge und Screenreader-Baum
+      transition: 'opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s'
     });
 
     const versionRow = document.createElement('div');
@@ -4106,6 +4434,8 @@
       refreshButton.type = 'button';
       refreshButton.textContent = '↻';
       refreshButton.title = 'Jetzt aktualisieren';
+      refreshButton.setAttribute('aria-label', 'Cache leeren und Seite neu laden');
+      refreshButton.className = 'ambient-btn';
       applyStyles(refreshButton, {
         background: '#2563eb',
         border: 'none',
@@ -4137,7 +4467,7 @@
       flexDirection: 'column',
       gap: '0.25rem',
       padding: '0.35rem 0',
-      borderTop: '1px solid #2f374c',
+      borderTop: '1px solid var(--gl-border-color-default, #2f374c)',
       width: '100%'
     });
 
@@ -4171,7 +4501,7 @@
       flexDirection: 'column',
       gap: '0.25rem',
       padding: '0.35rem 0',
-      borderTop: '1px solid #2f374c',
+      borderTop: '1px solid var(--gl-border-color-default, #2f374c)',
       width: '100%'
     });
 
@@ -4278,6 +4608,7 @@
         useSecondValue !== toolbarInitialUseSecondProjectIdValue;
       const enabled = hasChanges;
       saveButton.disabled = !enabled;
+      saveButton.title = enabled ? '' : 'Keine Änderungen zum Speichern';
       const styleToApply = enabled
         ? saveButtonBaseStyles
         : mergeStyles(saveButtonBaseStyles, saveButtonDisabledStyles);
@@ -4299,40 +4630,48 @@
         return;
       }
       const projectAttempt = projectIdInputElement.value.trim();
-      const portalAttempt = portalUrlInputElement.value.trim();
+      const portalRaw = portalUrlInputElement.value.trim();
       const projectAttempt2 = projectId2InputElement.value.trim();
       const useSecond = useSecondProjectIdToggleCheckbox.checked;
 
-      if (!projectAttempt) {
-        if (projectStatusElement) {
-          projectStatusElement.textContent = 'Bitte gib eine Projekt-ID ein.';
+      // Fehler am Feld anzeigen (aria-invalid + Status mit role="alert") und Fokus dorthin setzen
+      function fail(input, statusElement, message) {
+        if (statusElement) {
+          statusElement.textContent = message;
         }
-        return;
-      }
-      if (!/^\d+$/.test(projectAttempt)) {
-        if (projectStatusElement) {
-          projectStatusElement.textContent = 'Projekt-ID darf nur Zahlen enthalten.';
-        }
-        return;
-      }
-      if (!portalAttempt) {
-        if (portalStatusElement) {
-          portalStatusElement.textContent = 'Bitte gib eine Portal-Base URL ein.';
-        }
-        return;
+        [projectIdInputElement, portalUrlInputElement, projectId2InputElement].forEach(function (el) {
+          el.removeAttribute('aria-invalid');
+        });
+        input.setAttribute('aria-invalid', 'true');
+        input.focus();
       }
 
+      if (!projectAttempt) {
+        return fail(projectIdInputElement, projectStatusElement, 'Bitte gib eine Projekt-ID ein.');
+      }
+      if (!/^\d+$/.test(projectAttempt)) {
+        return fail(projectIdInputElement, projectStatusElement, 'Projekt-ID darf nur Zahlen enthalten.');
+      }
+      if (!portalRaw) {
+        return fail(portalUrlInputElement, portalStatusElement, 'Bitte gib eine Portal-Base URL ein.');
+      }
+      const portalAttempt = normalizePortalBaseUrl(portalRaw);
+      if (!portalAttempt) {
+        return fail(
+          portalUrlInputElement,
+          portalStatusElement,
+          'Ungültige URL: nur https:// ohne Benutzername/Passwort erlaubt.'
+        );
+      }
       if (useSecond && !projectAttempt2) {
-        if (projectId2StatusElement) {
-          projectId2StatusElement.textContent = 'Bitte gib eine zweite Projekt-ID ein (oder deaktiviere das Feature).';
-        }
-        return;
+        return fail(
+          projectId2InputElement,
+          projectId2StatusElement,
+          'Bitte gib eine zweite Projekt-ID ein (oder deaktiviere das Feature).'
+        );
       }
       if (useSecond && !/^\d+$/.test(projectAttempt2)) {
-        if (projectId2StatusElement) {
-          projectId2StatusElement.textContent = 'Zweite Projekt-ID darf nur Zahlen enthalten.';
-        }
-        return;
+        return fail(projectId2InputElement, projectId2StatusElement, 'Zweite Projekt-ID darf nur Zahlen enthalten.');
       }
 
       const entry = {};
@@ -4378,7 +4717,7 @@
       }
       clearProgressCache();
       clearProjectRequestBlock(projectSettings.projectKey);
-      showToast({text: 'Einstellungen gespeichert', variant: 'success'});
+      showToast({text: 'Einstellungen gespeichert – Seite wird neu geladen.', variant: 'success'});
       setTimeout(function () {
         window.location.reload();
       }, 100);
@@ -4397,26 +4736,50 @@
       dropdown.style.opacity = isOpen ? '1' : '0';
       dropdown.style.transform = isOpen ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.97)';
       dropdown.style.pointerEvents = isOpen ? 'auto' : 'none';
+      dropdown.style.visibility = isOpen ? 'visible' : 'hidden';
+      dropdown.style.transition = isOpen
+        ? 'opacity 0.2s ease, transform 0.2s ease, visibility 0s'
+        : 'opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s';
+      gearButton.setAttribute('aria-expanded', String(isOpen));
+    }
+
+    function setDropdownOpen(open, restoreFocus) {
+      dropdownLocked = open;
+      if (open && refreshAgeHighlightSection) refreshAgeHighlightSection();
+      updateDropdownVisibility();
+      if (open) {
+        const firstFocusable = dropdown.querySelector('input, button, summary, textarea');
+        if (firstFocusable) firstFocusable.focus();
+      } else if (restoreFocus) {
+        gearButton.focus();
+      }
     }
 
     gearButton.addEventListener('click', function () {
-      dropdownLocked = !dropdownLocked;
-      if (dropdownLocked && refreshAgeHighlightSection) refreshAgeHighlightSection();
-      updateDropdownVisibility();
+      setDropdownOpen(!dropdownLocked, true);
     });
 
-    document.addEventListener('click', function (event) {
-      if (!dropdownLocked) {
+    const onDocumentClick = function (event) {
+      if (!dropdownLocked || gearWrapper.contains(event.target)) {
         return;
       }
-      if (gearWrapper.contains(event.target)) {
-        return;
+      setDropdownOpen(false, false);
+    };
+    const onDocumentKeydown = function (event) {
+      if (event.key === 'Escape' && dropdownLocked) {
+        setDropdownOpen(false, true);
       }
-      dropdownLocked = false;
-      updateDropdownVisibility();
-    });
+    };
+    document.addEventListener('click', onDocumentClick);
+    document.addEventListener('keydown', onDocumentKeydown);
+    // beim Neuaufbau (Theme-Wechsel) Listener wieder entfernen
+    bar.ambientCleanup = function () {
+      document.removeEventListener('click', onDocumentClick);
+      document.removeEventListener('keydown', onDocumentKeydown);
+    };
 
     updateReleaseNotificationUI(getCachedReleaseInfo());
+    updateGearLabel();
     insertParent.appendChild(bar);
     refreshPortalBaseWarning(projectSettings);
     return bar;
@@ -4424,26 +4787,17 @@
 
   function repositionToolbarIfNeeded() {
     const bar = document.getElementById('ambient-progress-toolbar');
-    if (!bar) {
-      log('[reposition] Toolbar-Element nicht im DOM gefunden – abbruch');
-      return;
-    }
-    log('[reposition] Toolbar gefunden, aktueller Parent: ' + bar.parentNode.tagName + '#' + bar.parentNode.id + '.' + bar.parentNode.className);
-    const targetSelectors = ['#js-injected-page-breadcrumbs', '.panel-header-inner-actions', '.top-bar-container', '.top-bar-fixed'];
-    for (let si = 0; si < targetSelectors.length; si++) {
-      const candidate = document.querySelector(targetSelectors[si]);
-      log('[reposition] Selector "' + targetSelectors[si] + '" → ' + (candidate ? 'GEFUNDEN' : 'nicht gefunden'));
+    if (!bar) return;
+    for (let si = 0; si < TOOLBAR_TARGET_SELECTORS.length; si++) {
+      const candidate = document.querySelector(TOOLBAR_TARGET_SELECTORS[si]);
       if (candidate) {
         if (bar.parentNode !== candidate) {
-          log('[reposition] Verschiebe Toolbar → ' + candidate.tagName + '#' + candidate.id + '.' + candidate.className);
+          log('[reposition] Verschiebe Toolbar → ' + candidate.tagName + '#' + candidate.id);
           candidate.appendChild(bar);
-        } else {
-          log('[reposition] Toolbar bereits im richtigen Parent – keine Aktion');
         }
         return;
       }
     }
-    log('[reposition] Kein Ziel-Selector gefunden – Toolbar bleibt wo sie ist');
   }
 
   const MY_MR_USERNAME = 'christoph-teichmeister';
@@ -4497,7 +4851,7 @@
       attachHoverEffect(link, {opacity: '1'});
 
       const icon = document.createElement('span');
-      icon.innerHTML = MERGE_REQUEST_ICON_SVG;
+      icon.innerHTML = mergeRequestIconSvg();
       icon.setAttribute('aria-hidden', 'true');
       applyStyles(icon, {
         width: '20px',
@@ -4566,7 +4920,7 @@
       return;
     }
 
-    const wrapper = document.getElementById('js-vue-page-breadcrumbs-wrapper');
+    const wrapper = document.querySelector(SEL.breadcrumbsWrapper);
     if (!wrapper) {
       log('[createMrLinksBar] #js-vue-page-breadcrumbs-wrapper nicht gefunden – abbruch');
       return;
@@ -4612,7 +4966,7 @@
   function createSettingsGroupHeader(title, subtitle) {
     const header = document.createElement('div');
     applyStyles(header, {
-      borderTop: '1px solid #2f374c',
+      borderTop: '1px solid var(--gl-border-color-default, #2f374c)',
       padding: '0.6rem 0 0.2rem 0',
       display: 'flex',
       flexDirection: 'column',
@@ -4685,7 +5039,170 @@
     ]}
   ];
 
-  function createGlobalSettingsSection(mrLinksToggle, debugToggle, onFeatureChanged) {
+  /******************************************************************
+   * Diagnose- und Daten-Werkzeuge (Einstellungen → Globale Einstellungen → Erweitert)
+   ******************************************************************/
+
+  // Selektoren, die auf der aktuellen Ansicht Treffer liefern sollten
+  function getRelevantSelectorKeys() {
+    if (isMergeRequestPage()) return ['mrTitle', 'mrAssigneeBlock', 'breadcrumbsWrapper'];
+    const keys = ['breadcrumbsWrapper'];
+    if (isBoardView()) {
+      keys.push('boardsApp', 'boardList', 'boardCard', 'boardListHeader', 'boardListButtons',
+        'listTitle', 'cardNumber', 'cardFooter', 'cardBody');
+    }
+    if (shouldAttemptIssueDetailInjection()) keys.push('detailWrapper');
+    return keys;
+  }
+
+  function collectSelectorReport() {
+    return getRelevantSelectorKeys().map(function (key) {
+      let count = 0;
+      try {
+        count = document.querySelectorAll(SEL[key]).length;
+      } catch (e) {
+        count = 0;
+      }
+      return {key: key, selector: SEL[key], count: count};
+    });
+  }
+
+  function runSelectorSelftest() {
+    const report = collectSelectorReport();
+    const missing = report.filter(function (r) { return r.count === 0; });
+    console.log(LOG_PREFIX, 'Selektor-Selbsttest', report);
+    showToast({
+      text: missing.length
+        ? 'Selbsttest: ohne Treffer → ' + missing.map(function (r) { return r.key; }).join(', ') +
+        ' (Details in der Konsole)'
+        : 'Selbsttest: alle ' + report.length + ' Selektoren gefunden.',
+      variant: missing.length ? 'warning' : 'success'
+    });
+  }
+
+  // Ohne Portal-URL, Zugangsdaten oder Ticketdaten – nur das, was für einen Fehlerbericht nötig ist
+  function buildDebugInfo() {
+    const lines = [
+      'Script-Version: ' + SCRIPT_VERSION +
+      (typeof GM_info !== 'undefined' && GM_info.script ? ' (Tampermonkey: ' + GM_info.script.version + ')' : ''),
+      'Ansicht: ' + (isMergeRequestPage() ? 'Merge Request' : isBoardView() ? 'Board' : isIssueDetailView() ? 'Issue' : 'andere'),
+      'Browser: ' + navigator.userAgent,
+      'Features: ' + JSON.stringify(features),
+      'Selektoren:'
+    ];
+    collectSelectorReport().forEach(function (r) {
+      lines.push('  ' + r.key + ': ' + r.count);
+    });
+    return lines.join('\n');
+  }
+
+  function copyToClipboard(text, successMessage) {
+    const done = function () { showToast({text: successMessage, variant: 'success'}); };
+    const failed = function () {
+      console.log(LOG_PREFIX, text);
+      showToast({text: 'Kopieren nicht möglich – Text steht in der Konsole.', variant: 'warning'});
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, failed);
+    } else {
+      failed();
+    }
+  }
+
+  // Export/Import der Projekt-Konfiguration (nie Zugangsdaten – die gibt es nicht)
+  function exportProjectConfig(projectSettings) {
+    const data = {
+      projectId: projectSettings.projectId || '',
+      portalBaseUrl: projectSettings.portalBaseUrl || '',
+      portalProjectId2: projectSettings.projectId2 || '',
+      useSecondPortalProjectId: Boolean(projectSettings.useSecondPortalProjectId),
+      ticketActions: projectSettings.ticketActions || ''
+    };
+    copyToClipboard(JSON.stringify(data, null, 2), 'Konfiguration in die Zwischenablage kopiert.');
+  }
+
+  function importProjectConfig(projectSettings) {
+    const raw = window.prompt('Exportierte Konfiguration (JSON) einfügen:');
+    if (!raw) return;
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      showToast({text: 'Import fehlgeschlagen: kein gültiges JSON.', variant: 'warning'});
+      return;
+    }
+    const portalBaseUrl = normalizePortalBaseUrl(data && data.portalBaseUrl);
+    const useSecond = Boolean(data && data.useSecondPortalProjectId);
+    const projectId2 = String((data && data.portalProjectId2) || '');
+    if (!data || !isNumericId(data.projectId) || !portalBaseUrl || (projectId2 && !isNumericId(projectId2)) ||
+      (useSecond && !projectId2)) {
+      showToast({text: 'Import fehlgeschlagen: Projekt-ID/Portal-URL ungültig.', variant: 'warning'});
+      return;
+    }
+    writeProjectConfigEntry(projectSettings.projectKey, {
+      projectId: String(data.projectId),
+      portalBaseUrl: portalBaseUrl,
+      portalProjectId2: projectId2,
+      useSecondPortalProjectId: useSecond,
+      ticketActions: String(data.ticketActions || '')
+    });
+    clearProgressCache();
+    showToast({text: 'Konfiguration importiert – Seite wird neu geladen.', variant: 'success'});
+    setTimeout(function () { window.location.reload(); }, 400);
+  }
+
+  // Alles entfernen, was das Script lokal gespeichert hat
+  function clearAllScriptData() {
+    if (!window.confirm('Alle lokal gespeicherten Daten des Scripts löschen (Konfiguration, Cache, Einstellungen)?')) {
+      return;
+    }
+    try {
+      Object.keys(window.localStorage).forEach(function (key) {
+        if (key.indexOf('portalProgress') === 0 || key.indexOf('ambientProgress') === 0) {
+          window.localStorage.removeItem(key);
+        }
+      });
+    } catch (e) {
+      error('Löschen der lokalen Daten fehlgeschlagen:', e);
+    }
+    window.location.reload();
+  }
+
+  function createDataToolButtons(projectSettings) {
+    const defs = [
+      ['Selektor-Selbsttest', 'Prüft, ob die GitLab-Elemente gefunden werden, auf die sich das Script verlässt', runSelectorSelftest],
+      ['Debug-Info kopieren', 'Version, Ansicht und Selektor-Treffer für Fehlerberichte (ohne Portal-URL)', function () {
+        copyToClipboard(buildDebugInfo(), 'Debug-Info kopiert.');
+      }]
+    ];
+    if (projectSettings) {
+      defs.push(['Konfiguration exportieren', 'Projekt-ID, Portal-URL und Ticket-Aktionen als JSON kopieren', function () {
+        exportProjectConfig(projectSettings);
+      }]);
+      defs.push(['Konfiguration importieren', 'Zuvor exportiertes JSON einfügen', function () {
+        importProjectConfig(projectSettings);
+      }]);
+    }
+    defs.push(['Alle lokalen Daten löschen', 'Entfernt Konfiguration, Cache und Einstellungen dieses Scripts', clearAllScriptData]);
+    return defs.map(function (def) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = def[0];
+      button.title = def[1];
+      button.className = 'ambient-btn';
+      applyStyles(button, mergeStyles(PORTAL_LINK_BUTTON_DEFAULT_STYLES, {
+        borderRadius: '6px',
+        padding: '0.3rem 0.6rem',
+        fontSize: '12px',
+        textAlign: 'left',
+        width: '100%'
+      }));
+      button.addEventListener('click', def[2]);
+      return button;
+    });
+  }
+
+  function createGlobalSettingsSection(mrLinksToggle, debugToggle, projectSettings, onFeatureChanged) {
     // Globale Einstellungen ändern sich selten → standardmäßig zugeklappt
     const section = createCollapsibleGroup('Globale Einstellungen', 'Gelten für alle Boards', false);
     const subRows = [];
@@ -4725,6 +5242,9 @@
     const advanced = createCollapsible('Erweitert', false);
     applyStyles(debugToggle, {justifyContent: 'space-between'});
     advanced.body.appendChild(debugToggle);
+    createDataToolButtons(projectSettings).forEach(function (button) {
+      advanced.body.appendChild(button);
+    });
     section.appendChild(advanced.element);
 
     mrLinksToggle.querySelector('span').textContent = 'MR-Buttons in der Topbar';
@@ -4766,7 +5286,7 @@
     applyStyles(summary, {
       padding: '0.35rem 0.5rem',
       borderRadius: '6px',
-      border: '1px solid #374151',
+      border: '1px solid var(--gl-border-color-strong, #374151)',
       background: panelBackground,
       color: panelTextColor,
       fontSize: '0.85rem',
@@ -4780,7 +5300,7 @@
       marginTop: '0.25rem',
       padding: '0.25rem 0',
       borderRadius: '6px',
-      border: '1px solid #374151',
+      border: '1px solid var(--gl-border-color-strong, #374151)',
       background: panelBackground,
       maxHeight: '220px',
       overflowY: 'auto'
@@ -4809,7 +5329,7 @@
         : 'Benötigt die globale Einstellung „Verweildauer".';
       options.innerHTML = '';
       const labels = [];
-      document.querySelectorAll('div[data-testid="board-list"]').forEach(function (boardListElem) {
+      document.querySelectorAll(SEL.boardList).forEach(function (boardListElem) {
         const header = getBoardListHeaderElement(boardListElem);
         if (!header || !header.querySelector('.board-title-text .gl-label')) return; // Open/Closed ohne Label
         const text = getColumnLabelText(boardListElem, header);
@@ -4838,7 +5358,7 @@
           }
           saveAgeHighlightLookup();
           updateSummary(labels);
-          document.querySelectorAll('div[data-testid="board-list"]').forEach(updateColumnAgeAverage);
+          document.querySelectorAll(SEL.boardList).forEach(updateColumnAgeAverage);
         });
         row.appendChild(checkbox);
         row.appendChild(document.createTextNode(l.text));
@@ -4864,7 +5384,7 @@
     applyStyles(section, {
       padding: '0.5rem 0',
       width: '100%',
-      borderTop: '1px solid #2f374c',
+      borderTop: '1px solid var(--gl-border-color-default, #2f374c)',
       display: 'flex',
       flexDirection: 'column',
       gap: '0.4rem',
@@ -4916,7 +5436,7 @@
       flex: '1 1 auto',
       padding: '0.35rem 0.5rem',
       borderRadius: '6px',
-      border: '1px solid #374151',
+      border: '1px solid var(--gl-border-color-strong, #374151)',
       background: panelBackground,
       color: panelTextColor,
       fontSize: '0.85rem'
@@ -4931,9 +5451,14 @@
     });
 
     projectStatusElement = status;
+    status.id = 'ambient-project-status';
+    status.setAttribute('role', 'alert');
+    input.setAttribute('aria-describedby', status.id);
+    input.setAttribute('aria-label', 'Portal-Projekt-ID');
 
     input.addEventListener('input', function () {
       status.textContent = '';
+      input.removeAttribute('aria-invalid');
       if (typeof onValuesChanged === 'function') {
         onValuesChanged();
       }
@@ -4983,7 +5508,7 @@
       flex: '1 1 auto',
       padding: '0.35rem 0.5rem',
       borderRadius: '6px',
-      border: '1px solid #374151',
+      border: '1px solid var(--gl-border-color-strong, #374151)',
       background: panelBackground,
       color: panelTextColor,
       fontSize: '0.85rem'
@@ -4997,9 +5522,14 @@
       minHeight: '1em'
     });
     portalStatusElement = portalStatus;
+    portalStatus.id = 'ambient-portal-status';
+    portalStatus.setAttribute('role', 'alert');
+    portalInput.setAttribute('aria-describedby', portalStatus.id);
+    portalInput.setAttribute('aria-label', 'Portal-Base URL');
 
     portalInput.addEventListener('input', function () {
       portalStatus.textContent = '';
+      portalInput.removeAttribute('aria-invalid');
       if (typeof onValuesChanged === 'function') {
         onValuesChanged();
       }
@@ -5075,7 +5605,7 @@
       flex: '1 1 auto',
       padding: '0.35rem 0.5rem',
       borderRadius: '6px',
-      border: '1px solid #374151',
+      border: '1px solid var(--gl-border-color-strong, #374151)',
       background: panelBackground,
       color: panelTextColor,
       fontSize: '0.85rem',
@@ -5104,9 +5634,14 @@
     });
 
     projectId2StatusElement = status2;
+    status2.id = 'ambient-project2-status';
+    status2.setAttribute('role', 'alert');
+    input2.setAttribute('aria-describedby', status2.id);
+    input2.setAttribute('aria-label', 'Zweite Portal-Projekt-ID');
 
     input2.addEventListener('input', function () {
       status2.textContent = '';
+      input2.removeAttribute('aria-invalid');
       if (typeof onValuesChanged === 'function') {
         onValuesChanged();
       }
@@ -5135,12 +5670,13 @@
 
     const actionsInput = document.createElement('textarea');
     actionsInput.rows = 5;
+    actionsInput.setAttribute('aria-label', 'Ticket-Aktionen im MR');
     actionsInput.placeholder = '[Ticket abschließen]\n/unassign me\n/label ~"workflow::Done"\n/unlabel ~"workflow::Review"';
     actionsInput.value = projectSettings.ticketActions || '';
     applyStyles(actionsInput, {
       padding: '0.35rem 0.5rem',
       borderRadius: '6px',
-      border: '1px solid #374151',
+      border: '1px solid var(--gl-border-color-strong, #374151)',
       background: panelBackground,
       color: panelTextColor,
       fontSize: '0.8rem',
@@ -5163,12 +5699,31 @@
    * Init
    ******************************************************************/
 
+  // Eigene Einfügungen (Badges, Toolbar, Toasts) lösen sonst selbst wieder Scans aus
+  function isOwnNode(node) {
+    const id = node.id || '';
+    const cls = typeof node.className === 'string' ? node.className : '';
+    return id.indexOf('ambient-') === 0 || id === 'js-my-mr-links' || cls.indexOf('ambient-') !== -1;
+  }
+
+  function hasForeignAddedNodes(mutations) {
+    for (let i = 0; i < mutations.length; i++) {
+      const added = mutations[i].addedNodes;
+      for (let j = 0; added && j < added.length; j++) {
+        if (added[j].nodeType === 1 && !isOwnNode(added[j])) return true;
+      }
+    }
+    return false;
+  }
+
   function init() {
     log('Userscript gestartet, URL:', window.location.href);
 
-    const isMR = isMergeRequestPage();
+    if (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version !== SCRIPT_VERSION) {
+      warn('SCRIPT_VERSION (' + SCRIPT_VERSION + ') passt nicht zu @version (' + GM_info.script.version + ')');
+    }
 
-    if (isMR) {
+    if (isMergeRequestPage()) {
       log('Merge-Request-Seite erkannt; starte MR-Progress-Injection.');
     }
 
@@ -5189,110 +5744,86 @@
     mrLinksEnabled = typeof features.mrLinks === 'boolean' ? features.mrLinks : projectSettings.mrLinksEnabled;
 
     log('hostConfig:', hostConfig);
-    log('projectSettings:', projectSettings);
+    if (debugEnabled) {
+      log('projectKey:', projectSettings.projectKey, 'projectPath:', projectSettings.projectPath);
+    }
 
+    ensureStylesheet();
+    window.addEventListener('pagehide', flushProgressCache);
     createToolbar(hostConfig, projectSettings);
     createMrLinksBar();
-
-    log('[init] toolbarPositionObserver wird auf document.body gestartet');
-    const toolbarPositionObserver = new MutationObserver(function (mutations) {
-      for (let i = 0; i < mutations.length; i++) {
-        if (mutations[i].addedNodes && mutations[i].addedNodes.length) {
-          log('[toolbarPositionObserver] DOM-Änderung erkannt → repositionToolbarIfNeeded()');
-          repositionToolbarIfNeeded();
-          repositionMrLinksIfNeeded();
-          return;
-        }
-      }
-    });
-    toolbarPositionObserver.observe(document.body, {childList: true, subtree: true});
-    log('[init] toolbarPositionObserver aktiv');
 
     scheduleReleaseCheck();
     applyShowFlagToAllBadges();
     applyShowFlagToDetailBadges();
 
-    if (isMR) {
-      let mrInitialScanDone = false;
-
-      function tryMRInitialScan() {
-        if (mrInitialScanDone) return;
-        mrInitialScanDone = true;
-        log('Initialer scanMergeRequestPage()-Aufruf');
+    // Alle Scans laufen über einen einzigen, entprellten Einstieg; MR-Seite oder Board wird zur Laufzeit bestimmt
+    function runScans() {
+      repositionToolbarIfNeeded();
+      repositionMrLinksIfNeeded();
+      if (isMergeRequestPage()) {
         scanMergeRequestPage(hostConfig, projectSettings);
-      }
-
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', tryMRInitialScan);
       } else {
-        tryMRInitialScan();
-      }
-
-      const mrObserver = new MutationObserver(function (mutations) {
-        let relevantChange = false;
-        for (let i = 0; i < mutations.length; i++) {
-          if (mutations[i].addedNodes && mutations[i].addedNodes.length) {
-            relevantChange = true;
-            break;
-          }
-        }
-        if (relevantChange) {
-          log('MutationObserver (MR) → scanMergeRequestPage()');
-          scanMergeRequestPage(hostConfig, projectSettings);
-        }
-      });
-
-      mrObserver.observe(document.body, {
-        childList: true,
-        subtree: true
-      });
-    } else {
-      let initialScanDone = false;
-
-      function tryInitialScan() {
-        if (initialScanDone) return;
-        initialScanDone = true;
-        log('Initialer scanBoard()-Aufruf');
         scanBoard(hostConfig, projectSettings);
         scanIssueDetail(hostConfig, projectSettings);
       }
-
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', tryInitialScan);
-      } else {
-        tryInitialScan();
-      }
-
-      let observerTarget = document.querySelector('.boards-app');
-      if (!observerTarget) {
-        log('Keine .boards-app gefunden; MutationObserver wird auf document.body gestartet.');
-        observerTarget = document.body;
-        if (!observerTarget) {
-          log('document.body nicht verfügbar; MutationObserver wird nicht gestartet.');
-          return;
-        }
-      }
-
-      const observer = new MutationObserver(function (mutations) {
-        let relevantChange = false;
-        for (let i = 0; i < mutations.length; i++) {
-          if (mutations[i].addedNodes && mutations[i].addedNodes.length) {
-            relevantChange = true;
-            break;
-          }
-        }
-        if (relevantChange) {
-          log('MutationObserver → scanBoard()/scanIssueDetail()');
-          scanBoard(hostConfig, projectSettings);
-          scanIssueDetail(hostConfig, projectSettings);
-        }
-      });
-
-      observer.observe(observerTarget, {
-        childList: true,
-        subtree: true
-      });
     }
+
+    let scanTimer = null;
+
+    function scheduleScan() {
+      if (scanTimer) return;
+      scanTimer = setTimeout(function () {
+        scanTimer = null;
+        runScans();
+      }, SCAN_DEBOUNCE_MS);
+    }
+
+    let initialScanDone = false;
+
+    function tryInitialScan() {
+      if (initialScanDone) return;
+      initialScanDone = true;
+      log('Initialer Scan');
+      runScans();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', tryInitialScan);
+    } else {
+      tryInitialScan();
+    }
+
+    if (!document.body) {
+      log('document.body nicht verfügbar; MutationObserver wird nicht gestartet.');
+      return;
+    }
+
+    // Immer auf body beobachten: .boards-app kann bei Board-Wechseln neu gemountet werden
+    new MutationObserver(function (mutations) {
+      if (hasForeignAddedNodes(mutations)) {
+        scheduleScan();
+      }
+    }).observe(document.body, {childList: true, subtree: true});
+
+    // GitLab-Theme-Wechsel zur Laufzeit: Farb-Caches verwerfen und Toolbar neu aufbauen
+    let lastDark = isGitLabDarkModeActive();
+    new MutationObserver(function () {
+      const dark = isGitLabDarkModeActive();
+      if (dark === lastDark) return;
+      lastDark = dark;
+      gitlabWindowBackgroundCache.light = null;
+      gitlabWindowBackgroundCache.default = null;
+      const oldBar = document.getElementById('ambient-progress-toolbar');
+      if (oldBar) {
+        if (oldBar.ambientCleanup) oldBar.ambientCleanup();
+        oldBar.remove();
+      }
+      const oldLinks = document.getElementById('js-my-mr-links');
+      if (oldLinks) oldLinks.remove();
+      createToolbar(hostConfig, projectSettings);
+      createMrLinksBar();
+    }).observe(document.documentElement, {attributes: true, attributeFilter: ['class', 'data-theme']});
   }
 
   init();

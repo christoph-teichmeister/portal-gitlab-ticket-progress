@@ -29,7 +29,9 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
 
    Die URL verweist auf dieselbe `portal-gitlab-ticket-progress.js`, die in diesem Repo liegt.
 4. Tampermonkey zeigt Name/Version/Berechtigungen und du bestätigst mit "Installieren". Das Script wird auf
-   `https://gitlab*/*/-/*` aktiv (boards, work_items, merge_requests, etc.).
+   `https://gitlab.beyonder.de/*/-/*` aktiv (boards, work_items, merge_requests, etc.). Tampermonkey fragt beim
+   ersten Portal-Request einmalig nach der Freigabe der Portal-Domain (`@connect`) – dort „Domain immer erlauben“
+   wählen, aber **nicht** „alle Domains“.
 5. Die `@updateURL`/`@downloadURL` im Skriptkopf halten alles automatisch aktuell – nach der einmaligen Installation
    liefert Tampermonkey neue Versionen direkt aus diesem Repo.
 6. Über die Debug/Anzeige-Toggles in der GitLab-Topbar kannst du das Verhalten bei Bedarf ein- oder ausschalten. Die
@@ -37,8 +39,9 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    Anzeige (Badges) standardmäßig an. Jede Projekt-Ansicht merkt sich ihre eigene Konfiguration (die Werte werden pro
    Projekt lokal gespeichert).
 7. Klicke in der GitLab-Topbar auf das Zahnrad, um die „Projekt-Konfiguration“ zu öffnen, und trage dort die
-   Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Die Einstellung wird ausschließlich lokal im
-   Browser gespeichert (per Projekt). Du musst sie nur einmal hinterlegen.
+   Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Erlaubt ist nur `https://` ohne
+   Benutzername/Passwort; Query und Fragment werden verworfen. Die Einstellung wird ausschließlich lokal im Browser
+   gespeichert (per Projekt). Du musst sie nur einmal hinterlegen.
 8. Wenn die Portal-Base-URL fehlt, blendet das Script einen kleinen Toast von oben rechts ein („Portal-Base URL fehlt –
    ⚙ → Projekt-Konfiguration öffnen und eintragen.”). Nach fünf Sekunden verschwindet der Hinweis wieder; du kannst
    ihn bei Bedarf erneut triggern, indem du das Zahnrad öffnest.
@@ -78,3 +81,30 @@ Weitere Details zur Nutzung und Konfiguration:
 - [Lokale Controls](docs/CONTROLS.md) – Bedienung der Toggles und Einstellungen
 - [Hinweise](docs/NOTES.md) – Wichtige Besonderheiten und Limitationen
 - [Automatische Update-Benachrichtigung](docs/AUTO-UPDATE.md) – Wie das Script aktualisiert wird
+
+## Datenschutz & lokale Daten
+
+- Portal-Zugangsdaten werden nie gespeichert. Das Script nutzt die bestehende Portal-Session deines Browsers
+  (Cookies, `withCredentials`); trage deshalb nur eine Portal-Base-URL ein, der du vertraust.
+- Lokal im Browser (`localStorage` der GitLab-Seite) liegen: Portal-Base-URL und Projekt-IDs, Ticket-Aktionen,
+  Spaltenauswahl, Feature-Schalter sowie ein Cache der gebuchten Stunden pro Ticket (1 Stunde, „keine Buchungen“
+  10 Minuten). Andere Scripts/Erweiterungen auf derselben GitLab-Seite könnten diese Daten lesen.
+- Unter Zahnrad → Globale Einstellungen → Erweitert lassen sich alle lokalen Daten löschen sowie Konfiguration
+  exportieren/importieren, der Selektor-Selbsttest ausführen und Debug-Infos (ohne Portal-URL) kopieren.
+- Updates kommen vom `main`-Branch auf GitHub. Wer mehr Kontrolle möchte, kann die `@updateURL`/`@downloadURL` auf
+  einen Release-Tag (`refs/tags/<version>`) pinnen; siehe [Sicherheitsaspekte](docs/SECURITY.md).
+
+## Bedienung, Barrierefreiheit & Sprache
+
+- Das Einstellungs-Menü ist per Tastatur bedienbar (Tab, Escape schließt und setzt den Fokus aufs Zahnrad); Schalter
+  haben einen sichtbaren Fokusring, Fortschrittsbalken eine Textalternative. Animationen respektieren
+  `prefers-reduced-motion`.
+- Die Oberfläche ist auf Deutsch; Datumsangaben folgen der Sprache der GitLab-Seite. GitLab-Begriffe wie
+  „Assignee“, „Reviewer“ und „MR“ bleiben bewusst englisch.
+- Kleine Stylesheet-Ausnahme: Für Fokus- und Reduced-Motion-Styles injiziert das Script einmalig ein `<style>`-Element
+  (Inline-Styles können kein `:focus-visible`).
+
+## Versionierung
+
+Versionen folgen CalVer `YYYY.MM.V` (z. B. `2026.10.2`); `@version` und `SCRIPT_VERSION` im Skript werden gemeinsam
+erhöht. Im Debug-Modus warnt das Script, falls beide auseinanderlaufen.

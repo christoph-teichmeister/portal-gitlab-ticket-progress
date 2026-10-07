@@ -2,7 +2,7 @@
 
 Das Einstellungs-Menü (Zahnrad) ist in **Globale Einstellungen** (gelten für alle Boards) und
 **Board-Einstellungen** (gelten nur für das aktuelle Board) aufgeteilt. Alle Schalter wirken sofort, ohne
-„Einstellungen speichern".
+„Einstellungen speichern". Das Menü ist per Tastatur erreichbar (Escape schließt es).
 
 - **Anzeigen** (neben der Versionszeile, global): Hauptschalter – blendet alles aus, was das Script einfügt
   (Karten-Badges, Spalten-Buttons und Ø, roter Rahmen, MR-Buttons, Issue-/MR-Detail), z. B. fürs Screensharing.
@@ -13,7 +13,9 @@ Das Einstellungs-Menü (Zahnrad) ist in **Globale Einstellungen** (gelten für a
   - *Spalten*: Ø Verweildauer im Header (benötigt Verweildauer).
   - *Andere Ansichten*: MR-Buttons in der Topbar, Progress im Issue-Detail, Progress im MR,
     Ticket-Assignee-Buttons im MR.
-  - *Erweitert* (zugeklappt): Debug – aktiviert `console.log` mit zusätzlichen Informationen.
+  - *Erweitert* (zugeklappt): Debug – aktiviert `console.log` mit zusätzlichen Informationen. Außerdem:
+    Selektor-Selbsttest, Debug-Info kopieren (ohne Portal-URL), Konfiguration exportieren/importieren und
+    „Alle lokalen Daten löschen“.
 
   Unterpunkte sind ausgegraut, solange das übergeordnete Feature aus ist. Ausgeschaltete Features laden auch keine
   Daten mehr (z. B. keine MR-Liste ohne MR-Badge, keine Label-Historie ohne Verweildauer). Standard: alles an.
