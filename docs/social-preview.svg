@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3a2580"/>
+      <stop offset="1" stop-color="#170d38"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6b4fbb"/>
+      <stop offset="1" stop-color="#2b1a5e"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fca326"/>
+      <stop offset="1" stop-color="#e24329"/>
+    </linearGradient>
+    <pattern id="dots" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.6" fill="#ffffff" opacity="0.07"/>
+    </pattern>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#dots)"/>
+  <circle cx="1160" cy="80" r="260" fill="#fc6d26" opacity="0.10"/>
+
+  <!-- icon (same as icon.svg, scaled 64 -> 176) -->
+  <g transform="translate(96 96) scale(2.75)">
+    <rect width="64" height="64" rx="14" fill="url(#tile)"/>
+    <path fill="#fff" d="M10 18h44v9a5 5 0 0 0 0 10v9H10v-9a5 5 0 0 0 0-10z"/>
+    <path stroke="#c9bfe6" stroke-width="1.5" stroke-dasharray="2 2.5" d="M21 20v24"/>
+    <rect x="25" y="22" width="20" height="3" rx="1.5" fill="#2b1a5e"/>
+    <rect x="25" y="28" width="13" height="3" rx="1.5" fill="#a99bd6"/>
+    <rect x="25" y="34" width="20" height="5" rx="2.5" fill="#ece8f7"/>
+    <rect x="25" y="34" width="13" height="5" rx="2.5" fill="url(#bar)"/>
+    <circle cx="50" cy="50" r="10" fill="#fc6d26" stroke="#2b1a5e" stroke-width="2.5"/>
+    <path fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" d="M50 44.5V50l3.5 2.5"/>
+  </g>
+
+  <!-- title -->
+  <g font-family="Ubuntu Sans, Ubuntu, Noto Sans, sans-serif" fill="#fff">
+    <text x="96" y="372" font-size="64" font-weight="700">Portal GitLab</text>
+    <text x="96" y="446" font-size="64" font-weight="700">Ticket Progress</text>
+    <text x="96" y="512" font-size="28" fill="#c9bfe6">Gebuchte Portal-Stunden als Progressbar</text>
+    <text x="96" y="550" font-size="28" fill="#c9bfe6">direkt im GitLab-Issue-Board.</text>
+  </g>
+
+  <!-- mini board column -->
+  <g font-family="Ubuntu Sans, Ubuntu, Noto Sans, sans-serif">
+    <rect x="700" y="96" width="484" height="448" rx="20" fill="#ffffff" opacity="0.06"/>
+    <text x="732" y="146" font-size="22" font-weight="700" fill="#fff" letter-spacing="1">WIP</text>
+    <rect x="790" y="128" width="34" height="24" rx="12" fill="#ffffff" opacity="0.15"/>
+    <text x="807" y="146" font-size="16" fill="#fff" text-anchor="middle">3</text>
+
+    <!-- card 1: on track -->
+    <g transform="translate(724 172)">
+      <rect width="436" height="112" rx="12" fill="#fff"/>
+      <text x="24" y="38" font-size="20" font-weight="700" fill="#2b1a5e">Login-Flow überarbeiten</text>
+      <text x="24" y="64" font-size="15" fill="#8a80a8">#1423 · 5,5 h / 8 h</text>
+      <rect x="24" y="80" width="388" height="12" rx="6" fill="#ece8f7"/>
+      <rect x="24" y="80" width="267" height="12" rx="6" fill="url(#bar)"/>
+    </g>
+
+    <!-- card 2: early -->
+    <g transform="translate(724 300)">
+      <rect width="436" height="112" rx="12" fill="#fff"/>
+      <text x="24" y="38" font-size="20" font-weight="700" fill="#2b1a5e">API-Rate-Limit einbauen</text>
+      <text x="24" y="64" font-size="15" fill="#8a80a8">#1431 · 1,5 h / 6 h</text>
+      <rect x="24" y="80" width="388" height="12" rx="6" fill="#ece8f7"/>
+      <rect x="24" y="80" width="97" height="12" rx="6" fill="url(#bar)"/>
+    </g>
+
+    <!-- card 3: partially visible -->
+    <g transform="translate(724 428)">
+      <rect width="436" height="92" rx="12" fill="#fff" opacity="0.85"/>
+      <text x="24" y="38" font-size="20" font-weight="700" fill="#2b1a5e">Export als CSV</text>
+      <rect x="24" y="60" width="388" height="12" rx="6" fill="#ece8f7"/>
+      <rect x="24" y="60" width="350" height="12" rx="6" fill="url(#bar)"/>
+    </g>
+  </g>
+</svg>
