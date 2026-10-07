@@ -43,6 +43,29 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    ⚙ → Projekt-Konfiguration öffnen und eintragen.”). Nach fünf Sekunden verschwindet der Hinweis wieder; du kannst
    ihn bei Bedarf erneut triggern, indem du das Zahnrad öffnest.
 
+## Ticket-Aktionen im MR
+
+Im Zahnrad-Menü unter „Ticket-Aktionen im MR“ kannst du pro Projekt eigene Buttons definieren. Sie erscheinen in der
+Box mit den gebuchten Stunden oben rechts im MR. Ein Klick postet die hinterlegten
+[Quick Actions](https://docs.gitlab.com/user/project/quick_actions/) als Kommentar auf das verknüpfte Ticket (die
+`#<IID>` aus dem MR-Titel). Eine Zeile `[Label]` beginnt einen neuen Button, alle folgenden Zeilen sind dessen
+Quick Actions:
+
+```
+[Ticket abschließen]
+/unassign me
+/label ~"workflow::Closed this iteration"
+/unlabel ~"workflow::PO-Review"
+
+[Zurück in WIP]
+/label ~"workflow::WIP"
+```
+
+- Ist das Feld leer, werden keine Buttons angezeigt.
+- `/unassign` ohne Argument entfernt **alle** Assignees, `/unassign me` nur dich selbst.
+- Der Request läuft über deine bestehende GitLab-Session. Es wird kein Token und kein Passwort gespeichert. Lokal
+  im Browser liegt nur der Aktionstext.
+
 ## Dokumentation
 
 Weitere Details zur Nutzung und Konfiguration:

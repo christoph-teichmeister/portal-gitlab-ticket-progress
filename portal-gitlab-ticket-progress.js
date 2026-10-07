@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      5.6.3
+// @version      5.7.0
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @include      https://gitlab*/*/-/*
@@ -19,7 +19,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '5.6.3';
+  const SCRIPT_VERSION = '5.7.0';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   const MERGE_REQUEST_ICON_SVG = '<svg data-testid="merge-request-icon" role="img" aria-hidden="true" class="gl-button-icon gl-icon s16 gl-fill-current"><use href="/assets/icons-5a3f88503a318f1eaf3b49d9d82c93cdde31fd5224ab8aeeb08534974b21f10c.svg#merge-request"></use></svg>';
@@ -69,6 +69,8 @@
   let forceRefreshMode = false;
   let toolbarInitialProjectIdValue = '';
   let toolbarInitialPortalUrlValue = '';
+  let ticketActionsInputElement = null;
+  let toolbarInitialTicketActionsValue = '';
   const DETAIL_RETRY_INTERVAL_MS = 700;
   const DETAIL_RETRY_MAX_ATTEMPTS = 3;
   const detailRetryState = {
@@ -1350,7 +1352,8 @@
       portalBaseUrl,
       showEnabled: showEnabled,
       debugEnabled: debugEnabled,
-      mrLinksEnabled: mrLinksEnabled
+      mrLinksEnabled: mrLinksEnabled,
+      ticketActions: (storedProjectConfig && storedProjectConfig.ticketActions) || ''
     });
   }
 
@@ -3087,7 +3090,88 @@
     return match ? match[1] : null;
   }
 
-  function injectProgressIntoMRDetail(assigneeBlock, progressData, portalUrl, timesheetUrl) {
+  // "[Label]\n/quick\n/actions" → [{label, body}]
+  function parseTicketActions(text) {
+    const actions = [];
+    let current = null;
+    String(text || '').split('\n').forEach(function (line) {
+      const header = line.trim().match(/^\[(.+)\]$/);
+      if (header) {
+        current = {label: header[1].trim(), lines: []};
+        actions.push(current);
+      } else if (current) {
+        current.lines.push(line);
+      }
+    });
+    return actions
+      .map(function (a) {
+        return {label: a.label, body: a.lines.join('\n').trim()};
+      })
+      .filter(function (a) {
+        return a.body;
+      });
+  }
+
+  // Postet Quick Actions als Kommentar aufs Ticket – nutzt die GitLab-Session, kein Token.
+  function runTicketAction(projectPath, issueIid, body) {
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    return fetch(
+      '/api/v4/projects/' + encodeURIComponent(projectPath) + '/issues/' + issueIid + '/notes',
+      {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfMeta ? csrfMeta.getAttribute('content') : ''
+        },
+        body: JSON.stringify({body: body})
+      }
+    ).then(function (res) {
+      if (!res.ok) {
+        throw new Error('HTTP ' + res.status);
+      }
+    });
+  }
+
+  function createTicketActionsRow(projectSettings, issueIid) {
+    const actions = parseTicketActions(projectSettings && projectSettings.ticketActions);
+    if (!actions.length || !issueIid) return null;
+
+    const row = document.createElement('div');
+    applyStyles(row, {
+      display: 'flex',
+      gap: '0.35rem',
+      flexWrap: 'wrap',
+      marginTop: '0.5rem'
+    });
+
+    actions.forEach(function (action) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = action.label;
+      button.title = action.body;
+      applyStyles(button, PORTAL_LINK_BUTTON_DEFAULT_STYLES);
+      button.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        button.disabled = true;
+        runTicketAction(projectSettings.projectPath, issueIid, action.body)
+          .then(function () {
+            showToast({text: '„' + action.label + '“ auf #' + issueIid + ' ausgeführt', variant: 'success'});
+          })
+          .catch(function (err) {
+            error('Ticket-Aktion fehlgeschlagen:', err);
+            showToast({text: '„' + action.label + '“ fehlgeschlagen: ' + err.message, variant: 'warning'});
+          })
+          .then(function () {
+            button.disabled = false;
+          });
+      });
+      row.appendChild(button);
+    });
+    return row;
+  }
+
+  function injectProgressIntoMRDetail(assigneeBlock, progressData, portalUrl, timesheetUrl, projectSettings, issueIid) {
     if (!assigneeBlock || !progressData) return;
 
     const windowBackground = getGitLabWindowBackgroundColor(true);
@@ -3145,6 +3229,11 @@
     if (row.children.length) {
       container.appendChild(row);
     }
+
+    const actionsRow = createTicketActionsRow(projectSettings, issueIid);
+    if (actionsRow) {
+      container.appendChild(actionsRow);
+    }
   }
 
   function fetchAndDisplayProgressForMRDetail(hostConfig, projectSettings, issueIid, assigneeBlock) {
@@ -3191,7 +3280,7 @@
           clearProjectRequestBlock(projectSettings.projectKey);
           if (!progressData) return;
           setProgressCacheEntry(cacheKey, progressData);
-          injectProgressIntoMRDetail(assigneeBlock, progressData, url, buildTimesheetUrl(projectSettings, issueIid));
+          injectProgressIntoMRDetail(assigneeBlock, progressData, url, buildTimesheetUrl(projectSettings, issueIid), projectSettings, issueIid);
           const parent = assigneeBlock.parentElement;
           if (parent) {
             parent.dataset.ambientProgressMrIssueIid = issueIid;
@@ -3218,7 +3307,7 @@
       assigneeBlock.setAttribute('data-ambient-progress-url', url);
     }
 
-    injectProgressIntoMRDetail(assigneeBlock, cached, url, buildTimesheetUrl(projectSettings, issueIid));
+    injectProgressIntoMRDetail(assigneeBlock, cached, url, buildTimesheetUrl(projectSettings, issueIid), projectSettings, issueIid);
     const parent = assigneeBlock.parentElement;
     if (parent) {
       parent.dataset.ambientProgressMrIssueIid = issueIid;
@@ -4210,9 +4299,11 @@
       const portalValue = portalUrlInputElement ? (portalUrlInputElement.value || '').trim() : '';
       const id2Value = projectId2InputElement ? (projectId2InputElement.value || '').trim() : '';
       const useSecondValue = useSecondProjectIdToggleCheckbox ? useSecondProjectIdToggleCheckbox.checked : false;
+      const actionsValue = ticketActionsInputElement ? ticketActionsInputElement.value.trim() : '';
       const hasChanges =
         projectValue !== toolbarInitialProjectIdValue ||
         portalValue !== toolbarInitialPortalUrlValue ||
+        actionsValue !== toolbarInitialTicketActionsValue ||
         id2Value !== toolbarInitialProjectId2Value ||
         useSecondValue !== toolbarInitialUseSecondProjectIdValue;
       const enabled = hasChanges;
@@ -4290,6 +4381,11 @@
       }
       if (useSecond !== (projectSettings.useSecondPortalProjectId || false)) {
         entry.useSecondPortalProjectId = useSecond;
+        changed = true;
+      }
+      const actionsAttempt = ticketActionsInputElement ? ticketActionsInputElement.value.trim() : '';
+      if (actionsAttempt !== (projectSettings.ticketActions || '').trim()) {
+        entry.ticketActions = actionsAttempt;
         changed = true;
       }
 
@@ -5052,6 +5148,44 @@
     section.appendChild(currentId2);
     section.appendChild(formRow2);
     section.appendChild(status2);
+
+    toolbarInitialTicketActionsValue = String(projectSettings.ticketActions || '').trim();
+
+    const actionsHeading = document.createElement('div');
+    actionsHeading.textContent = 'Ticket-Aktionen im MR';
+    applyStyles(actionsHeading, {
+      fontSize: '0.8rem',
+      letterSpacing: '0.05em',
+      textTransform: 'uppercase',
+      opacity: '0.75',
+      fontWeight: '600',
+      color: panelTextColor,
+      marginTop: '0.4rem'
+    });
+
+    const actionsInput = document.createElement('textarea');
+    actionsInput.rows = 5;
+    actionsInput.placeholder = '[Ticket abschließen]\n/unassign me\n/label ~"workflow::Done"\n/unlabel ~"workflow::Review"';
+    actionsInput.value = projectSettings.ticketActions || '';
+    applyStyles(actionsInput, {
+      padding: '0.35rem 0.5rem',
+      borderRadius: '6px',
+      border: '1px solid #374151',
+      background: panelBackground,
+      color: panelTextColor,
+      fontSize: '0.8rem',
+      fontFamily: 'monospace',
+      resize: 'vertical'
+    });
+    ticketActionsInputElement = actionsInput;
+    actionsInput.addEventListener('input', function () {
+      if (typeof onValuesChanged === 'function') {
+        onValuesChanged();
+      }
+    });
+
+    section.appendChild(actionsHeading);
+    section.appendChild(actionsInput);
     return section;
   }
 
