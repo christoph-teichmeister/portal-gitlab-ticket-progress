@@ -1,5 +1,49 @@
 # Changelog
 
+## 2026.10.18
+
+- Dropdowns (Ticket-Aktionen, Spalte sortieren, MRs) im Stil der GitLab-Dropdowns: Kopfzeile mit Titel und Trennlinie,
+  größere Zeilen mit Hover; MR-Einträge zeigen Titel und darunter `!iid`.
+
+## 2026.10.17
+
+- Mehrere MRs zu einem Ticket: Das MR-Badge öffnet jetzt ein Dropdown mit allen MRs (statt einer gefilterten
+  MR-Suche); Auswahl öffnet den MR in einem neuen Tab.
+
+## 2026.10.16
+
+- Platzhalter (Skeletons) auch für die Verweildauer auf der Karte und den Median im Spaltenkopf, solange die
+  Label-Events laden. Geladene Werte (Progress-Bar, Verweildauer, Median, MR-Badge) blenden weich ein
+  (bei „Bewegung reduzieren“ ohne Animation).
+
+## 2026.10.15
+
+- Verweildauer robuster: Ein versehentliches Verschieben in eine andere Spalte und gleich wieder zurück (unter
+  15 Minuten) unterbricht den Aufenthalt nicht mehr. Außerdem zählt ein früherer Aufenthalt nicht mehr als „seit X
+  Tagen“, wenn das Spalten-Label gar nicht mehr am Ticket liegt (z. B. Label-Events noch nicht aktuell nach dem
+  Verschieben) – dann beginnt die Verweildauer bei 0.
+
+## 2026.10.14
+
+- Einstellungs-Panel neu gestaltet: Abschnitte als Karten mit Chevron, feste Kopf- und Speichern-Leiste, Schalter in
+  zwei Spalten, Status-Karte (Version, Anzeige, Aktualisierung) oben, GitLab-Formularfelder mit Beschriftung und
+  Hinweisen statt Großbuchstaben-Überschriften; redundante „Aktuell:“-Zeilen entfallen.
+- Kein „Einstellungen speichern“-Button mehr: Änderungen an der Projekt-Konfiguration werden entprellt (0,7 s) sofort
+  übernommen, das Board lädt ohne Seiten-Reload neu und das geänderte Feld leuchtet kurz grün. Ungültige Eingaben
+  werden nicht gespeichert, sondern am Feld erklärt.
+
+## 2026.10.13
+
+- Einstellungen als Seitenpanel nach dem Vorbild von GitLabs Ticket-Vorschau: rechts angedockt unter der Top-Bar, etwa
+  die halbe Fensterbreite (min. 480 px), mit Titel und Schließen-Button; schließt auch mit Escape oder Klick daneben.
+- MR-Badge auf den Karten hat jetzt einen Hover-Zustand (Hintergrund + Unterstreichung, ohne Layout-Sprung).
+
+## 2026.10.12
+
+- Einstellungsmenü größer (Breite 400 px, Zoom 1.15) und mit GitLab-Buttons: Datentools, Experimente-Buttons,
+  „Jetzt aktualisieren“ und „Einstellungen speichern“ nutzen `btn gl-button` (Standard bzw. `btn-confirm`) statt der
+  Eigenbau-Optik mit festen Farben.
+
 ## 2026.10.11
 
 - Buttons um die Progress-Bar (Portal ↗, Timesheet, Ticket-Aktionen im MR, Assignee-Schnellauswahl) nutzen jetzt

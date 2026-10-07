@@ -20,9 +20,9 @@ function extract(name) {
 
 const names = ['parseVersionSegments', 'normalizeVersionValue', 'isRemoteVersionGreater', 'formatDuration', 'median',
   'normalizeListNameForMatching', 'normalizeLabelNameForMatching', 'parseTicketActions', 'assigneeSortKey', 'planReorder',
-  'extractHourNumber'];
+  'extractHourNumber', 'computeEnteredAt'];
 const isExp = function () { return false; };
-const code = 'const MAX_HOURS_VALUE = 100000;\n' + names.map(extract).join('\n') + '\nreturn {' + names.join(',') + '};';
+const code = 'const MAX_HOURS_VALUE = 100000; const COLUMN_BLIP_MS = 15 * 60 * 1000;\n' + names.map(extract).join('\n') + '\nreturn {' + names.join(',') + '};';
 const fn = new Function('isExp', 'expSetting', 'log', 'warn', 'error', code);
 const noop = function () {};
 const f = fn(isExp, function (key, fallback) { return fallback; }, noop, noop, noop);
@@ -61,3 +61,23 @@ const grouped = f.planReorder([N(1, 'Bob'), N(2, 'Anna'), N(3, 'Bob'), N(4, 'Ann
 assert.deepStrictEqual(grouped, [{iid: 5, move_before_id: 10}, {iid: 2, move_after_id: 50}, {iid: 4, move_after_id: 20}]);
 
 console.log('pure.check.js: alle Checks bestanden');
+
+// computeEnteredAt: Ausrutscher (kurz in B, zurück in A) zählen nicht; Label nicht mehr am Ticket → null
+{
+  const ev = function (action, name, iso) { return {action: action, label: {name: name}, created_at: iso}; };
+  const a = 'workflow::A';
+  const b = 'workflow::B';
+  const events = [
+    ev('add', a, '2026-10-01T08:00:00Z'), ev('remove', a, '2026-10-03T09:00:00Z'), ev('add', b, '2026-10-03T09:00:00Z'),
+    ev('remove', b, '2026-10-03T09:05:00Z'), ev('add', a, '2026-10-03T09:05:00Z')
+  ];
+  const target = f.normalizeLabelNameForMatching(a);
+  // A: kurz weg (5 min) → Aufenthalt zählt ab erstem Eintritt
+  assert.strictEqual(f.computeEnteredAt(events, target).toISOString(), '2026-10-01T08:00:00.000Z');
+  // B: nicht mehr am Ticket → null (kein veralteter alter Eintritt)
+  assert.strictEqual(f.computeEnteredAt(events, f.normalizeLabelNameForMatching(b)), null);
+  // lange Abwesenheit (1 Tag) → neuer Aufenthalt
+  const longGap = [ev('add', a, '2026-10-01T08:00:00Z'), ev('remove', a, '2026-10-01T10:00:00Z'), ev('add', a, '2026-10-02T10:00:00Z')];
+  assert.strictEqual(f.computeEnteredAt(longGap, target).toISOString(), '2026-10-02T10:00:00.000Z');
+}
+console.log('computeEnteredAt ok');

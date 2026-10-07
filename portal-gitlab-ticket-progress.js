@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.11
+// @version      2026.10.18
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.11';
+  const SCRIPT_VERSION = '2026.10.18';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -121,6 +121,8 @@
       '.ambient-btn{min-width:24px;min-height:24px;box-sizing:border-box}' +
       '#ambient-progress-toolbar button:focus-visible,#ambient-progress-toolbar summary:focus-visible,' +
       '#ambient-progress-toolbar input:focus-visible,#ambient-progress-toolbar textarea:focus-visible,' +
+      '#ambient-progress-settings button:focus-visible,#ambient-progress-settings summary:focus-visible,' +
+      '#ambient-progress-settings input:focus-visible,#ambient-progress-settings textarea:focus-visible,' +
       '.ambient-btn:focus-visible,.ambient-mr-badge:focus-visible,.ambient-progress-bar:focus-visible,' +
       '.ambient-progress-list-toggle:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}' +
       '.ambient-switch-input:focus-visible+.ambient-switch-slider{outline:2px solid #60a5fa;outline-offset:2px}' +
@@ -129,16 +131,31 @@
       '.ambient-dropdown-toggle:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.18)) !important}' +
       '.ambient-card-actions svg,.ambient-progress-sort-toggle svg{pointer-events:none}' +
       '.ambient-btn:not(.btn):not(.ambient-btn-primary):hover:not(:disabled){background:#374151 !important;border-color:#9ca3af !important;color:#fff !important}' +
-      '.ambient-btn.btn:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.18)) !important}' +
+      '.ambient-btn.btn:not(.btn-confirm):hover{background:var(--gl-background-color-strong,rgba(128,128,128,.18)) !important}' +
       '.ambient-split-label{min-width:0;max-width:100%;flex:0 1 auto}' +
       '.ambient-split-label>span:first-child{flex:0 0 auto}' +
       '.ambient-split-label>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
       // GitLabs h2 hat hier Standard-Abstände (20px oben / 10px unten) und sitzt dadurch ~5px unter den Icons
       '[data-testid="board-list-header"] .board-title-text{min-width:0;margin-top:0 !important;margin-bottom:0 !important}' +
+      // Hover für das MR-Badge: Fläche per box-shadow vergrößert, damit sich das Layout nicht verschiebt
+      '.ambient-mr-badge:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.22));box-shadow:0 0 0 3px var(--gl-background-color-strong,rgba(128,128,128,.22));border-radius:4px;text-decoration:underline !important}' +
+      // Einstellungs-Panel: eigene Chevrons statt Browser-Dreieck, Zeilen-Hover, Karten-Optik
+      '#ambient-progress-settings summary{list-style:none}' +
+      '#ambient-progress-settings [role=alert]:empty{display:none}' +
+      '#ambient-progress-settings summary::-webkit-details-marker{display:none}' +
+      '#ambient-progress-settings .ambient-chevron-left::before{content:"▸";display:inline-block;width:1.1em;opacity:.7}' +
+      '#ambient-progress-settings details[open]>.ambient-chevron-left::before{content:"▾"}' +
+      '#ambient-progress-settings .ambient-chevron-right::after{content:"▸";opacity:.7;margin-left:auto;padding-left:.75rem}' +
+      '#ambient-progress-settings details[open]>.ambient-chevron-right::after{content:"▾"}' +
+      '#ambient-progress-settings .ambient-switch-row:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
+      '#ambient-progress-settings .ambient-card>summary:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.1))}' +
       '.ambient-sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}' +
       '.ambient-skeleton{border-radius:999px;animation:ambient-pulse 1.2s ease-in-out infinite}' +
       '@keyframes ambient-pulse{50%{opacity:.35}}' +
-      '@media (prefers-reduced-motion: reduce){#ambient-progress-toolbar *,#ambient-progress-toast{transition:none !important}.ambient-skeleton{animation:none}}';
+      // Geladene Werte blenden ein, statt hart aufzutauchen
+      '@keyframes ambient-fade-in{from{opacity:0}}' +
+      '.ambient-fade-in{animation:ambient-fade-in .35s ease-out}' +
+      '@media (prefers-reduced-motion: reduce){#ambient-progress-toolbar *,#ambient-progress-settings,#ambient-progress-settings *,#ambient-progress-toast{transition:none !important}.ambient-skeleton,.ambient-fade-in{animation:none}}';
     (document.head || document.documentElement).appendChild(style);
   }
 
@@ -270,15 +287,10 @@
   let portalStatusElement = null;
   let projectId2InputElement = null;
   let projectId2StatusElement = null;
-  let toolbarInitialProjectId2Value = '';
-  let toolbarInitialUseSecondProjectIdValue = false;
   let useSecondProjectIdToggleCheckbox = null;
   let lastRefreshLabelElement = null;
   let manualRefreshButtonElement = null;
-  let toolbarInitialProjectIdValue = '';
-  let toolbarInitialPortalUrlValue = '';
   let ticketActionsInputElement = null;
-  let toolbarInitialTicketActionsValue = '';
   const DETAIL_RETRY_INTERVAL_MS = 700;
   const DETAIL_RETRY_MAX_ATTEMPTS = 3;
   const detailRetryState = {
@@ -398,6 +410,8 @@
     'Mich als Reviewer zuweisen': 'Assign me as reviewer',
     'Gemerged': 'Merged',
     'Ticket-Aktionen': 'Ticket actions',
+    'Progress-Einstellungen': 'Progress settings',
+    'Schließen': 'Close',
     'Unassigned nach oben': 'Unassigned first',
     'Nach Assignee gruppieren': 'Group by assignee',
     'Spalte sortieren': 'Sort column'
@@ -1472,19 +1486,6 @@
     };
   }
 
-  const PORTAL_LINK_BUTTON_DEFAULT_STYLES = {
-    border: '1px solid #4b5563',
-    background: '#111827',
-    color: '#e5e7eb',
-    borderRadius: '999px',
-    padding: '2px 8px',
-    fontSize: '11px',
-    cursor: 'pointer',
-    flex: '0 0 auto',
-    position: 'relative',
-    zIndex: '25'
-  };
-
   // GitLab-eigene Button-Klassen (wie Zahnrad/Plus im Spalten-Header). position + z-index bleiben nötig, weil GitLab
   // einen unsichtbaren Link über die ganze Karte legt (a.board-card-button).
   function createProgressIconButton(html, title, ariaLabel, url, overrides) {
@@ -2497,6 +2498,13 @@
     return container;
   }
 
+  // Einblend-Animation (Animation neu starten, falls das Element sie schon trägt)
+  function fadeIn(el) {
+    el.classList.remove('ambient-fade-in');
+    void el.offsetWidth;
+    el.classList.add('ambient-fade-in');
+  }
+
   // Platzhalter, solange das Portal antwortet – verhindert die leere Lücke und das Springen beim Einfügen der Bar
   function showProgressLoading(cardElem) {
     if (!isFeatureOn('progress') || !isCardInActiveColumn(cardElem)) return;
@@ -2548,6 +2556,7 @@
     container.removeAttribute('data-ambient-loading');
     container.removeAttribute('aria-busy');
     container.removeAttribute('data-ambient-stale');
+    if (animateFill) fadeIn(container);
     container.style.opacity = '';
     container.title = '';
     container.style.display = showEnabled ? '' : 'none';
@@ -2908,6 +2917,32 @@
     persistEnteredAtStore();
   }
 
+  // Kurze Abwesenheit (versehentlich verschoben und gleich zurück) unterbricht den Aufenthalt nicht
+  const COLUMN_BLIP_MS = 15 * 60 * 1000;
+
+  // Beginn des aktuellen Aufenthalts in der Spalte `target` (normalisierter Name) aus den Label-Events.
+  // Liegt das Label gerade nicht am Ticket (letztes Event = remove, z. B. Events noch nicht aktuell), → null.
+  function computeEnteredAt(events, target) {
+    const relevant = events.filter(function (ev) {
+      return ev.label && ev.created_at && normalizeLabelNameForMatching(ev.label.name) === target;
+    }).sort(function (a, b) { return new Date(a.created_at) - new Date(b.created_at); });
+    let start = null; // Beginn des (zusammengeführten) Aufenthalts
+    let lastRemove = null;
+    let open = false;
+    relevant.forEach(function (ev) {
+      const at = new Date(ev.created_at).getTime();
+      if (ev.action === 'add') {
+        if (open) return;
+        if (start === null || lastRemove === null || at - lastRemove > COLUMN_BLIP_MS) start = at;
+        open = true;
+      } else if (ev.action === 'remove' && open) {
+        lastRemove = at;
+        open = false;
+      }
+    });
+    return open && start !== null ? new Date(start) : null;
+  }
+
   function loadColumnEnteredAt(projectPath, issueIid, listName) {
     if (!isNumericId(issueIid)) return Promise.reject(new Error('Ungültige Issue-IID'));
     const key = projectPath + '#' + issueIid + '#' + listName;
@@ -2926,13 +2961,7 @@
     const target = normalizeLabelNameForMatching(listName);
     const promise = loadLabelEvents(projectPath, issueIid)
       .then(function (events) {
-        let latest = null;
-        events.forEach(function (ev) {
-          if (ev.action !== 'add' || !ev.label) return;
-          if (normalizeLabelNameForMatching(ev.label.name) !== target) return;
-          const date = new Date(ev.created_at);
-          if (!latest || date > latest) latest = date;
-        });
+        const latest = computeEnteredAt(events, target);
         {
           getEnteredAtStore()[key] = {t: latest ? latest.getTime() : null, ts: Date.now()};
           persistEnteredAtStore();
@@ -3023,8 +3052,31 @@
     cardElem.setAttribute('data-ambient-skip', '1');
   }
 
+  const SKELETON_FILL = 'var(--gl-background-color-strong, rgba(128, 128, 128, 0.3))';
+
+  // Platzhalter für die Verweildauer in der Karte, bis die Label-Events da sind
+  function showColumnAgeLoading(cardElem) {
+    if (!isFeatureOn('columnAge') || !isCardInActiveColumn(cardElem) || cardElem.querySelector('.ambient-column-age')) return;
+    const footer = cardElem.querySelector(SEL.cardFooter);
+    if (!footer) return;
+    const numberElem = footer.querySelector(SEL.cardNumber);
+    const el = document.createElement('span');
+    el.className = 'ambient-column-age ambient-skeleton';
+    el.setAttribute('data-ambient-loading', '1');
+    el.setAttribute('aria-hidden', 'true');
+    applyStyles(el, {display: showEnabled ? 'inline-block' : 'none', width: '40px', height: '12px', marginLeft: '6px',
+      verticalAlign: 'middle', background: SKELETON_FILL});
+    (numberElem && numberElem.parentElement ? numberElem.parentElement : footer).appendChild(el);
+  }
+
+  function clearColumnAgeLoading(cardElem) {
+    const el = cardElem.querySelector('.ambient-column-age[data-ambient-loading]');
+    if (el) el.remove();
+  }
+
   function injectColumnAgeIntoCard(cardElem, enteredAt) {
     const boardListElem = cardElem.closest(SEL.boardList);
+    clearColumnAgeLoading(cardElem);
     let el = cardElem.querySelector('.ambient-column-age');
     if (!enteredAt) {
       if (el) el.remove();
@@ -3037,7 +3089,7 @@
       if (!footer) return;
       const numberElem = footer.querySelector(SEL.cardNumber);
       el = document.createElement('span');
-      el.className = 'ambient-column-age';
+      el.className = 'ambient-column-age ambient-fade-in';
       // gleiche Optik wie MR-Badge (Farbe der Ticketnummer, 12px bold)
       applyStyles(el, {
         display: 'inline-flex',
@@ -3140,6 +3192,28 @@
     cardElem.style.boxShadow = marked ? '0 0 0 2px #dc2626' : '';
   }
 
+  function createColumnAvgElement(countBadge) {
+    const el = document.createElement('span');
+    el.className = 'ambient-column-avg gl-flex gl-items-center gl-whitespace-nowrap gl-text-subtle gl-text-sm gl-font-bold gl-mr-3';
+    el.style.cursor = 'help';
+    el.innerHTML = gitlabIconSvg('clock', 'gl-mr-2 gl-icon s14 gl-fill-current') + '<span></span>';
+    countBadge.insertBefore(el, countBadge.firstChild);
+    return el;
+  }
+
+  // Platzhalter für den Median im Spaltenkopf; verschwindet über updateColumnAgeHeader (Wert oder null)
+  function showColumnAvgLoading(boardListElem) {
+    if (!isFeatureOn('columnAvg')) return;
+    const header = getBoardListHeaderElement(boardListElem);
+    const countBadge = header && header.querySelector(SEL.issueCountBadge);
+    if (!countBadge || countBadge.querySelector('.ambient-column-avg')) return;
+    const el = createColumnAvgElement(countBadge);
+    el.setAttribute('data-ambient-loading', '1');
+    el.setAttribute('aria-hidden', 'true');
+    el.lastChild.className = 'ambient-skeleton';
+    applyStyles(el.lastChild, {display: 'inline-block', width: '32px', height: '12px', background: SKELETON_FILL});
+  }
+
   function updateColumnAgeHeader(boardListElem, avg, count) {
     if (!isFeatureOn('columnAvg')) avg = null;
     const header = getBoardListHeaderElement(boardListElem);
@@ -3151,12 +3225,13 @@
       if (el) el.remove();
       return;
     }
-    if (!el) {
-      el = document.createElement('span');
-      el.className = 'ambient-column-avg gl-flex gl-items-center gl-whitespace-nowrap gl-text-subtle gl-text-sm gl-font-bold gl-mr-3';
-      el.style.cursor = 'help';
-      el.innerHTML = gitlabIconSvg('clock', 'gl-mr-2 gl-icon s14 gl-fill-current') + '<span></span>';
-      countBadge.insertBefore(el, countBadge.firstChild);
+    if (!el) el = createColumnAvgElement(countBadge);
+    if (el.hasAttribute('data-ambient-loading')) { // Platzhalter → echter Wert
+      el.removeAttribute('data-ambient-loading');
+      el.removeAttribute('aria-hidden');
+      el.lastChild.className = '';
+      el.lastChild.style.cssText = '';
+      fadeIn(el);
     }
     el.lastChild.textContent = formatDuration(avg);
     el.title = 'Median-Verweildauer: So lange liegen die aktuell in dieser Spalte geladenen Tickets im Median schon ' +
@@ -3172,6 +3247,8 @@
     // Per Drag & Drop verschobene Karte: GitLab schreibt das Label-Event kurz nach dem Drop → kurz warten
     const moved = cardElem.hasAttribute('data-ambient-moved');
     cardElem.removeAttribute('data-ambient-moved');
+    showColumnAgeLoading(cardElem);
+    showColumnAvgLoading(cardElem.closest(SEL.boardList));
     const run = function () {
       loadColumnEnteredAt(projectPath, issueIid, listName)
         .then(function (enteredAt) {
@@ -3179,6 +3256,8 @@
           injectColumnAgeIntoCard(cardElem, enteredAt || (moved ? new Date() : null));
         })
         .catch(function (err) {
+          clearColumnAgeLoading(cardElem);
+          scheduleColumnAgeAverage(cardElem.closest(SEL.boardList));
           error('Label-Events konnten nicht geladen werden für', projectPath, issueIid, err);
         });
     };
@@ -3197,28 +3276,49 @@
     if (!matches.length) return;
 
     const el = document.createElement('a');
-    el.className = 'ambient-mr-badge';
-    const targetUrl = matches.length === 1
-      ? matches[0].web_url
-      : '/' + projectPath + '/-/merge_requests/?scope=all&state=all&search=%23' + issueIid;
-    el.href = targetUrl;
-    el.target = '_blank';
-    el.rel = 'noopener noreferrer';
-    el.title = matches.length === 1
-      ? matches[0].title
-      : matches.map(function (m) { return m.title; }).join('\n');
-    el.addEventListener(
-      'click',
-      function (ev) {
-        if (ev.target.closest && ev.target.closest('.ambient-mr-reviewer-placeholder')) {
-          return;
+    el.className = 'ambient-mr-badge' + (existing ? '' : ' ambient-fade-in');
+    const multiple = matches.length > 1;
+    el.title = multiple
+      ? matches.map(function (m) { return '!' + m.iid + ' ' + m.title; }).join('\n')
+      : matches[0].title;
+    if (multiple) {
+      // Mehrere MRs: Klick öffnet ein Dropdown mit allen MRs (statt einer Suche)
+      el.setAttribute('role', 'button');
+      el.tabIndex = 0;
+      el.style.cursor = 'pointer';
+      el.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          el.click();
         }
-        ev.stopPropagation();
-        ev.preventDefault();
-        openExternal(targetUrl);
-      },
-      true
-    );
+      });
+      attachDropdownMenu(el, function () {
+        return matches.map(function (m) {
+          return {
+            label: m.title,
+            sub: '!' + m.iid + (m.state === 'merged' ? ' · merged' : ''),
+            onSelect: function () { openExternal(m.web_url); }
+          };
+        });
+      }, 'Merge Requests');
+    } else {
+      const targetUrl = matches[0].web_url;
+      el.href = targetUrl;
+      el.target = '_blank';
+      el.rel = 'noopener noreferrer';
+      el.addEventListener(
+        'click',
+        function (ev) {
+          if (ev.target.closest && ev.target.closest('.ambient-mr-reviewer-placeholder')) {
+            return;
+          }
+          ev.stopPropagation();
+          ev.preventDefault();
+          openExternal(targetUrl);
+        },
+        true
+      );
+    }
     const numberElem = footer.querySelector(SEL.cardNumber);
     const matchedColor = numberElem ? getComputedStyle(numberElem).color : 'inherit';
     const allMerged = matches.every(function (m) { return m.state === 'merged'; });
@@ -3226,6 +3326,7 @@
 
     applyStyles(el, {
       position: 'relative',
+      zIndex: multiple ? '25' : '',
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -3249,7 +3350,7 @@
       el.appendChild(numberText);
     }
 
-    if (matches.length > 1) {
+    if (multiple) {
       const badge = document.createElement('span');
       badge.textContent = String(matches.length);
       applyStyles(badge, {
@@ -4204,7 +4305,7 @@
   // Menü im GitLab-Stil an einen Toggle-Button hängen. Das Menü hängt am body (position: fixed), damit es nicht
   // vom Karten-Container abgeschnitten wird. Maus-/Pointer-Events werden gestoppt, weil GitLabs Board-Karte das
   // Ticket schon bei mouseup öffnet und Sortable bei pointerdown mit dem Ziehen beginnt.
-  function attachDropdownMenu(toggle, buildItems) {
+  function attachDropdownMenu(toggle, buildItems, title) {
     toggle.classList.add('js-no-trigger');
     toggle.setAttribute('aria-haspopup', 'menu');
     toggle.setAttribute('aria-expanded', 'false');
@@ -4243,34 +4344,48 @@
       menu = document.createElement('div');
       menu.className = 'ambient-dropdown-menu';
       menu.setAttribute('role', 'menu');
+      // Optik wie GitLabs Dropdowns (z. B. Assignee-Auswahl): Panel mit Kopfzeile, Trennlinie und großzügigen Zeilen
       applyStyles(menu, {
         position: 'fixed',
         zIndex: '10000',
-        minWidth: '180px',
-        maxWidth: '320px',
-        padding: '4px',
+        minWidth: '220px',
+        maxWidth: '360px',
+        maxHeight: '60vh',
+        overflowY: 'auto',
+        padding: '0 0 4px',
         borderRadius: '8px',
         border: '1px solid var(--gl-border-color-default, #dcdcde)',
-        background: 'var(--gl-background-color-default, #fff)',
+        background: 'var(--gl-dropdown-background-color, var(--gl-background-color-overlap, var(--gl-background-color-default, #fff)))',
         color: 'var(--gl-text-color-default, #333238)',
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)'
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+        fontSize: '14px'
       });
+      if (title) {
+        const header = createTextSpan(title, {display: 'block', padding: '10px 12px', fontWeight: '700',
+          borderBottom: '1px solid var(--gl-border-color-default, #dcdcde)', marginBottom: '4px'});
+        menu.appendChild(header);
+      }
+      const list = document.createElement('div');
+      applyStyles(list, {padding: '0 4px'});
+      menu.appendChild(list);
       buildItems().forEach(function (entry) {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'ambient-dropdown-item js-no-trigger';
         item.setAttribute('role', 'menuitem');
-        item.textContent = entry.label;
+        item.appendChild(createTextSpan(entry.label, {display: 'block', fontWeight: entry.sub ? '600' : '400'}));
+        if (entry.sub) item.appendChild(createTextSpan(entry.sub, {display: 'block', fontSize: '12px', opacity: '0.7'}));
         if (entry.title) item.title = entry.title;
         applyStyles(item, {
           display: 'block',
           width: '100%',
-          padding: '6px 10px',
+          padding: '8px 12px',
           border: 'none',
           borderRadius: '4px',
           background: 'transparent',
           color: 'inherit',
           fontSize: '14px',
+          lineHeight: '1.4',
           textAlign: 'left',
           cursor: 'pointer'
         });
@@ -4280,7 +4395,7 @@
           close();
           entry.onSelect();
         });
-        menu.appendChild(item);
+        list.appendChild(item);
       });
       document.body.appendChild(menu);
       const rect = toggle.getBoundingClientRect();
@@ -4344,7 +4459,7 @@
           onSelect: function () { runTicketActionWithFeedback(projectSettings, issueIid, action); }
         };
       });
-    });
+    }, t('Ticket-Aktionen'));
     wrap.appendChild(toggle);
     return wrap;
   }
@@ -4989,7 +5104,7 @@
           onSelect: function () { sortBoardColumns(projectSettings, 'assignee', column); }
         }
       ];
-    });
+    }, t('Spalte sortieren'));
   }
 
   /******************************************************************
@@ -5029,26 +5144,30 @@
     switchIdCounter += 1;
     const labelId = 'ambient-switch-label-' + switchIdCounter;
     const wrapper = document.createElement('div');
+    wrapper.className = 'ambient-switch-row';
     applyStyles(wrapper, {
       display: 'flex',
       alignItems: 'center',
-      gap: '0.4rem',
-      cursor: 'pointer'
+      gap: '0.75rem',
+      cursor: 'pointer',
+      padding: '0.4rem 0.6rem',
+      borderRadius: '6px'
     });
 
     const labelSpan = document.createElement('span');
     labelSpan.id = labelId;
     labelSpan.textContent = labelText;
     applyStyles(labelSpan, {
-      opacity: '0.85',
-      fontWeight: '500'
+      fontWeight: '400',
+      flex: '1 1 auto'
     });
 
     const switchWrapper = document.createElement('div');
     applyStyles(switchWrapper, {
       position: 'relative',
       width: '38px',
-      height: '20px'
+      height: '20px',
+      flex: '0 0 auto'
     });
 
     const slider = document.createElement('span');
@@ -5317,50 +5436,93 @@
     dropdown.id = 'ambient-progress-settings';
     dropdown.setAttribute('role', 'dialog');
     dropdown.setAttribute('aria-label', 'Progress-Einstellungen');
+    // Seitenpanel wie GitLabs Ticket-Vorschau (Drawer): rechts angedockt, unter der Top-Bar, ca. halbe Fensterbreite.
+    // `top` wird beim Öffnen aus der Höhe der Top-Bar berechnet. Das Panel hängt am body, damit kein transformierter
+    // Vorfahre das position: fixed bricht.
     applyStyles(dropdown, {
-      position: 'absolute',
-      top: 'calc(100% + 6px)',
+      position: 'fixed',
+      top: '49px',
       right: '0',
+      bottom: '0',
       background: windowBackground,
       color: toolbarTextColor,
-      border: '1px solid var(--gl-border-color-default, #2f374c)',
-      borderRadius: '8px',
-      boxShadow: '0 10px 25px rgba(15, 23, 42, 0.35)',
+      borderLeft: '1px solid var(--gl-border-color-default, #4c4b51)',
+      borderRadius: '12px 0 0 0',
+      boxShadow: '-8px 0 24px rgba(15, 23, 42, 0.35)',
       display: 'flex',
       flexDirection: 'column',
-      zIndex: '150',
+      zIndex: '260',
       gap: '0',
-      padding: '0.75rem',
-      width: '320px',
-      maxWidth: 'calc(100vw - 2rem)',
-      maxHeight: 'calc(100vh - 80px)',
+      padding: '0',
+      fontSize: '14px',
+      width: 'clamp(480px, 48vw, 1400px)',
+      maxWidth: '100vw',
       overflowY: 'auto',
       opacity: '0',
-      transform: 'translateY(-8px) scale(0.97)',
+      transform: 'translateX(32px)',
       pointerEvents: 'none',
       visibility: 'hidden', // geschlossen auch aus Tab-Reihenfolge und Screenreader-Baum
       transition: 'opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s'
     });
+
+    const panelHeader = document.createElement('div');
+    applyStyles(panelHeader, {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '0.5rem',
+      padding: '0.9rem 1.25rem',
+      position: 'sticky',
+      top: '0',
+      zIndex: '2',
+      background: windowBackground,
+      borderBottom: '1px solid var(--gl-border-color-default, #4c4b51)'
+    });
+    const panelTitle = createTextSpan(t('Progress-Einstellungen'), {fontSize: '1.1rem', fontWeight: '700'});
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'ambient-btn btn gl-button btn-default btn-default-tertiary btn-icon btn-sm';
+    closeButton.title = t('Schließen');
+    closeButton.setAttribute('aria-label', t('Schließen'));
+    closeButton.innerHTML = '<svg class="gl-button-icon gl-icon s16" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+    panelHeader.appendChild(panelTitle);
+    panelHeader.appendChild(closeButton);
+    dropdown.appendChild(panelHeader);
+
+    // Inhalt scrollt, Kopf und Speichern-Leiste bleiben stehen
+    const content = document.createElement('div');
+    applyStyles(content, {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '1rem',
+      padding: '1rem 1.25rem',
+      flex: '1 0 auto'
+    });
+    dropdown.appendChild(content);
+
+    // Status-Karte: Version, Anzeige-Schalter, letzte Aktualisierung
+    const statusCard = document.createElement('div');
+    statusCard.className = 'ambient-card-box';
+    applyStyles(statusCard, CARD_STYLES);
+    applyStyles(statusCard, {padding: '0.5rem 0.4rem', gap: '0.1rem'});
+    content.appendChild(statusCard);
 
     const versionRow = document.createElement('div');
     applyStyles(versionRow, {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      gap: '0.5rem',
-      paddingBottom: '0.35rem'
+      gap: '0.5rem'
     });
     const versionLabel = document.createElement('div');
-    versionLabel.textContent = 'Version: ' + SCRIPT_VERSION;
-    applyStyles(versionLabel, {
-      fontSize: '0.75rem',
-      letterSpacing: '0.04em',
-      opacity: '0.8'
-    });
+    versionLabel.textContent = 'Version ' + SCRIPT_VERSION;
+    applyStyles(versionLabel, {fontSize: '0.85rem', fontWeight: '600', padding: '0 0.6rem'});
     showToggle.title = 'Blendet alle Anzeigen des Scripts auf einmal aus (gilt für alle Boards)';
+    applyStyles(showToggle, {flex: '0 0 auto'});
+    showToggle.firstChild.style.flex = '0 0 auto';
     versionRow.appendChild(versionLabel);
     versionRow.appendChild(showToggle);
-    dropdown.appendChild(versionRow);
+    statusCard.appendChild(versionRow);
 
     const timestampRow = document.createElement('div');
     applyStyles(timestampRow, {
@@ -5368,14 +5530,13 @@
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: '0.5rem',
-      paddingBottom: '0.35rem'
+      padding: '0.25rem 0.6rem'
     });
 
     const timestampLabel = document.createElement('div');
     applyStyles(timestampLabel, {
-      fontSize: '0.75rem',
-      letterSpacing: '0.02em',
-      opacity: '0.75'
+      fontSize: '0.8rem',
+      opacity: '0.7'
     });
     lastRefreshLabelElement = timestampLabel;
     updateLastRefreshLabel();
@@ -5387,41 +5548,19 @@
       refreshButton.textContent = '↻';
       refreshButton.title = t('Jetzt aktualisieren');
       refreshButton.setAttribute('aria-label', 'Cache leeren und neu laden');
-      refreshButton.className = 'ambient-btn ambient-btn-primary';
-      applyStyles(refreshButton, {
-        background: '#2563eb',
-        border: 'none',
-        borderRadius: '6px',
-        padding: '0.25rem 0.7rem',
-        fontSize: '0.7rem',
-        color: '#fff',
-        cursor: 'pointer',
-        transition: 'background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease',
-        boxShadow: '0 4px 10px rgba(37, 99, 235, 0.25)'
-      });
+      refreshButton.className = 'ambient-btn ambient-btn-primary btn gl-button btn-confirm btn-sm';
       refreshButton.addEventListener('click', function () {
         softRefresh(projectSettings);
       });
       manualRefreshButtonElement = refreshButton;
-      attachHoverEffect(refreshButton, {
-        background: '#1d4ed8',
-        boxShadow: '0 6px 18px rgba(37, 99, 235, 0.35)',
-        transform: 'translateY(-1px)'
-      });
       timestampRow.appendChild(refreshButton);
     }
 
-    dropdown.appendChild(timestampRow);
+    statusCard.appendChild(timestampRow);
 
     const releaseNotificationRow = document.createElement('div');
-    applyStyles(releaseNotificationRow, {
-      display: 'none',
-      flexDirection: 'column',
-      gap: '0.25rem',
-      padding: '0.35rem 0',
-      borderTop: '1px solid var(--gl-border-color-default, #2f374c)',
-      width: '100%'
-    });
+    applyStyles(releaseNotificationRow, CARD_STYLES);
+    applyStyles(releaseNotificationRow, {display: 'none', gap: '0.25rem', padding: '0.7rem 0.9rem'});
 
     const releaseNotificationText = document.createElement('div');
     applyStyles(releaseNotificationText, {
@@ -5445,17 +5584,11 @@
     releaseNotificationElements.messageRow = releaseNotificationRow;
     releaseNotificationElements.messageText = releaseNotificationText;
     releaseNotificationElements.divider = releaseNotificationDivider;
-    dropdown.appendChild(releaseNotificationRow);
+    content.appendChild(releaseNotificationRow);
 
     const rateLimitNotificationRow = document.createElement('div');
-    applyStyles(rateLimitNotificationRow, {
-      display: 'none',
-      flexDirection: 'column',
-      gap: '0.25rem',
-      padding: '0.35rem 0',
-      borderTop: '1px solid var(--gl-border-color-default, #2f374c)',
-      width: '100%'
-    });
+    applyStyles(rateLimitNotificationRow, CARD_STYLES);
+    applyStyles(rateLimitNotificationRow, {display: 'none', gap: '0.25rem', padding: '0.7rem 0.9rem'});
 
     const rateLimitNotificationText = document.createElement('div');
     applyStyles(rateLimitNotificationText, {
@@ -5479,10 +5612,10 @@
     rateLimitNotificationElements.messageRow = rateLimitNotificationRow;
     rateLimitNotificationElements.messageText = rateLimitNotificationText;
     rateLimitNotificationElements.divider = rateLimitNotificationDivider;
-    dropdown.appendChild(rateLimitNotificationRow);
+    content.appendChild(rateLimitNotificationRow);
     updateRateLimitWarningUI(getCachedRateLimitWarning());
 
-    dropdown.appendChild(globalSection);
+    content.appendChild(globalSection);
     let projectConfigDetails = null;
     if (projectSettings) {
       const boardConfigured = Boolean(projectSettings.projectId && projectSettings.portalBaseUrl);
@@ -5496,9 +5629,7 @@
       refreshAgeHighlightSection = ageHighlightSection.refresh;
       boardSection.appendChild(ageHighlightSection.element);
 
-      const projectConfigSection = createProjectConfigSection(hostConfig, projectSettings, updateSaveButtonState);
-      projectConfigSection.removeChild(projectConfigSection.firstChild); // Überschrift steckt im <summary>
-      projectConfigSection.style.borderTop = 'none';
+      const projectConfigSection = createProjectConfigSection(hostConfig, projectSettings, scheduleAutosave);
       // Eingerichtete Boards brauchen die Konfiguration selten → zugeklappt
       projectConfigDetails = createCollapsible(
         'Projekt-Konfiguration',
@@ -5506,78 +5637,22 @@
       );
       projectConfigDetails.body.appendChild(projectConfigSection);
       boardSection.appendChild(projectConfigDetails.element);
-      dropdown.appendChild(boardSection);
+      content.appendChild(boardSection);
     }
 
-    const saveRow = document.createElement('div');
-    applyStyles(saveRow, {
-      display: 'flex',
-      justifyContent: 'center',
-      padding: '0.35rem 0 0 0',
-      width: '100%'
-    });
-    const saveButton = document.createElement('button');
-    saveButton.type = 'button';
-    saveButton.textContent = 'Einstellungen speichern';
-    const saveButtonBaseStyles = {
-      background: '#2563eb',
-      border: 'none',
-      borderRadius: '6px',
-      padding: '0.45rem 1rem',
-      color: '#fff',
-      fontSize: '12px',
-      cursor: 'pointer',
-      width: '100%',
-      transition: 'background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease',
-      boxShadow: '0 6px 18px rgba(37, 99, 235, 0.25)',
-      transform: 'translateY(0)'
-    };
-    const saveButtonDisabledStyles = {
-      background: '#4b5563',
-      boxShadow: 'none',
-      cursor: 'not-allowed',
-      color: '#e5e7eb',
-      transform: 'translateY(0)'
-    };
-    const saveButtonHoverStyles = {
-      background: '#1d4ed8',
-      boxShadow: '0 10px 24px rgba(37, 99, 235, 0.35)',
-      transform: 'translateY(-1px)'
-    };
-    applyStyles(saveButton, saveButtonBaseStyles);
+    // Änderungen werden entprellt sofort übernommen; geänderte Felder leuchten kurz grün
+    let autosaveTimer = null;
 
-    function updateSaveButtonState() {
-      const projectValue = projectIdInputElement ? (projectIdInputElement.value || '').trim() : '';
-      const portalValue = portalUrlInputElement ? (portalUrlInputElement.value || '').trim() : '';
-      const id2Value = projectId2InputElement ? (projectId2InputElement.value || '').trim() : '';
-      const useSecondValue = useSecondProjectIdToggleCheckbox ? useSecondProjectIdToggleCheckbox.checked : false;
-      const actionsValue = ticketActionsInputElement ? ticketActionsInputElement.value.trim() : '';
-      const hasChanges =
-        projectValue !== toolbarInitialProjectIdValue ||
-        portalValue !== toolbarInitialPortalUrlValue ||
-        actionsValue !== toolbarInitialTicketActionsValue ||
-        id2Value !== toolbarInitialProjectId2Value ||
-        useSecondValue !== toolbarInitialUseSecondProjectIdValue;
-      const enabled = hasChanges;
-      saveButton.disabled = !enabled;
-      saveButton.title = enabled ? '' : 'Keine Änderungen zum Speichern';
-      const styleToApply = enabled
-        ? saveButtonBaseStyles
-        : mergeStyles(saveButtonBaseStyles, saveButtonDisabledStyles);
-      applyStyles(saveButton, styleToApply);
+    // Fehler am Feld anzeigen (aria-invalid + Status mit role="alert"); kein Fokusklau beim Tippen
+    function fail(input, statusElement, message) {
+      if (statusElement) statusElement.textContent = message;
+      [projectIdInputElement, portalUrlInputElement, projectId2InputElement].forEach(function (el) {
+        el.removeAttribute('aria-invalid');
+      });
+      input.setAttribute('aria-invalid', 'true');
     }
 
-    saveButton.addEventListener('mouseenter', function () {
-      if (saveButton.disabled) {
-        return;
-      }
-      applyStyles(saveButton, mergeStyles(saveButtonBaseStyles, saveButtonHoverStyles));
-    });
-    saveButton.addEventListener('mouseleave', function () {
-      updateSaveButtonState();
-    });
-
-    saveButton.addEventListener('click', function () {
+    function commitProjectConfig() {
       if (!projectSettings || !projectIdInputElement || !portalUrlInputElement || !projectId2InputElement || !useSecondProjectIdToggleCheckbox) {
         return;
       }
@@ -5585,19 +5660,9 @@
       const portalRaw = portalUrlInputElement.value.trim();
       const projectAttempt2 = projectId2InputElement.value.trim();
       const useSecond = useSecondProjectIdToggleCheckbox.checked;
+      const actionsAttempt = ticketActionsInputElement ? ticketActionsInputElement.value.trim() : '';
 
-      // Fehler am Feld anzeigen (aria-invalid + Status mit role="alert") und Fokus dorthin setzen
-      function fail(input, statusElement, message) {
-        if (statusElement) {
-          statusElement.textContent = message;
-        }
-        [projectIdInputElement, portalUrlInputElement, projectId2InputElement].forEach(function (el) {
-          el.removeAttribute('aria-invalid');
-        });
-        input.setAttribute('aria-invalid', 'true');
-        input.focus();
-      }
-
+      // Unvollständige/ungültige Eingaben werden nicht gespeichert (Hinweis am Feld, solange man tippt)
       if (!projectAttempt) {
         return fail(projectIdInputElement, projectStatusElement, 'Bitte gib eine Projekt-ID ein.');
       }
@@ -5627,58 +5692,62 @@
       }
 
       const entry = {};
-      let changed = false;
+      const changedFields = [];
       if (projectAttempt !== projectSettings.projectId) {
         entry.projectId = projectAttempt;
-        changed = true;
+        changedFields.push(projectIdInputElement);
       }
       if (portalAttempt !== projectSettings.portalBaseUrl) {
         entry.portalBaseUrl = portalAttempt;
-        changed = true;
+        changedFields.push(portalUrlInputElement);
       }
       if (projectAttempt2 !== (projectSettings.projectId2 || '')) {
         entry.portalProjectId2 = projectAttempt2;
-        changed = true;
+        changedFields.push(projectId2InputElement);
       }
       if (useSecond !== (projectSettings.useSecondPortalProjectId || false)) {
         entry.useSecondPortalProjectId = useSecond;
-        changed = true;
+        changedFields.push(projectId2InputElement);
       }
-      const actionsAttempt = ticketActionsInputElement ? ticketActionsInputElement.value.trim() : '';
       if (actionsAttempt !== (projectSettings.ticketActions || '').trim()) {
         entry.ticketActions = actionsAttempt;
-        changed = true;
+        changedFields.push(ticketActionsInputElement);
       }
+      if (!changedFields.length) return;
 
-      if (!changed) {
-        showToast({text: 'Keine Änderungen vorhanden.', variant: 'info'});
-        return;
-      }
       writeProjectConfigEntry(projectSettings.projectKey, entry);
-      if (entry.projectId) {
-        projectSettings.projectId = entry.projectId;
-      }
-      if (entry.portalBaseUrl) {
-        projectSettings.portalBaseUrl = entry.portalBaseUrl;
-      }
-      if (entry.portalProjectId2 !== undefined) {
-        projectSettings.projectId2 = entry.portalProjectId2;
-      }
+      if (entry.projectId) projectSettings.projectId = entry.projectId;
+      if (entry.portalBaseUrl) projectSettings.portalBaseUrl = entry.portalBaseUrl;
+      if (entry.portalProjectId2 !== undefined) projectSettings.projectId2 = entry.portalProjectId2;
       if (entry.useSecondPortalProjectId !== undefined) {
         projectSettings.useSecondPortalProjectId = entry.useSecondPortalProjectId;
       }
-      clearProgressCache();
-      clearProjectRequestBlock(projectSettings.projectKey);
-      showToast({text: 'Einstellungen gespeichert – Seite wird neu geladen.', variant: 'success'});
-      setTimeout(function () {
-        window.location.reload();
-      }, 100);
-    });
-    saveRow.appendChild(saveButton);
-    updateSaveButtonState();
-    (projectConfigDetails ? projectConfigDetails.body : dropdown).appendChild(saveRow);
+      if (entry.ticketActions !== undefined) projectSettings.ticketActions = entry.ticketActions;
+      [projectStatusElement, portalStatusElement, projectId2StatusElement].forEach(function (el) {
+        if (el) el.textContent = '';
+      });
+      [projectIdInputElement, portalUrlInputElement, projectId2InputElement].forEach(function (el) {
+        el.removeAttribute('aria-invalid');
+      });
+      changedFields.forEach(function (el) {
+        if (el) flashSaved(el);
+      });
+      // Portal-relevante Änderungen: Cache leeren und neu laden (ohne Seiten-Reload)
+      if (entry.projectId || entry.portalBaseUrl || entry.portalProjectId2 !== undefined ||
+        entry.useSecondPortalProjectId !== undefined) {
+        clearProgressCache();
+        clearProjectRequestBlock(projectSettings.projectKey);
+        softRefresh(projectSettings);
+      }
+    }
+
+    function scheduleAutosave() {
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(commitProjectConfig, 700);
+    }
+
     gearWrapper.appendChild(gearButton);
-    gearWrapper.appendChild(dropdown);
+    document.body.appendChild(dropdown);
     bar.appendChild(gearWrapper);
 
     let dropdownLocked = false;
@@ -5686,7 +5755,7 @@
     function updateDropdownVisibility() {
       const isOpen = dropdownLocked;
       dropdown.style.opacity = isOpen ? '1' : '0';
-      dropdown.style.transform = isOpen ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.97)';
+      dropdown.style.transform = isOpen ? 'translateX(0)' : 'translateX(32px)';
       dropdown.style.pointerEvents = isOpen ? 'auto' : 'none';
       dropdown.style.visibility = isOpen ? 'visible' : 'hidden';
       dropdown.style.transition = isOpen
@@ -5697,6 +5766,11 @@
 
     function setDropdownOpen(open, restoreFocus) {
       dropdownLocked = open;
+      if (open) {
+        // unter der GitLab-Top-Bar andocken
+        const topbar = document.querySelector('header.super-topbar, header[class*="topbar"], .top-bar-fixed');
+        dropdown.style.top = (topbar ? Math.round(topbar.getBoundingClientRect().bottom) + 1 : 49) + 'px';
+      }
       if (open && refreshAgeHighlightSection) refreshAgeHighlightSection();
       updateDropdownVisibility();
       if (open) {
@@ -5710,9 +5784,12 @@
     gearButton.addEventListener('click', function () {
       setDropdownOpen(!dropdownLocked, true);
     });
+    closeButton.addEventListener('click', function () {
+      setDropdownOpen(false, true);
+    });
 
     const onDocumentClick = function (event) {
-      if (!dropdownLocked || gearWrapper.contains(event.target)) {
+      if (!dropdownLocked || gearWrapper.contains(event.target) || dropdown.contains(event.target)) {
         return;
       }
       setDropdownOpen(false, false);
@@ -5728,6 +5805,7 @@
     bar.ambientCleanup = function () {
       document.removeEventListener('click', onDocumentClick);
       document.removeEventListener('keydown', onDocumentKeydown);
+      dropdown.remove();
     };
 
     updateReleaseNotificationUI(getCachedReleaseInfo());
@@ -5908,62 +5986,74 @@
   }
 
   const SETTINGS_SUBHEADING_STYLES = {
-    fontSize: '0.8rem',
-    letterSpacing: '0.05em',
-    textTransform: 'uppercase',
-    opacity: '0.75',
-    fontWeight: '600'
+    fontSize: '0.85rem',
+    fontWeight: '600',
+    opacity: '0.85'
   };
 
-  function createSettingsGroupHeader(title, subtitle) {
-    const header = document.createElement('div');
-    applyStyles(header, {
-      borderTop: '1px solid var(--gl-border-color-default, #2f374c)',
-      padding: '0.6rem 0 0.2rem 0',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '0.1rem'
-    });
-    const titleElem = document.createElement('div');
-    titleElem.textContent = title;
-    applyStyles(titleElem, {fontSize: '0.95rem', fontWeight: '700'});
-    const subtitleElem = document.createElement('div');
-    subtitleElem.textContent = subtitle;
-    applyStyles(subtitleElem, {fontSize: '0.75rem', opacity: '0.65'});
-    header.appendChild(titleElem);
-    header.appendChild(subtitleElem);
-    return header;
-  }
+  // Beschriftung über Formularfeldern
+  const FIELD_LABEL_STYLES = {fontSize: '0.85rem', fontWeight: '600'};
+  const FIELD_HINT_STYLES = {fontSize: '0.78rem', opacity: '0.65', lineHeight: '1.35'};
 
+  const CARD_STYLES = {
+    display: 'flex',
+    flexDirection: 'column',
+    border: '1px solid var(--gl-border-color-default, #4c4b51)',
+    borderRadius: '10px',
+    background: 'var(--gl-background-color-subtle, rgba(128, 128, 128, 0.07))'
+  };
+
+  // Aufklappbare Karte (Titel + Untertitel, Chevron rechts); Inhalt hängt direkt am <details>
   function createCollapsibleGroup(title, subtitle, open) {
     const details = document.createElement('details');
     details.open = Boolean(open);
+    details.className = 'ambient-card';
+    applyStyles(details, CARD_STYLES);
+    applyStyles(details, {overflow: 'hidden', paddingBottom: open ? '0.75rem' : '0'});
+    details.addEventListener('toggle', function () {
+      details.style.paddingBottom = details.open ? '0.75rem' : '0';
+    });
     const summary = document.createElement('summary');
-    applyStyles(summary, {cursor: 'pointer', listStyle: 'none'});
-    const header = createSettingsGroupHeader(title, subtitle);
-    const titleElem = header.firstChild;
-    function updateTitle() {
-      titleElem.textContent = (details.open ? '▾ ' : '▸ ') + title;
-    }
-    details.addEventListener('toggle', updateTitle);
-    updateTitle();
-    summary.appendChild(header);
+    summary.className = 'ambient-chevron-right';
+    applyStyles(summary, {display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '0.8rem 1rem'});
+    const text = document.createElement('div');
+    applyStyles(text, {display: 'flex', flexDirection: 'column', gap: '0.1rem'});
+    text.appendChild(createTextSpan(title, {fontSize: '1rem', fontWeight: '700'}));
+    text.appendChild(createTextSpan(subtitle, {fontSize: '0.8rem', opacity: '0.65'}));
+    summary.appendChild(text);
     details.appendChild(summary);
     return details;
   }
 
+  // Unterbereich innerhalb einer Karte: Trennlinie oben, Chevron links
   function createCollapsible(title, open) {
     const details = document.createElement('details');
     details.open = Boolean(open);
-    applyStyles(details, {padding: '0.4rem 0'});
+    applyStyles(details, {
+      margin: '0.5rem 1rem 0',
+      padding: '0.6rem 0 0',
+      borderTop: '1px solid var(--gl-border-color-default, #4c4b51)'
+    });
     const summary = document.createElement('summary');
+    summary.className = 'ambient-chevron-left';
     summary.textContent = title;
-    applyStyles(summary, Object.assign({cursor: 'pointer'}, SETTINGS_SUBHEADING_STYLES));
+    applyStyles(summary, Object.assign({cursor: 'pointer', padding: '0.2rem 0'}, SETTINGS_SUBHEADING_STYLES));
     const body = document.createElement('div');
-    applyStyles(body, {paddingTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.4rem'});
+    applyStyles(body, {paddingTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.6rem'});
     details.appendChild(summary);
     details.appendChild(body);
     return {element: details, body: body};
+  }
+
+  // Schalter in zwei Spalten, solange das Panel breit genug ist
+  function createSwitchGrid() {
+    const grid = document.createElement('div');
+    applyStyles(grid, {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+      gap: '0.1rem 0.75rem'
+    });
+    return grid;
   }
 
   function setSettingDisabled(elem, disabled) {
@@ -6173,13 +6263,21 @@
    * Experimente-Menü (Erweitert → Experimente)
    ******************************************************************/
 
+  // Eingabefelder: GitLabs Formularklassen liefern Rahmen/Hintergrund passend zum Theme
+  function flashSaved(el) {
+    el.style.transition = 'border-color 0.3s ease, box-shadow 0.3s ease';
+    el.style.borderColor = '#22c55e';
+    el.style.boxShadow = '0 0 0 2px rgba(34, 197, 94, 0.35)';
+    setTimeout(function () {
+      el.style.borderColor = '';
+      el.style.boxShadow = '';
+    }, 1200);
+  }
+
+  const FORM_INPUT_CLASSES = 'form-control gl-form-input';
   const EXPERIMENT_INPUT_STYLES = {
-    padding: '0.25rem 0.4rem',
-    borderRadius: '6px',
-    border: '1px solid var(--gl-border-color-strong, #374151)',
-    background: 'transparent',
-    color: 'inherit',
-    fontSize: '0.8rem',
+    padding: '0.4rem 0.6rem',
+    fontSize: '0.9rem',
     width: '100%',
     boxSizing: 'border-box'
   };
@@ -6187,9 +6285,10 @@
   function createExperimentSettingField(labelText, key, fallback, options) {
     const opts = options || {};
     const wrap = document.createElement('label');
-    applyStyles(wrap, {display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.75rem', paddingLeft: '1rem'});
-    wrap.appendChild(createTextSpan(labelText, {opacity: '0.75'}));
+    applyStyles(wrap, {display: 'flex', flexDirection: 'column', gap: '0.3rem', padding: '0 0.6rem'});
+    wrap.appendChild(createTextSpan(labelText, FIELD_LABEL_STYLES));
     const input = document.createElement(opts.multiline ? 'textarea' : 'input');
+    input.className = FORM_INPUT_CLASSES;
     if (opts.multiline) input.rows = 3;
     input.value = String(expSetting(key, fallback));
     input.placeholder = opts.placeholder || '';
@@ -6197,6 +6296,7 @@
     input.addEventListener('change', function () {
       saveExperiment(key, opts.number ? Number(input.value) || fallback : input.value.trim());
       applyExperimentChange();
+      flashSaved(input);
     });
     wrap.appendChild(input);
     return wrap;
@@ -6207,14 +6307,8 @@
     button.type = 'button';
     button.textContent = text;
     button.title = title;
-    button.className = 'ambient-btn';
-    applyStyles(button, mergeStyles(PORTAL_LINK_BUTTON_DEFAULT_STYLES, {
-      borderRadius: '6px',
-      padding: '0.3rem 0.6rem',
-      fontSize: '12px',
-      textAlign: 'left',
-      width: '100%'
-    }));
+    button.className = 'ambient-btn btn gl-button btn-default btn-sm';
+    applyStyles(button, {width: '100%', justifyContent: 'flex-start'});
     button.addEventListener('click', onClick);
     return button;
   }
@@ -6222,8 +6316,9 @@
   function createExperimentsSection(projectSettings) {
     const section = createCollapsible('Experimente (zum Testen)', false);
     const intro = document.createElement('div');
+    intro.style.padding = '0 0.6rem';
     intro.textContent = 'Noch nicht übernommene Ideen, standardmäßig aus. Änderungen wirken sofort auf dem Board.';
-    applyStyles(intro, {fontSize: '0.75rem', opacity: '0.7'});
+    applyStyles(intro, FIELD_HINT_STYLES);
     section.body.appendChild(intro);
 
     const switches = {};
@@ -6238,10 +6333,10 @@
 
     EXPERIMENT_MENU.forEach(function (group) {
       const groupElem = document.createElement('div');
-      applyStyles(groupElem, {display: 'flex', flexDirection: 'column', gap: '0.35rem', padding: '0.3rem 0'});
+      applyStyles(groupElem, {display: 'flex', flexDirection: 'column', gap: '0.25rem'});
       const heading = document.createElement('div');
       heading.textContent = group.title;
-      applyStyles(heading, SETTINGS_SUBHEADING_STYLES);
+      applyStyles(heading, Object.assign({padding: '0 0.6rem'}, SETTINGS_SUBHEADING_STYLES));
       groupElem.appendChild(heading);
       group.items.forEach(function (item) {
         const key = item[0];
@@ -6402,14 +6497,8 @@
       button.type = 'button';
       button.textContent = def[0];
       button.title = def[1];
-      button.className = 'ambient-btn';
-      applyStyles(button, mergeStyles(PORTAL_LINK_BUTTON_DEFAULT_STYLES, {
-        borderRadius: '6px',
-        padding: '0.3rem 0.6rem',
-        fontSize: '12px',
-        textAlign: 'left',
-        width: '100%'
-      }));
+      button.className = 'ambient-btn btn gl-button btn-default btn-sm';
+      applyStyles(button, {width: '100%', justifyContent: 'flex-start'});
       button.addEventListener('click', def[2]);
       return button;
     });
@@ -6428,11 +6517,13 @@
 
     FEATURE_MENU.forEach(function (group) {
       const groupElem = document.createElement('div');
-      applyStyles(groupElem, {display: 'flex', flexDirection: 'column', gap: '0.35rem', padding: '0.4rem 0'});
+      applyStyles(groupElem, {display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.5rem 1rem 0'});
       const heading = document.createElement('div');
       heading.textContent = t(group.title);
-      applyStyles(heading, SETTINGS_SUBHEADING_STYLES);
+      applyStyles(heading, Object.assign({padding: '0 0.6rem'}, SETTINGS_SUBHEADING_STYLES));
       groupElem.appendChild(heading);
+      const grid = createSwitchGrid();
+      groupElem.appendChild(grid);
       group.items.forEach(function (item) {
         const key = item[0];
         const row = key === 'mrLinks'
@@ -6442,32 +6533,33 @@
             updateSubRows();
             onFeatureChanged();
           });
-        applyStyles(row, {justifyContent: 'space-between'});
         if (FEATURE_PARENTS[key]) {
-          row.style.paddingLeft = '1rem';
+          row.style.paddingLeft = '1.8rem';
           subRows.push({key: key, elem: row});
         }
-        groupElem.appendChild(row);
+        grid.appendChild(row);
       });
       section.appendChild(groupElem);
     });
 
     const advanced = createCollapsible(t('Erweitert'), false);
-    applyStyles(debugToggle, {justifyContent: 'space-between'});
-    advanced.body.appendChild(debugToggle);
+    const advancedSwitches = createSwitchGrid();
+    advancedSwitches.appendChild(debugToggle);
     const languageToggle = makeSwitch('Englische Oberfläche (teilweise, Reload nötig)', experiments.english === true, function (val) {
       saveExperiment('english', val);
       showToast({text: val ? 'Language changes after reload.' : 'Sprache ändert sich nach dem Neuladen.', variant: 'info'});
     });
-    applyStyles(languageToggle, {justifyContent: 'space-between'});
-    advanced.body.appendChild(languageToggle);
+    advancedSwitches.appendChild(languageToggle);
+    advanced.body.appendChild(advancedSwitches);
     const extraIdsField = createExperimentSettingField('Weitere Portal-Projekt-IDs (Komma, max. 3) – zusätzliche Balken',
       'extraProjectIds', '', {placeholder: '1234, 5678'});
-    extraIdsField.style.paddingLeft = '0';
     advanced.body.appendChild(extraIdsField);
+    const toolGrid = document.createElement('div');
+    applyStyles(toolGrid, {display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.5rem', padding: '0 0.6rem'});
     createDataToolButtons(projectSettings).forEach(function (button) {
-      advanced.body.appendChild(button);
+      toolGrid.appendChild(button);
     });
+    advanced.body.appendChild(toolGrid);
     section.appendChild(advanced.element);
     section.appendChild(createExperimentsSection(projectSettings));
 
@@ -6481,26 +6573,20 @@
     const panelTextColor = getToolbarForegroundColor();
     const section = document.createElement('div');
     applyStyles(section, {
-      padding: '0.4rem 0',
+      padding: '0.25rem 1rem 0',
       width: '100%',
+      boxSizing: 'border-box',
       display: 'flex',
       flexDirection: 'column',
-      gap: '0.4rem',
+      gap: '0.45rem',
       color: panelTextColor
     });
     const heading = document.createElement('div');
     heading.textContent = 'Roter Rahmen bei Median-Überschreitung';
-    applyStyles(heading, {
-      fontSize: '0.8rem',
-      letterSpacing: '0.05em',
-      textTransform: 'uppercase',
-      opacity: '0.75',
-      fontWeight: '600',
-      color: panelTextColor
-    });
+    applyStyles(heading, FIELD_LABEL_STYLES);
     const hint = document.createElement('div');
     hint.textContent = 'Spalten, in denen Tickets über dem Spalten-Median rot umrandet werden.';
-    applyStyles(hint, {fontSize: '0.75rem', opacity: '0.7', lineHeight: '1.3'});
+    applyStyles(hint, FIELD_HINT_STYLES);
 
     // <details> als Combobox: Summary zeigt Auswahl, aufgeklappt Checkbox-Liste
     const combo = document.createElement('details');
@@ -6508,12 +6594,12 @@
     applyStyles(combo, {position: 'relative', width: '100%', contain: 'inline-size'});
     const summary = document.createElement('summary');
     applyStyles(summary, {
-      padding: '0.35rem 0.5rem',
+      padding: '0.4rem 0.6rem',
       borderRadius: '6px',
       border: '1px solid var(--gl-border-color-strong, #374151)',
       background: panelBackground,
       color: panelTextColor,
-      fontSize: '0.85rem',
+      fontSize: '0.9rem',
       cursor: 'pointer',
       overflow: 'hidden',
       textOverflow: 'ellipsis',
@@ -6603,47 +6689,17 @@
     const section = document.createElement('div');
     const panelBackground = getGitLabWindowBackgroundColor(true);
     const panelTextColor = getToolbarForegroundColor();
-    toolbarInitialProjectIdValue = String(projectSettings.projectId || '').trim();
-    toolbarInitialPortalUrlValue = String(projectSettings.portalBaseUrl || '').trim();
     applyStyles(section, {
-      padding: '0.5rem 0',
+      padding: '0.25rem 0 0.5rem',
       width: '100%',
-      borderTop: '1px solid var(--gl-border-color-default, #2f374c)',
       display: 'flex',
       flexDirection: 'column',
-      gap: '0.4rem',
+      gap: '0.45rem',
       color: panelTextColor
     });
     const heading = document.createElement('div');
-    heading.textContent = 'Projekt-Konfiguration';
-    applyStyles(heading, {
-      fontSize: '0.8rem',
-      letterSpacing: '0.05em',
-      textTransform: 'uppercase',
-      opacity: '0.75',
-      fontWeight: '600',
-      color: panelTextColor
-    });
-
-    const pathInfo = document.createElement('div');
-    pathInfo.textContent = 'Board: ' + (projectSettings.projectPath || 'unbekannt');
-    applyStyles(pathInfo, {
-      fontSize: '0.85rem',
-      opacity: '0.9',
-      color: panelTextColor
-    });
-
-    const currentId = document.createElement('div');
-    const updateCurrentLabel = function (value) {
-      const display = value ? value : 'nicht gesetzt';
-      currentId.textContent = 'Aktuell: ' + display;
-    };
-    updateCurrentLabel(projectSettings.projectId);
-
-    applyStyles(currentId, {
-      fontSize: '0.8rem',
-      color: panelTextColor
-    });
+    heading.textContent = 'Portal-Projekt-ID';
+    applyStyles(heading, FIELD_LABEL_STYLES);
 
     const formRow = document.createElement('div');
     applyStyles(formRow, {
@@ -6656,22 +6712,15 @@
     input.type = 'text';
     input.placeholder = 'Projekt ID eingeben';
     input.value = projectSettings.projectId || '';
-    applyStyles(input, {
-      flex: '1 1 auto',
-      padding: '0.35rem 0.5rem',
-      borderRadius: '6px',
-      border: '1px solid var(--gl-border-color-strong, #374151)',
-      background: panelBackground,
-      color: panelTextColor,
-      fontSize: '0.85rem'
-    });
+    input.className = FORM_INPUT_CLASSES;
+    applyStyles(input, {flex: '1 1 auto', padding: '0.4rem 0.6rem', fontSize: '0.9rem'});
     projectIdInputElement = input;
 
     const status = document.createElement('div');
     applyStyles(status, {
       fontSize: '0.75rem',
-      color: '#a5b4fc',
-      minHeight: '1em'
+      color: '#f87171',
+      minHeight: '0'
     });
 
     projectStatusElement = status;
@@ -6690,32 +6739,12 @@
 
     formRow.appendChild(input);
     section.appendChild(heading);
-    section.appendChild(pathInfo);
-    section.appendChild(currentId);
     section.appendChild(formRow);
     section.appendChild(status);
 
     const portalHeading = document.createElement('div');
     portalHeading.textContent = 'Portal-Base URL';
-    applyStyles(portalHeading, {
-      fontSize: '0.8rem',
-      letterSpacing: '0.05em',
-      textTransform: 'uppercase',
-      opacity: '0.75',
-      fontWeight: '600',
-      color: panelTextColor
-    });
-
-    const portalCurrent = document.createElement('div');
-    const updatePortalLabel = function (value) {
-      const display = value ? value : 'nicht gesetzt';
-      portalCurrent.textContent = 'Portal-Basis: ' + display;
-    };
-    updatePortalLabel(projectSettings.portalBaseUrl);
-    applyStyles(portalCurrent, {
-      fontSize: '0.8rem',
-      color: panelTextColor
-    });
+    applyStyles(portalHeading, FIELD_LABEL_STYLES);
 
     const portalRow = document.createElement('div');
     applyStyles(portalRow, {
@@ -6728,22 +6757,15 @@
     portalInput.type = 'text';
     portalInput.placeholder = 'https://user-portal.arbeitgeber.com';
     portalInput.value = projectSettings.portalBaseUrl || '';
-    applyStyles(portalInput, {
-      flex: '1 1 auto',
-      padding: '0.35rem 0.5rem',
-      borderRadius: '6px',
-      border: '1px solid var(--gl-border-color-strong, #374151)',
-      background: panelBackground,
-      color: panelTextColor,
-      fontSize: '0.85rem'
-    });
+    portalInput.className = FORM_INPUT_CLASSES;
+    applyStyles(portalInput, {flex: '1 1 auto', padding: '0.4rem 0.6rem', fontSize: '0.9rem'});
     portalUrlInputElement = portalInput;
 
     const portalStatus = document.createElement('div');
     applyStyles(portalStatus, {
       fontSize: '0.75rem',
-      color: '#a5b4fc',
-      minHeight: '1em'
+      color: '#f87171',
+      minHeight: '0'
     });
     portalStatusElement = portalStatus;
     portalStatus.id = 'ambient-portal-status';
@@ -6761,24 +6783,14 @@
 
     portalRow.appendChild(portalInput);
     section.appendChild(portalHeading);
-    section.appendChild(portalCurrent);
+    section.appendChild(createTextSpan('Nur https://, ohne Benutzername/Passwort. Wird nur lokal gespeichert.', FIELD_HINT_STYLES));
     section.appendChild(portalRow);
     section.appendChild(portalStatus);
 
-    toolbarInitialProjectId2Value = String(projectSettings.projectId2 || '').trim();
-    toolbarInitialUseSecondProjectIdValue = projectSettings.useSecondPortalProjectId || false;
 
     const secondIdHeading = document.createElement('div');
     secondIdHeading.textContent = 'Zweite Portal-Projekt-ID';
-    applyStyles(secondIdHeading, {
-      fontSize: '0.8rem',
-      letterSpacing: '0.05em',
-      textTransform: 'uppercase',
-      opacity: '0.75',
-      fontWeight: '600',
-      color: panelTextColor,
-      marginTop: '0.4rem'
-    });
+    applyStyles(secondIdHeading, Object.assign({marginTop: '0.9rem'}, FIELD_LABEL_STYLES));
 
     const toggleContainer = document.createElement('div');
     applyStyles(toggleContainer, {
@@ -6801,18 +6813,6 @@
 
     toggleContainer.appendChild(toggleSwitch);
 
-    const currentId2 = document.createElement('div');
-    const updateCurrentLabel2 = function (value) {
-      const display = value ? value : 'nicht gesetzt';
-      currentId2.textContent = 'Aktuell: ' + display;
-    };
-    updateCurrentLabel2(projectSettings.projectId2);
-
-    applyStyles(currentId2, {
-      fontSize: '0.8rem',
-      color: panelTextColor
-    });
-
     const formRow2 = document.createElement('div');
     applyStyles(formRow2, {
       display: 'flex',
@@ -6825,17 +6825,10 @@
     input2.placeholder = 'Zweite Projekt ID eingeben';
     input2.value = projectSettings.projectId2 || '';
     input2.disabled = !projectSettings.useSecondPortalProjectId;
-    applyStyles(input2, {
-      flex: '1 1 auto',
-      padding: '0.35rem 0.5rem',
-      borderRadius: '6px',
-      border: '1px solid var(--gl-border-color-strong, #374151)',
-      background: panelBackground,
-      color: panelTextColor,
-      fontSize: '0.85rem',
+    input2.className = FORM_INPUT_CLASSES;
+    applyStyles(input2, {flex: '1 1 auto', padding: '0.4rem 0.6rem', fontSize: '0.9rem',
       opacity: input2.disabled ? '0.4' : '1',
-      cursor: input2.disabled ? 'not-allowed' : 'text'
-    });
+      cursor: input2.disabled ? 'not-allowed' : 'text'});
     projectId2InputElement = input2;
 
     useSecondProjectIdToggleCheckbox.addEventListener('change', function () {
@@ -6853,8 +6846,8 @@
     const status2 = document.createElement('div');
     applyStyles(status2, {
       fontSize: '0.75rem',
-      color: '#a5b4fc',
-      minHeight: '1em'
+      color: '#f87171',
+      minHeight: '0'
     });
 
     projectId2StatusElement = status2;
@@ -6874,39 +6867,21 @@
     formRow2.appendChild(input2);
     section.appendChild(secondIdHeading);
     section.appendChild(toggleContainer);
-    section.appendChild(currentId2);
     section.appendChild(formRow2);
     section.appendChild(status2);
 
-    toolbarInitialTicketActionsValue = String(projectSettings.ticketActions || '').trim();
 
     const actionsHeading = document.createElement('div');
     actionsHeading.textContent = 'Ticket-Aktionen im MR';
-    applyStyles(actionsHeading, {
-      fontSize: '0.8rem',
-      letterSpacing: '0.05em',
-      textTransform: 'uppercase',
-      opacity: '0.75',
-      fontWeight: '600',
-      color: panelTextColor,
-      marginTop: '0.4rem'
-    });
+    applyStyles(actionsHeading, Object.assign({marginTop: '0.9rem'}, FIELD_LABEL_STYLES));
 
     const actionsInput = document.createElement('textarea');
     actionsInput.rows = 5;
     actionsInput.setAttribute('aria-label', 'Ticket-Aktionen im MR');
     actionsInput.placeholder = '[Ticket abschließen]\n/unassign me\n/label ~"workflow::Done"\n/unlabel ~"workflow::Review"';
     actionsInput.value = projectSettings.ticketActions || '';
-    applyStyles(actionsInput, {
-      padding: '0.35rem 0.5rem',
-      borderRadius: '6px',
-      border: '1px solid var(--gl-border-color-strong, #374151)',
-      background: panelBackground,
-      color: panelTextColor,
-      fontSize: '0.8rem',
-      fontFamily: 'monospace',
-      resize: 'vertical'
-    });
+    actionsInput.className = FORM_INPUT_CLASSES;
+    applyStyles(actionsInput, {padding: '0.5rem 0.6rem', fontSize: '0.85rem', fontFamily: 'monospace', resize: 'vertical'});
     ticketActionsInputElement = actionsInput;
     actionsInput.addEventListener('input', function () {
       if (typeof onValuesChanged === 'function') {
@@ -6915,6 +6890,7 @@
     });
 
     section.appendChild(actionsHeading);
+    section.appendChild(createTextSpan('Eine Zeile [Name] startet einen Button, die Zeilen darunter sind seine Quick Actions.', FIELD_HINT_STYLES));
     section.appendChild(actionsInput);
     return section;
   }
