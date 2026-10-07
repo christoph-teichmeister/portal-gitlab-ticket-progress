@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      5.7.1
+// @version      2026.10.1
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @include      https://gitlab*/*/-/*
@@ -20,7 +20,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '5.7.1';
+  const SCRIPT_VERSION = '2026.10.1';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   const MERGE_REQUEST_ICON_SVG = '<svg data-testid="merge-request-icon" role="img" aria-hidden="true" class="gl-button-icon gl-icon s16 gl-fill-current"><use href="/assets/icons-5a3f88503a318f1eaf3b49d9d82c93cdde31fd5224ab8aeeb08534974b21f10c.svg#merge-request"></use></svg>';
@@ -635,9 +635,13 @@
     fetchLatestReleaseInfo();
   }
 
+  function getLastRefreshStorageKey() {
+    return LS_KEY_LAST_REFRESH + ':' + getCurrentBoardIdentifier();
+  }
+
   function readLastRefreshTimestamp() {
     try {
-      const val = window.localStorage.getItem(LS_KEY_LAST_REFRESH);
+      const val = window.localStorage.getItem(getLastRefreshStorageKey());
       if (!val) {
         return null;
       }
@@ -654,9 +658,9 @@
   function writeLastRefreshTimestamp(value) {
     try {
       if (value === null || value === undefined) {
-        window.localStorage.removeItem(LS_KEY_LAST_REFRESH);
+        window.localStorage.removeItem(getLastRefreshStorageKey());
       } else {
-        window.localStorage.setItem(LS_KEY_LAST_REFRESH, String(value));
+        window.localStorage.setItem(getLastRefreshStorageKey(), String(value));
       }
     } catch (e) {
       // ignore
@@ -705,39 +709,6 @@
     }
     return Date.now() - last >= REFRESH_INTERVAL_MS;
 
-  }
-
-  function getProgressCacheAgeMs() {
-    const lastRefresh = readLastRefreshTimestamp();
-    if (lastRefresh) {
-      return Date.now() - lastRefresh;
-    }
-    let latestTimestamp = 0;
-    for (const key in progressCache) {
-      if (!Object.prototype.hasOwnProperty.call(progressCache, key)) {
-        continue;
-      }
-      const entry = progressCache[key];
-      if (!entry) {
-        continue;
-      }
-      const entryTimestamp = Number(entry.timestamp);
-      if (!entryTimestamp) {
-        continue;
-      }
-      if (entryTimestamp > latestTimestamp) {
-        latestTimestamp = entryTimestamp;
-      }
-    }
-    if (latestTimestamp) {
-      return Date.now() - latestTimestamp;
-    }
-    return null;
-  }
-
-  function isProgressCacheStale() {
-    const age = getProgressCacheAgeMs();
-    return age !== null && age > PROGRESS_CACHE_TTL_MS;
   }
 
   function readProjectConfigsState() {
@@ -1254,15 +1225,15 @@
     writeProgressCacheState(progressCache);
   }
 
+  // Leert nur die Einträge des aktuellen Boards – andere Boards behalten ihren Cache
   function clearProgressCache() {
+    const boardPrefix = 'board:' + getCurrentBoardIdentifier() + '|';
     Object.keys(progressCache).forEach(function (key) {
-      delete progressCache[key];
+      if (key.startsWith(boardPrefix)) {
+        delete progressCache[key];
+      }
     });
-    try {
-      window.localStorage.removeItem(LS_KEY_PROGRESS_CACHE);
-    } catch (e) {
-      // ignore
-    }
+    writeProgressCacheState(progressCache);
     writeLastRefreshTimestamp(null);
   }
 
@@ -3748,7 +3719,6 @@
         projectSettings.allowedListLookup = updatedLookup;
         projectSettings.listFilterMode = 'explicit';
         writeListSelectionEntry(projectSettings.projectKey, updatedLookup, true);
-        clearProgressCache();
         scanBoard(hostConfig, projectSettings);
       });
     }
@@ -3920,7 +3890,6 @@
       saveFeature('show', showEnabled);
       log('Anzeigen geändert auf:', showEnabled);
       if (showEnabled) {
-        clearProgressCache();
         createMrLinksBar();
       } else {
         const existingMrLinks = document.getElementById('js-my-mr-links');
@@ -5221,11 +5190,6 @@
 
     log('hostConfig:', hostConfig);
     log('projectSettings:', projectSettings);
-
-    if (isProgressCacheStale()) {
-      log('Progress-Cache ist älter als ' + PROGRESS_CACHE_TTL_MS + 'ms – Cache wird geleert und Daten werden neu geladen.');
-      clearProgressCache();
-    }
 
     createToolbar(hostConfig, projectSettings);
     createMrLinksBar();

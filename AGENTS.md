@@ -27,6 +27,9 @@
 - Always bump the `@version` in the metadata header for every non-trivial change so Tampermonkey users receive updates.
 - Ensure the `SCRIPT_VERSION` constant mirrors the `@version` tag and is incremented together so dropdown labels and
   update checks remain aligned.
+- Versions use CalVer `YYYY.MM.V`: release year, month, and a counter starting at 1 that increments per release in
+  that month and resets each new month (e.g. `2026.10.1`, `2026.10.2`, `2026.11.1`). Use dots only, never `-`: the
+  update check splits on `.` and compares segments numerically, so anything after a hyphen would be ignored.
 
 ## Testing Guidelines
 
