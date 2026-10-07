@@ -25,6 +25,9 @@
   über `fetch` mit der bestehenden Browser-Session an (kein `GM_xmlhttpRequest`, kein Personal Access Token nötig).
   Das CSRF-Token für schreibende Requests (Reviewer zuweisen, Issue-Assignee ändern) wird automatisch aus dem
   `<meta name="csrf-token">`-Tag der GitLab-Seite gelesen.
+- Die **Ticket-Aktionen im MR** werden als Rohtext unter `ticketActions` im Projekt-Eintrag von
+  `ambientProgressProjectConfigs` gespeichert. Sie nutzen denselben `fetch`-Weg (Session + CSRF) und posten per
+  `POST /api/v4/projects/:id/issues/:iid/notes`. Details: [Wesentliche Features](FEATURES.md#ticket-aktionen-im-mr).
 - Voraussetzung: dein GitLab-Account braucht die üblichen Berechtigungen, um MRs als Reviewer zu bearbeiten bzw.
   Issues umzuzuweisen (mind. Developer-Rolle im Projekt) – sonst antwortet die API mit 403 und das Script loggt
   einen Fehler in die Konsole, statt die Aktion stillschweigend zu wiederholen.

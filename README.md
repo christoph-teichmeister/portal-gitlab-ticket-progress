@@ -65,6 +65,8 @@ Quick Actions:
 - `/unassign` ohne Argument entfernt **alle** Assignees, `/unassign me` nur dich selbst.
 - Der Request läuft über deine bestehende GitLab-Session. Es wird kein Token und kein Passwort gespeichert. Lokal
   im Browser liegt nur der Aktionstext.
+- Weitere Beispiele (Ticket schließen, zurück an den Entwickler, …) und eine Übersicht nützlicher Quick Actions:
+  [Wesentliche Features](docs/FEATURES.md#ticket-aktionen-im-mr).
 
 ## Dokumentation
 

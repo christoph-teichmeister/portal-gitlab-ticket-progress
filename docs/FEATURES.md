@@ -111,3 +111,93 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
   Ticket-Assignee, wird der jeweilige Button ausgeblendet.
 - Das Umzuweisen erfolgt per `PUT /api/v4/projects/:id/issues/:issue_iid` (Session-Auth + CSRF-Token aus der
   Seite), keine zusätzliche Anmeldung nötig.
+
+## Ticket-Aktionen im MR
+
+Eigene Buttons in der Progress-Box auf der MR-Detailseite. Sie führen per Klick beliebige
+[GitLab Quick Actions](https://docs.gitlab.com/user/project/quick_actions/) auf dem verknüpften Ticket aus. Das ist
+z. B. nützlich, um ein Ticket nach dem Merge in die nächste Board-Spalte zu schieben, ohne das Ticket zu öffnen.
+
+### Einrichtung
+
+1. Zahnrad → Board-Einstellungen → Projekt-Konfiguration aufklappen.
+2. Im Feld **„Ticket-Aktionen im MR“** die Aktionen eintragen (Format siehe unten).
+3. „Einstellungen speichern“. Die Seite lädt neu, die Buttons erscheinen unter der Progressbar im MR.
+
+Die Konfiguration gilt pro Projekt und wird nur lokal im Browser gespeichert. Jedes Team kann so seinen eigenen
+Workflow und seine eigenen Labels hinterlegen.
+
+### Format
+
+- Eine Zeile `[Button-Text]` beginnt einen neuen Button.
+- Alle folgenden Zeilen bis zum nächsten `[...]` sind die Quick Actions dieses Buttons, eine pro Zeile.
+- Text vor dem ersten `[...]` und Buttons ohne Quick Actions werden ignoriert.
+- Beim Hovern über einen Button siehst du die hinterlegten Quick Actions.
+
+### Beispiele
+
+**Scoped-Labels-Workflow (Board-Spalten = `workflow::*`-Labels):**
+
+```
+[Ticket abschließen]
+/unassign me
+/label ~"workflow::Closed this iteration"
+/unlabel ~"workflow::PO-Review"
+
+[Zurück in WIP]
+/label ~"workflow::WIP"
+/unlabel ~"workflow::PO-Review"
+```
+
+Bei Scoped Labels (`scope::wert`) ersetzt `/label` automatisch das bisherige Label desselben Scopes. Das `/unlabel`
+schadet aber nicht und macht die Absicht klar.
+
+**Ticket schließen statt Spalte wechseln:**
+
+```
+[Erledigt]
+/unassign me
+/close
+```
+
+**Zurück an den Entwickler mit Kommentar:**
+
+```
+[Änderungen nötig]
+/assign @max.mustermann
+/label ~"workflow::In Progress"
+Bitte die Review-Kommentare im MR anschauen.
+```
+
+Normaler Text neben den Quick Actions wird als sichtbarer Kommentar auf dem Ticket gepostet.
+
+**Weitere nützliche Quick Actions:**
+
+| Quick Action                          | Wirkung                                      |
+|---------------------------------------|----------------------------------------------|
+| `/assign me` / `/assign @user`        | Ticket zuweisen                              |
+| `/unassign me` / `/unassign @user`    | Bestimmte Person entfernen                   |
+| `/unassign`                           | **Alle** Assignees entfernen                 |
+| `/label ~"a" ~"b"`                    | Labels hinzufügen                            |
+| `/unlabel ~"a"`                       | Label entfernen                              |
+| `/relabel ~"a"`                       | Alle Labels durch die angegebenen ersetzen   |
+| `/close` / `/reopen`                  | Ticket schließen / wieder öffnen             |
+| `/milestone %"Sprint 42"`             | Milestone setzen                             |
+| `/iteration *iteration:"Sprint 42"`   | Iteration setzen (Premium)                   |
+| `/weight 3`                           | Gewicht setzen (Premium)                     |
+| `/spend 30m`                          | Zeit buchen (GitLab-Zeiterfassung)           |
+| `/todo`                               | To-do für dich anlegen                       |
+
+### Technik & Voraussetzungen
+
+- Das Ticket ist die `#<IID>` aus dem MR-Titel (dieselbe, die auch für die Progressbar genutzt wird).
+- Ein Klick sendet `POST /api/v4/projects/:id/issues/:iid/notes` mit den Quick Actions als Kommentar-Text. GitLab
+  führt die Aktionen aus. Ein Kommentar, der nur aus Quick Actions besteht, erscheint auf dem Ticket nur als
+  System-Notiz (z. B. „changed labels“).
+- Auth läuft über die bestehende GitLab-Session plus CSRF-Token aus der Seite. Es wird kein Token und kein Passwort
+  gespeichert.
+- Erfolg oder Fehler (inkl. HTTP-Status) erscheinen als Toast. Es gibt keine Rückfrage vor dem Ausführen.
+- Die Buttons erscheinen nur, wenn auch die Progress-Box im MR angezeigt wird (Portal konfiguriert, „Progress im
+  MR“ aktiv, Ticket-Nummer im MR-Titel).
+- Du brauchst im Projekt die Rechte, die jeweiligen Quick Actions auszuführen (für Labels/Assignees mind.
+  Reporter/Developer). Unbekannte Labels werden von GitLab stillschweigend ignoriert, prüfe deshalb die Schreibweise.

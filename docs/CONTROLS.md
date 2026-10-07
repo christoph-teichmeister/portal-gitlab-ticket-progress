@@ -24,8 +24,9 @@ Das Einstellungs-Menü (Zahnrad) ist in **Globale Einstellungen** (gelten für a
 - **Board-Einstellungen → Roter Rahmen bei Ø-Überschreitung** (`ambientProgressAgeHighlightLists`): Auswahlliste mit allen Label-Spalten des
   aktuellen Boards. Nur in ausgewählten Spalten bekommen Tickets, die länger als der Spalten-Ø dort liegen, einen
   roten Rahmen. Wird sofort pro Projektschlüssel gespeichert. Benötigt die globale Einstellung „Verweildauer".
-- **Board-Einstellungen → Projekt-Konfiguration**: Projekt-ID, Portal-Base-URL und zweite Projekt-ID samt
-  „Einstellungen speichern". Zugeklappt, sobald Projekt-ID und Portal-Base-URL gesetzt sind.
+- **Board-Einstellungen → Projekt-Konfiguration**: Projekt-ID, Portal-Base-URL, zweite Projekt-ID und
+  „Ticket-Aktionen im MR“ samt „Einstellungen speichern". Zugeklappt, sobald Projekt-ID und Portal-Base-URL gesetzt
+  sind. Format und Beispiele für die Ticket-Aktionen: [Wesentliche Features](FEATURES.md#ticket-aktionen-im-mr).
 - **Cache leeren**: Entfernt alle gespeicherten Progress-Daten, hebt eventuell gesetzte Request-Blocks und triggert
   neue Scans sowie einen grünen Toast („Cache geleert").
 - **Fehlerzustände & Portal-Hinweise**: Hilfreiche Toasts warnen bei fehlender Portal-Base, 403/404-Block(-Wiederholung) oder
