@@ -9,7 +9,7 @@ Das Einstellungs-Menü (Zahnrad) ist in **Globale Einstellungen** (gelten für a
   Sichtbar bleibt nur das Zahnrad, um es wieder einzuschalten. Beim Aktivieren wird das Board erneut gescannt.
 - **Globale Einstellungen** (`ambientProgressFeatures`): ein Schalter pro Feature, gruppiert nach Ort:
   - *Karten*: Progress-Bar (Portal) mit Unterpunkt Portal- & Timesheet-Buttons, MR-Badge mit Unterpunkt
-    Assignee-/Reviewer-Avatare, Verweildauer (Uhr im Footer).
+    Assignee-/Reviewer-Avatare, Verweildauer (Uhr im Footer), `workflow::`-Labels als Split-Label.
   - *Spalten*: Ø Verweildauer im Header (benötigt Verweildauer).
   - *Andere Ansichten*: MR-Buttons in der Topbar, Progress im Issue-Detail, Progress im MR,
     Ticket-Assignee-Buttons im MR.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.3
+// @version      2026.10.4
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.3';
+  const SCRIPT_VERSION = '2026.10.4';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -82,6 +82,7 @@
     cardNumberText: '.board-card-number span, .board-card-number',
     cardFooter: '.board-card-footer',
     cardBody: '.gl-p-4',
+    cardLabel: '.gl-label',
     detailWrapper: '.work-item-attributes-wrapper',
     detailAssignees: '[data-testid="work-item-assignees"]',
     mrTitle: 'h1[data-testid="title-content"]',
@@ -117,6 +118,7 @@
       '.ambient-btn:focus-visible,.ambient-mr-badge:focus-visible,.ambient-progress-bar:focus-visible,' +
       '.ambient-progress-list-toggle:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}' +
       '.ambient-switch-input:focus-visible+.ambient-switch-slider{outline:2px solid #60a5fa;outline-offset:2px}' +
+      '.gl-label[data-ambient-split="1"]{display:none !important}' +
       '.ambient-sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}' +
       '.ambient-skeleton{border-radius:999px;animation:ambient-pulse 1.2s ease-in-out infinite}' +
       '@keyframes ambient-pulse{50%{opacity:.35}}' +
@@ -3209,6 +3211,94 @@
    * Board-Scan
    ******************************************************************/
 
+  /******************************************************************
+   * Split-Labels: "workflow::Design" als [Workflow | Design] in Label-Farbe
+   ******************************************************************/
+
+  const SPLIT_LABEL_PATTERN = /^(workflow)::(.+)$/i;
+
+  function getLabelColor(labelElem) {
+    const textElem = labelElem.querySelector('.gl-label-text') || labelElem;
+    const candidates = [textElem, labelElem];
+    for (let i = 0; i < candidates.length; i++) {
+      const bg = getComputedStyle(candidates[i]).backgroundColor;
+      if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') return bg;
+    }
+    const cssVar = getComputedStyle(labelElem).getPropertyValue('--label-background-color').trim();
+    return cssVar || '#6b7280';
+  }
+
+  function createSplitLabel(labelElem, scope, name) {
+    const color = getLabelColor(labelElem);
+    const textElem = labelElem.querySelector('.gl-label-text') || labelElem;
+    const font = getComputedStyle(textElem);
+    const el = document.createElement('span');
+    el.className = 'ambient-split-label';
+    el.setAttribute('role', 'link');
+    el.setAttribute('aria-label', scope + '::' + name);
+    el.tabIndex = 0;
+    applyStyles(el, {
+      display: 'inline-flex',
+      alignItems: 'stretch',
+      border: '1px solid ' + color,
+      borderRadius: '999px',
+      overflow: 'hidden',
+      cursor: 'pointer',
+      margin: getComputedStyle(labelElem).margin,
+      fontFamily: font.fontFamily,
+      fontSize: font.fontSize,
+      fontWeight: font.fontWeight,
+      lineHeight: font.lineHeight,
+      whiteSpace: 'nowrap'
+    });
+    const left = createTextSpan(scope.charAt(0).toUpperCase() + scope.slice(1), {
+      background: color,
+      color: getContrastTextColor(color, '#1f2937', '#ffffff'),
+      padding: '0 8px'
+    });
+    const right = createTextSpan(name, {
+      background: 'var(--gl-background-color-default, #ffffff)',
+      color: 'var(--gl-text-color-default, #1f2937)',
+      padding: '0 8px'
+    });
+    el.appendChild(left);
+    el.appendChild(right);
+    // Klick/Enter an das ausgeblendete Original weiterreichen: behält GitLabs Verhalten (z. B. Board filtern)
+    const forward = function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const link = labelElem.querySelector('a');
+      if (link) link.click();
+    };
+    el.addEventListener('click', forward);
+    el.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') forward(ev);
+    });
+    return el;
+  }
+
+  function applySplitLabels(cardElem) {
+    // verwaiste Split-Labels (Original wurde von GitLab neu gerendert) entfernen
+    cardElem.querySelectorAll('.ambient-split-label').forEach(function (el) {
+      const prev = el.previousElementSibling;
+      if (!prev || prev.getAttribute('data-ambient-split') !== '1' || !prev.isConnected) el.remove();
+    });
+    cardElem.querySelectorAll(SEL.cardLabel + ':not([data-ambient-split])').forEach(function (labelElem) {
+      const match = normalizeWhitespace(labelElem.textContent).match(SPLIT_LABEL_PATTERN);
+      if (!match) {
+        labelElem.setAttribute('data-ambient-split', '0'); // kein Workflow-Label → nicht erneut prüfen
+        return;
+      }
+      labelElem.after(createSplitLabel(labelElem, match[1], match[2].trim()));
+      labelElem.setAttribute('data-ambient-split', '1');
+    });
+  }
+
+  function removeSplitLabels() {
+    document.querySelectorAll('.ambient-split-label').forEach(function (el) { el.remove(); });
+    document.querySelectorAll('[data-ambient-split]').forEach(function (el) { el.removeAttribute('data-ambient-split'); });
+  }
+
   let scanRunCounter = 0;
   let totalFetchesSincePageLoad = 0;
 
@@ -3255,6 +3345,9 @@
       const displayListName = listName || '<unbekannt>';
       const listNameLower = listName ? normalizeListNameForMatching(listName) : '';
       const columnLabelText = getColumnLabelText(boardListElem, header);
+      if (header && isFeatureOn('splitLabels')) {
+        applySplitLabels(header); // das Original bleibt im DOM, Listen-/Label-Namen werden weiter daraus gelesen
+      }
 
       if (listName && header) {
         ensureListSelectionCheckbox(
@@ -3282,6 +3375,9 @@
 
       for (let k = 0; k < cards.length; k++) {
         const cardElem = cards[k];
+        if (isFeatureOn('splitLabels')) {
+          applySplitLabels(cardElem);
+        }
         if (!isAllowed) {
           markCardSkipped(cardElem);
           continue;
@@ -4324,6 +4420,7 @@
         '.ambient-progress-badge, .ambient-mr-badge, .ambient-column-age, .ambient-column-avg,' +
         ' .ambient-progress-detail-badge, .ambient-progress-mr-badge, .ambient-ticket-assignee-badge'
       ).forEach(function (el) { el.remove(); });
+      removeSplitLabels();
       document.querySelectorAll('[data-ambient-progress-processed]').forEach(clearCardInjections);
       document.querySelectorAll(
         '[data-ambient-progress-issue-iid], [data-ambient-progress-mr-issue-iid], [data-ambient-ticket-assignee-iid]'
@@ -5108,7 +5205,8 @@
       ['portalButtons', 'Portal- & Timesheet-Buttons'],
       ['mrBadge', 'MR-Badge'],
       ['mrAvatars', 'Assignee-/Reviewer-Avatare'],
-      ['columnAge', 'Verweildauer (Uhr im Footer)']
+      ['columnAge', 'Verweildauer (Uhr im Footer)'],
+      ['splitLabels', 'workflow::-Labels als Split-Label']
     ]},
     {title: 'Spalten', items: [
       ['columnAvg', 'Ø Verweildauer im Header']
