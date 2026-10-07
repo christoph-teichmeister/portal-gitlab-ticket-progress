@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.2
+// @version      2026.10.3
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.2';
+  const SCRIPT_VERSION = '2026.10.3';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 256 256"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -118,7 +118,9 @@
       '.ambient-progress-list-toggle:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}' +
       '.ambient-switch-input:focus-visible+.ambient-switch-slider{outline:2px solid #60a5fa;outline-offset:2px}' +
       '.ambient-sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}' +
-      '@media (prefers-reduced-motion: reduce){#ambient-progress-toolbar *,#ambient-progress-toast{transition:none !important}}';
+      '.ambient-skeleton{border-radius:999px;animation:ambient-pulse 1.2s ease-in-out infinite}' +
+      '@keyframes ambient-pulse{50%{opacity:.35}}' +
+      '@media (prefers-reduced-motion: reduce){#ambient-progress-toolbar *,#ambient-progress-toast{transition:none !important}.ambient-skeleton{animation:none}}';
     (document.head || document.documentElement).appendChild(style);
   }
 
@@ -1148,6 +1150,19 @@
     applyStyles(textLayer, mergeStyles(PROGRESS_BAR_DEFAULTS.textLayer, styles.textLayer));
 
     let ariaLabel = '';
+    const animate = Boolean(styles.animate);
+
+    // „Füllt sich auf": Breite von from → to; zwei Frames Verzögerung, damit der Startwert gerendert ist
+    const animateWidth = function (el, from, to) {
+      if (!animate) return;
+      el.style.width = from;
+      el.style.transition = 'width 0.7s cubic-bezier(0.22, 1, 0.36, 1)';
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          el.style.width = to;
+        });
+      });
+    };
     const spentLabelStyle = mergeStyles(PROGRESS_BAR_DEFAULTS.label, styles.spentLabel);
     const remainingLabelStyle = mergeStyles(PROGRESS_BAR_DEFAULTS.label, styles.remainingLabel);
     const centerLabelStyle = mergeStyles(PROGRESS_BAR_DEFAULTS.centerLabel, styles.centerLabel);
@@ -1164,6 +1179,7 @@
         width: '100%',
         background: colors.neutral
       });
+      animateWidth(neutralBar, '0%', '100%');
       barOuter.appendChild(neutralBar);
       appendCenterText('Nicht gefunden');
       barOuter.appendChild(textLayer);
@@ -1179,6 +1195,7 @@
         width: '100%',
         background: colors.bookedFallback || colors.neutral
       });
+      animateWidth(bookedBar, '0%', '100%');
       barOuter.appendChild(bookedBar);
       appendCenterText(bookedText);
       ariaLabel = bookedText;
@@ -1189,8 +1206,9 @@
         width: '100%',
         background: colors.over
       });
+      animateWidth(overBar, '0%', '100%');
       barOuter.appendChild(overBar);
-      let centerText = '⚠ Over: ' + progressData.over; // Symbol, damit „über Budget" nicht nur über die Farbe erkennbar ist
+      let centerText = '\u26A0\uFE0F Over: ' + progressData.over; // Symbol, damit „über Budget" nicht nur über die Farbe erkennbar ist
       if (progressData.booked) {
         const bookedHours = extractHourNumber(progressData.booked);
         const overHours = extractHourNumber(progressData.over);
@@ -1231,6 +1249,7 @@
           background: colors.spent,
           float: 'left'
         });
+        animateWidth(spentBar, '0%', spentWidth + '%');
         spentBar.addEventListener('mouseenter', function () {
           spentBar.style.background = colors.spentHover;
         });
@@ -1247,6 +1266,9 @@
         float: 'left'
       });
 
+      if (spentBar) {
+        animateWidth(remainingBar, '100%', remainingWidth + '%'); // schrumpft, während die Bar sich füllt
+      }
       barOuter.appendChild(remainingBar);
       if (spentBar) {
         barOuter.insertBefore(spentBar, remainingBar);
@@ -1262,6 +1284,15 @@
     }
 
     barOuter.appendChild(textLayer);
+    if (animate) {
+      textLayer.style.opacity = '0';
+      textLayer.style.transition = 'opacity 0.4s ease 0.3s';
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          textLayer.style.opacity = '1';
+        });
+      });
+    }
     describeBar(barOuter, ariaLabel);
     return barOuter;
   }
@@ -2311,11 +2342,56 @@
     return container;
   }
 
+  // Platzhalter, solange das Portal antwortet – verhindert die leere Lücke und das Springen beim Einfügen der Bar
+  function showProgressLoading(cardElem) {
+    if (!isFeatureOn('progress') || !isCardInActiveColumn(cardElem)) return;
+    const container = getOrCreateBadgeContainer(cardElem);
+    if (container.firstChild && !container.hasAttribute('data-ambient-loading')) return; // echte Daten nicht überschreiben
+    container.setAttribute('data-ambient-loading', '1');
+    container.setAttribute('aria-busy', 'true');
+    container.style.display = showEnabled ? '' : 'none';
+    container.innerHTML = '';
+    // Gleiche Zeilenstruktur wie die echte Bar (Buttons links/rechts, min. 24px hoch), damit nichts springt
+    const row = document.createElement('div');
+    row.className = 'ambient-skeleton-row';
+    row.setAttribute('role', 'img');
+    row.setAttribute('aria-label', 'Portal-Stunden werden geladen');
+    applyStyles(row, {display: 'flex', alignItems: 'center', gap: '6px', minHeight: '24px'});
+    const placeholderStyle = {
+      background: getThemeAwareBarStyles().barBackground,
+      border: '1px solid var(--gl-border-color-strong, rgba(128, 128, 128, 0.55))',
+      boxSizing: 'border-box'
+    };
+    function makePlaceholder(styles) {
+      const el = document.createElement('div');
+      el.className = 'ambient-skeleton';
+      applyStyles(el, mergeStyles(placeholderStyle, styles));
+      return el;
+    }
+    const withButtons = isFeatureOn('portalButtons');
+    // Gleiche Höhe wie die echte Bar (18px, siehe injectProgressIntoCard)
+    if (withButtons) row.appendChild(makePlaceholder({width: '28px', height: '24px', flex: '0 0 auto'}));
+    row.appendChild(makePlaceholder({height: '18px', flex: '1 1 auto'}));
+    if (withButtons) row.appendChild(makePlaceholder({width: '28px', height: '24px', flex: '0 0 auto'}));
+    container.appendChild(row);
+  }
+
+  // Platzhalter entfernen, wenn keine Daten kommen (Fehler, keine Buchungen)
+  function clearProgressLoading(cardElem) {
+    const container = cardElem.querySelector('.ambient-progress-badge[data-ambient-loading]');
+    if (container) container.remove();
+  }
+
   function injectProgressIntoCard(cardElem, progressData, progressData2) {
     if (!cardElem || (!progressData && !progressData2)) return;
     if (!isCardInActiveColumn(cardElem)) return;
 
     const container = getOrCreateBadgeContainer(cardElem);
+    // Nur animieren, wenn gerade der Platzhalter ersetzt wird (nicht bei Cache-Treffern/Re-Renders)
+    const animateFill = container.hasAttribute('data-ambient-loading') &&
+      !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    container.removeAttribute('data-ambient-loading');
+    container.removeAttribute('aria-busy');
     container.style.display = showEnabled ? '' : 'none';
     container.innerHTML = '';
 
@@ -2329,6 +2405,7 @@
       }
     });
     container.style.color = theme.textColor;
+    theme.styles.animate = animateFill;
 
     if (progressData && progressData2) {
       const warningBanner = document.createElement('div');
@@ -3058,6 +3135,7 @@
     }
 
     log('Hole Progress-Daten für Issue', issueIid);
+    showProgressLoading(cardElem);
 
     const promises = [loadProgressData(url, issueIid)];
     if (projectSettings.useSecondPortalProjectId && projectSettings.projectId2) {
@@ -3088,6 +3166,7 @@
         const progressData2 = results[1] && results[1].status === 'fulfilled' ? results[1].value : null;
 
         if (!progressData && !progressData2) {
+          clearProgressLoading(cardElem);
           if (rejected.length) {
             // vorübergehender Fehler: nicht cachen, später erneut versuchen (begrenzt)
             retryState.attempts += 1;
@@ -3119,6 +3198,9 @@
       })
       .catch(function (err) {
         error('Fehler beim Verarbeiten der Portal-Antwort für Issue ' + issueIid + ':', err);
+      })
+      .then(function () {
+        clearProgressLoading(cardElem); // Platzhalter nie stehen lassen; echte Bars tragen kein data-ambient-loading mehr
       });
     return true;
   }

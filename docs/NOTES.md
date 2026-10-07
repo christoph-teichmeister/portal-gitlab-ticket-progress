@@ -16,3 +16,5 @@
   gespeicherten Stand zusammengeführt.
 - GitLab-Selektoren stehen zentral in der `SEL`-Tabelle im Skript. Findet GitLab nach einem Update Elemente nicht
   mehr, zeigt der „Selektor-Selbsttest“ (Erweitert) welche.
+- Solange das Portal antwortet, zeigt jede Karte einen pulsierenden Platzhalter („Skeleton“) an der Stelle der Bar. Er
+  verschwindet bei Fehlern oder „keine Buchungen“ wieder; bei `prefers-reduced-motion` pulsiert er nicht.
