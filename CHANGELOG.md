@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.19
+
+- „Anzeigen" aus entfernt jetzt auch die Spalten-Buttons (Sortierung blieb sichtbar) und unterdrückt den
+  Auto-Selbsttest-Toast. Übrig bleibt nur die Toolbar zum Wiedereinschalten.
+
 ## 2026.10.18
 
 - Dropdowns (Ticket-Aktionen, Spalte sortieren, MRs) im Stil der GitLab-Dropdowns: Kopfzeile mit Titel und Trennlinie,
