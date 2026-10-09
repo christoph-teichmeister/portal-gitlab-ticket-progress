@@ -3827,6 +3827,27 @@
     return cssVar || '#6b7280';
   }
 
+  // Label-Farbe als Schrift auf dem Seitenhintergrund: zu dunkel/hell → Richtung Weiß (Dark Mode) bzw. Schwarz mischen,
+  // bis WCAG-Kontrast 4.5:1 erreicht ist (Farbton bleibt erkennbar)
+  function readableOnPageBackground(color) {
+    const rgb = parseCssColorToRgb(color);
+    if (!rgb) return color;
+    const dark = isGitLabDarkModeActive();
+    const bg = dark ? {r: 24, g: 23, b: 29} : {r: 255, g: 255, b: 255};
+    const lin = function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const lum = function (c) { return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b); };
+    const ratio = function (c) {
+      const a = lum(c), b = lum(bg);
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    };
+    const target = dark ? 255 : 0;
+    let c = {r: rgb.r, g: rgb.g, b: rgb.b};
+    for (let i = 0; i < 20 && ratio(c) < 4.5; i++) {
+      c = {r: Math.round(c.r + (target - c.r) * 0.1), g: Math.round(c.g + (target - c.g) * 0.1), b: Math.round(c.b + (target - c.b) * 0.1)};
+    }
+    return 'rgb(' + c.r + ', ' + c.g + ', ' + c.b + ')';
+  }
+
   function createSplitLabel(labelElem, scope, name) {
     const color = getLabelColor(labelElem);
     const textElem = labelElem.querySelector('.gl-label-text') || labelElem;
@@ -3869,7 +3890,7 @@
       display: 'inline-flex',
       alignItems: 'center',
       background: 'var(--gl-background-color-default, #ffffff)',
-      color: color, // wie bei GitLabs Scoped Labels: Label-Farbe als Schriftfarbe der rechten Hälfte
+      color: readableOnPageBackground(color), // wie bei GitLabs Scoped Labels: Label-Farbe als Schrift, bei Bedarf aufgehellt
       padding: '0 8px'
     });
     el.appendChild(left);
