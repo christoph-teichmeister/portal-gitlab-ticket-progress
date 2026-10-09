@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.23
+// @version      2026.10.24
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.23';
+  const SCRIPT_VERSION = '2026.10.24';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -3828,6 +3828,27 @@
     return cssVar || '#6b7280';
   }
 
+  // Label-Farbe als Schrift auf dem Seitenhintergrund: zu dunkel/hell → Richtung Weiß (Dark Mode) bzw. Schwarz mischen,
+  // bis WCAG-Kontrast 4.5:1 erreicht ist (Farbton bleibt erkennbar)
+  function readableOnPageBackground(color) {
+    const rgb = parseCssColorToRgb(color);
+    if (!rgb) return color;
+    const dark = isGitLabDarkModeActive();
+    const bg = dark ? {r: 24, g: 23, b: 29} : {r: 255, g: 255, b: 255};
+    const lin = function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const lum = function (c) { return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b); };
+    const ratio = function (c) {
+      const a = lum(c), b = lum(bg);
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    };
+    const target = dark ? 255 : 0;
+    let c = {r: rgb.r, g: rgb.g, b: rgb.b};
+    for (let i = 0; i < 20 && ratio(c) < 4.5; i++) {
+      c = {r: Math.round(c.r + (target - c.r) * 0.1), g: Math.round(c.g + (target - c.g) * 0.1), b: Math.round(c.b + (target - c.b) * 0.1)};
+    }
+    return 'rgb(' + c.r + ', ' + c.g + ', ' + c.b + ')';
+  }
+
   function createSplitLabel(labelElem, scope, name) {
     const color = getLabelColor(labelElem);
     const textElem = labelElem.querySelector('.gl-label-text') || labelElem;
@@ -3870,7 +3891,7 @@
       display: 'inline-flex',
       alignItems: 'center',
       background: 'var(--gl-background-color-default, #ffffff)',
-      color: color, // wie bei GitLabs Scoped Labels: Label-Farbe als Schriftfarbe der rechten Hälfte
+      color: readableOnPageBackground(color), // wie bei GitLabs Scoped Labels: Label-Farbe als Schrift, bei Bedarf aufgehellt
       padding: '0 8px'
     });
     el.appendChild(left);
