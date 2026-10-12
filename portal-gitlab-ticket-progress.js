@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.25
+// @version      2026.10.26
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.25';
+  const SCRIPT_VERSION = '2026.10.26';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -127,6 +127,8 @@
       '.ambient-progress-list-toggle:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}' +
       '.ambient-switch-input:focus-visible+.ambient-switch-slider{outline:2px solid #60a5fa;outline-offset:2px}' +
       '.gl-label[data-ambient-split="1"]{display:none !important}' +
+      // wie GitLabs Entfernen-Button: beim Hover ein runder Kreis in Label-Farbe hinter dem „×"
+      '.ambient-split-label-close:hover,.ambient-split-label-close:focus-visible{background:var(--ambient-close-hover-bg) !important;color:var(--ambient-close-hover-fg) !important}' +
       '.ambient-dropdown-item:hover,.ambient-dropdown-item:focus-visible{background:var(--gl-background-color-strong,rgba(128,128,128,.18)) !important;outline:none}' +
       '.ambient-dropdown-toggle:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.18)) !important}' +
       '.ambient-card-actions svg,.ambient-progress-sort-toggle svg{pointer-events:none}' +
@@ -134,7 +136,7 @@
       '.ambient-btn.btn:not(.btn-confirm):hover{background:var(--gl-background-color-strong,rgba(128,128,128,.18)) !important}' +
       '.ambient-split-label{min-width:0;max-width:100%;flex:0 1 auto}' +
       '.ambient-split-label>span:first-child{flex:0 0 auto}' +
-      '.ambient-split-label>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+      '.ambient-split-label>span:nth-child(2){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
       // GitLabs h2 hat hier Standard-Abstände (20px oben / 10px unten) und sitzt dadurch ~5px unter den Icons
       '[data-testid="board-list-header"] .board-title-text{min-width:0;margin-top:0 !important;margin-bottom:0 !important}' +
       // Hover für das MR-Badge: Fläche per box-shadow vergrößert, damit sich das Layout nicht verschiebt
@@ -3895,6 +3897,42 @@
     });
     el.appendChild(left);
     el.appendChild(right);
+    // Entfernbares Label (Ticket-Detail): eigenes „×" klickt GitLabs ausgeblendeten Entfernen-Button
+    const close = labelElem.querySelector('.gl-label-close');
+    if (close) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ambient-split-label-close';
+      btn.textContent = '×';
+      btn.setAttribute('aria-label', close.getAttribute('aria-label') || 'Remove label');
+      applyStyles(btn, {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        alignSelf: 'center',
+        flex: '0 0 auto',
+        width: '14px',
+        height: '14px',
+        border: '0',
+        borderRadius: '50%',
+        margin: '0 4px 0 -2px',
+        padding: '0',
+        background: 'transparent',
+        color: right.style.color,
+        font: 'inherit',
+        lineHeight: '1',
+        cursor: 'pointer'
+      });
+      btn.style.setProperty('--ambient-close-hover-bg', color);
+      btn.style.setProperty('--ambient-close-hover-fg', getContrastTextColor(color, '#1f2937', '#ffffff'));
+      el.style.background = right.style.background; // Hintergrund hinter dem Button, damit der Kreis frei steht
+      btn.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        close.click();
+      });
+      el.appendChild(btn);
+    }
     // Klick/Enter an das ausgeblendete Original weiterreichen: behält GitLabs Verhalten (z. B. Board filtern)
     const forward = function (ev) {
       ev.preventDefault();
@@ -3904,7 +3942,7 @@
     };
     el.addEventListener('click', forward);
     el.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Enter' || ev.key === ' ') forward(ev);
+      if (ev.target === el && (ev.key === 'Enter' || ev.key === ' ')) forward(ev);
     });
     return el;
   }
@@ -3949,8 +3987,8 @@
   // mehr vom Namen sichtbar bleibt (der volle Text steht im Tooltip)
   function fitSplitLabel(el) {
     const left = el.firstElementChild;
-    const right = el.lastElementChild;
-    if (!left || !right || left === right) return;
+    const right = el.children[1];
+    if (!left || !right) return;
     const compact = {width: '10px', padding: '0', fontSize: '0', overflow: 'hidden'};
     applyStyles(left, {width: '', padding: '0 8px', fontSize: '', overflow: ''}); // erst volle Breite probieren
     if (right.scrollWidth > right.clientWidth + 1) applyStyles(left, compact);
