@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.19
+// @version      2026.10.27
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.19';
+  const SCRIPT_VERSION = '2026.10.27';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -127,6 +127,8 @@
       '.ambient-progress-list-toggle:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}' +
       '.ambient-switch-input:focus-visible+.ambient-switch-slider{outline:2px solid #60a5fa;outline-offset:2px}' +
       '.gl-label[data-ambient-split="1"]{display:none !important}' +
+      // wie GitLabs Entfernen-Button: beim Hover ein runder Kreis in Label-Farbe hinter dem „×"
+      '.ambient-split-label-close:hover,.ambient-split-label-close:focus-visible{background:var(--ambient-close-hover-bg) !important;color:var(--ambient-close-hover-fg) !important}' +
       '.ambient-dropdown-item:hover,.ambient-dropdown-item:focus-visible{background:var(--gl-background-color-strong,rgba(128,128,128,.18)) !important;outline:none}' +
       '.ambient-dropdown-toggle:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.18)) !important}' +
       '.ambient-card-actions svg,.ambient-progress-sort-toggle svg{pointer-events:none}' +
@@ -134,7 +136,7 @@
       '.ambient-btn.btn:not(.btn-confirm):hover{background:var(--gl-background-color-strong,rgba(128,128,128,.18)) !important}' +
       '.ambient-split-label{min-width:0;max-width:100%;flex:0 1 auto}' +
       '.ambient-split-label>span:first-child{flex:0 0 auto}' +
-      '.ambient-split-label>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+      '.ambient-split-label>span:nth-child(2){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
       // GitLabs h2 hat hier Standard-Abstände (20px oben / 10px unten) und sitzt dadurch ~5px unter den Icons
       '[data-testid="board-list-header"] .board-title-text{min-width:0;margin-top:0 !important;margin-bottom:0 !important}' +
       // Hover für das MR-Badge: Fläche per box-shadow vergrößert, damit sich das Layout nicht verschiebt
@@ -444,6 +446,8 @@
 
   const LOG_PREFIX = '[GitLab Progress]';
   const PROGRESS_CACHE_TTL_MS = 60 * 60 * 1000;
+  // Stale-while-revalidate: abgelaufene Einträge bis zu 24 h behalten, um sie sofort anzuzeigen
+  const STALE_MAX_MS = 24 * 60 * 60 * 1000;
   const MR_LIST_CACHE_TTL_MS = 5 * 60 * 1000; // in-memory, kein localStorage nötig
   const COLUMN_AGE_CACHE_TTL_MS = 5 * 60 * 1000;
   const SCAN_DEBOUNCE_MS = 150;
@@ -459,7 +463,6 @@
   const RATE_LIMIT_WARNING_MIN_VISIBLE_MS = 60 * 1000;
   const progressCache = {}; // key: projectId + ':' + issueIid → {data, timestamp, ttl?}
   let progressCacheFlushTimer = null;
-  hydrateProgressCacheFromStorage();
 
   function ensureToastElement() {
     if (toastElement) return toastElement;
@@ -1042,9 +1045,6 @@
     if (!timestamp) return false;
     return Date.now() - timestamp <= (Number(entry.ttl) || PROGRESS_CACHE_TTL_MS);
   }
-
-  // Stale-while-revalidate: abgelaufene Einträge bis zu 24 h behalten, um sie sofort anzuzeigen
-  const STALE_MAX_MS = 24 * 60 * 60 * 1000;
 
   function isCacheEntryAlive(entry) {
     if (isCacheEntryFresh(entry)) return true;
@@ -3829,6 +3829,27 @@
     return cssVar || '#6b7280';
   }
 
+  // Label-Farbe als Schrift auf dem Seitenhintergrund: zu dunkel/hell → Richtung Weiß (Dark Mode) bzw. Schwarz mischen,
+  // bis WCAG-Kontrast 4.5:1 erreicht ist (Farbton bleibt erkennbar)
+  function readableOnPageBackground(color) {
+    const rgb = parseCssColorToRgb(color);
+    if (!rgb) return color;
+    const dark = isGitLabDarkModeActive();
+    const bg = dark ? {r: 24, g: 23, b: 29} : {r: 255, g: 255, b: 255};
+    const lin = function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const lum = function (c) { return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b); };
+    const ratio = function (c) {
+      const a = lum(c), b = lum(bg);
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    };
+    const target = dark ? 255 : 0;
+    let c = {r: rgb.r, g: rgb.g, b: rgb.b};
+    for (let i = 0; i < 20 && ratio(c) < 4.5; i++) {
+      c = {r: Math.round(c.r + (target - c.r) * 0.1), g: Math.round(c.g + (target - c.g) * 0.1), b: Math.round(c.b + (target - c.b) * 0.1)};
+    }
+    return 'rgb(' + c.r + ', ' + c.g + ', ' + c.b + ')';
+  }
+
   function createSplitLabel(labelElem, scope, name) {
     const color = getLabelColor(labelElem);
     const textElem = labelElem.querySelector('.gl-label-text') || labelElem;
@@ -3871,11 +3892,47 @@
       display: 'inline-flex',
       alignItems: 'center',
       background: 'var(--gl-background-color-default, #ffffff)',
-      color: 'var(--gl-text-color-default, #1f2937)',
+      color: readableOnPageBackground(color), // wie bei GitLabs Scoped Labels: Label-Farbe als Schrift, bei Bedarf aufgehellt
       padding: '0 8px'
     });
     el.appendChild(left);
     el.appendChild(right);
+    // Entfernbares Label (Ticket-Detail): eigenes „×" klickt GitLabs ausgeblendeten Entfernen-Button
+    const close = labelElem.querySelector('.gl-label-close');
+    if (close) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ambient-split-label-close';
+      btn.textContent = '×';
+      btn.setAttribute('aria-label', close.getAttribute('aria-label') || 'Remove label');
+      applyStyles(btn, {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        alignSelf: 'center',
+        flex: '0 0 auto',
+        width: '14px',
+        height: '14px',
+        border: '0',
+        borderRadius: '50%',
+        margin: '0 4px 0 -2px',
+        padding: '0',
+        background: 'transparent',
+        color: right.style.color,
+        font: 'inherit',
+        lineHeight: '1',
+        cursor: 'pointer'
+      });
+      btn.style.setProperty('--ambient-close-hover-bg', color);
+      btn.style.setProperty('--ambient-close-hover-fg', getContrastTextColor(color, '#1f2937', '#ffffff'));
+      el.style.background = right.style.background; // Hintergrund hinter dem Button, damit der Kreis frei steht
+      btn.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        close.click();
+      });
+      el.appendChild(btn);
+    }
     // Klick/Enter an das ausgeblendete Original weiterreichen: behält GitLabs Verhalten (z. B. Board filtern)
     const forward = function (ev) {
       ev.preventDefault();
@@ -3885,7 +3942,7 @@
     };
     el.addEventListener('click', forward);
     el.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Enter' || ev.key === ' ') forward(ev);
+      if (ev.target === el && (ev.key === 'Enter' || ev.key === ' ')) forward(ev);
     });
     return el;
   }
@@ -3930,8 +3987,8 @@
   // mehr vom Namen sichtbar bleibt (der volle Text steht im Tooltip)
   function fitSplitLabel(el) {
     const left = el.firstElementChild;
-    const right = el.lastElementChild;
-    if (!left || !right || left === right) return;
+    const right = el.children[1];
+    if (!left || !right) return;
     const compact = {width: '10px', padding: '0', fontSize: '0', overflow: 'hidden'};
     applyStyles(left, {width: '', padding: '0 8px', fontSize: '', overflow: ''}); // erst volle Breite probieren
     if (right.scrollWidth > right.clientWidth + 1) applyStyles(left, compact);
@@ -3967,9 +4024,9 @@
     }
 
     if (!showEnabled) {
-      rootBoardsApp.querySelectorAll('.ambient-progress-list-toggle').forEach(function (button) {
-        button.style.display = 'none';
-      });
+      // Spalten-Buttons (Auge + Sortierung) komplett entfernen; bei „an" baut ensureListSelectionCheckbox sie neu auf
+      rootBoardsApp.querySelectorAll('.ambient-progress-list-toggle, .ambient-progress-sort-toggle')
+        .forEach(function (button) { button.remove(); });
       return;
     }
 
@@ -6250,6 +6307,7 @@
   function maybeRunAutoSelftest() {
     if (storageRead(LS_KEY_SELFTEST_VERSION, null) === SCRIPT_VERSION) return;
     setTimeout(function () {
+      if (!showEnabled) return; // „Anzeigen" aus → auch kein Selbsttest-Toast; nächster Start versucht es erneut
       storageWrite(LS_KEY_SELFTEST_VERSION, SCRIPT_VERSION);
       const missing = collectSelectorReport().filter(function (r) { return r.count === 0; });
       log('Auto-Selbsttest nach Update auf', SCRIPT_VERSION, 'ohne Treffer:', missing.map(function (r) { return r.key; }));
@@ -6921,6 +6979,8 @@
   }
 
   function init() {
+    // immer ausgeben (unabhängig von Debug): unterscheidet „nicht injiziert“ von „gestartet, aber fehlgeschlagen“
+    console.log(LOG_PREFIX, 'v' + SCRIPT_VERSION + ' injiziert auf', window.location.href);
     log('Userscript gestartet, URL:', window.location.href);
 
     if (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version !== SCRIPT_VERSION) {
@@ -6966,6 +7026,12 @@
 
     // Alle Scans laufen über einen einzigen, entprellten Einstieg; MR-Seite oder Board wird zur Laufzeit bestimmt
     function runScans() {
+      // GitLab (Vue) kann den Toolbar-Container neu rendern und die Toolbar mitnehmen → neu aufbauen
+      if (!document.getElementById('ambient-progress-toolbar')) {
+        const staleSettings = document.getElementById('ambient-progress-settings');
+        if (staleSettings) staleSettings.remove();
+        createToolbar(hostConfig, projectSettings);
+      }
       repositionToolbarIfNeeded();
       repositionMrLinksIfNeeded();
       if (isFeatureOn('splitLabels')) {
@@ -7039,6 +7105,12 @@
     }).observe(document.documentElement, {attributes: true, attributeFilter: ['class', 'data-theme']});
   }
 
+  // Muss nach allen Deklarationen laufen (sonst TDZ); ein defekter Cache darf das Skript nicht lahmlegen
+  try {
+    hydrateProgressCacheFromStorage();
+  } catch (e) {
+    console.warn(LOG_PREFIX, 'Cache konnte nicht geladen werden', e);
+  }
   init();
 })
 ();
