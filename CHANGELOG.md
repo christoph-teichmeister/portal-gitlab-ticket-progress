@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.27
+
+- Die MR-Buttons „R" (Reviewer) und „A" (Assignee) filtern jetzt nach dem eingeloggten GitLab-User statt nach einem
+  fest eingetragenen Benutzernamen.
+
 ## 2026.10.19
 
 - „Anzeigen" aus entfernt jetzt auch die Spalten-Buttons (Sortierung blieb sichtbar) und unterdrückt den
