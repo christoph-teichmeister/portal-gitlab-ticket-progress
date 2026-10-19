@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.32
+
+- Nach dem GitLab-Update (ohne `#js-injected-page-breadcrumbs`) sitzen Einstellungs-Icon und die beiden MR-Buttons
+  wieder in der Breadcrumb-Zeile, statt in eine zweite Zeile bzw. in die Aktionsleiste zu rutschen.
+
 ## 2026.10.27
 
 - Die MR-Buttons „R" (Reviewer) und „A" (Assignee) filtern jetzt nach dem eingeloggten GitLab-User statt nach einem
