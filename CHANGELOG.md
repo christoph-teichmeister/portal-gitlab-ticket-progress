@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.27
+
+- Nach dem GitLab-Update (ohne `#js-injected-page-breadcrumbs`) sitzen Einstellungs-Icon und die beiden MR-Buttons
+  wieder in der Breadcrumb-Zeile, statt in eine zweite Zeile bzw. in die Aktionsleiste zu rutschen.
+
 ## 2026.10.19
 
 - „Anzeigen" aus entfernt jetzt auch die Spalten-Buttons (Sortierung blieb sichtbar) und unterdrückt den
