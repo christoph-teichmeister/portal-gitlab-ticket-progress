@@ -13,10 +13,35 @@
 - Nach dem GitLab-Update (ohne `#js-injected-page-breadcrumbs`) sitzen Einstellungs-Icon und die beiden MR-Buttons
   wieder in der Breadcrumb-Zeile, statt in eine zweite Zeile bzw. in die Aktionsleiste zu rutschen.
 
+## 2026.10.30
+
+- Ticket-Assignee-Buttons im MR: MR-Assignee, MR-Author und MR-Reviewer haben jetzt je einen eigenen Button (doppelte
+  Personen nur einmal), statt Author oder Reviewer je nach Rolle.
+
+## 2026.10.29 / 2026.10.31
+
+- Split-Labels auch in der MR-Sidebar und bei eingeklappter linker GitLab-Navigation.
+
+## 2026.10.28
+
+- Split-Labels für alle Scoped Labels (`scope::Name`), nicht mehr nur `workflow::`.
+
 ## 2026.10.27
 
 - Die MR-Buttons „R" (Reviewer) und „A" (Assignee) filtern jetzt nach dem eingeloggten GitLab-User statt nach einem
   fest eingetragenen Benutzernamen.
+
+## 2026.10.26
+
+- Split-Labels im Ticket-Detail behalten ihren Entfernen-Button (`×`).
+
+## 2026.10.20 – 2026.10.24
+
+- Rechte Hälfte der Split-Labels nutzt die Label-Farbe als Schrift (wie GitLab), bei zu wenig Kontrast
+  aufgehellt bzw. abgedunkelt.
+- Toolbar wird neu aufgebaut, wenn GitLab sie beim Neu-Rendern entfernt.
+- Startzeile `v<Version> injiziert auf …` immer in der Konsole (auch ohne Debug).
+- Start-Absturz beim Laden des Progress-Caches behoben.
 
 ## 2026.10.19
 

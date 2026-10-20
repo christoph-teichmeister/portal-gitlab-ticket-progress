@@ -23,7 +23,8 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
 
 ## Toolbar & Bedienelemente
 
-- Platziert eine Toolbar rechts in der GitLab-Topbar mit einem Gear-Button. Das Menü öffnet als Seitenpanel rechts (wie GitLabs Ticket-Vorschau) und zeigt Version, `Anzeigen`-Schalter
+- Platziert eine Toolbar rechts in der Breadcrumb-Zeile mit einem Gear-Button (bei schmalem Fenster kürzen sich die
+  Breadcrumbs, Toolbar und MR-Buttons bleiben in derselben Zeile; rendert GitLab die Zeile neu, wird sie wieder aufgebaut). Das Menü öffnet als Seitenpanel rechts (wie GitLabs Ticket-Vorschau) und zeigt Version, `Anzeigen`-Schalter
   und letzte Aktualisierung, darunter jedes Feature einzeln schaltbar als „Globale Einstellungen" sowie die
   „Board-Einstellungen" (roter Rahmen, Projekt-Konfiguration). Details siehe [Lokale Controls](CONTROLS.md).
 - Fügt pro Board-Spalte einen Augen-Button in GitLabs Button-Gruppe (neben `+` und `⚙`) ein, mit dem du das Script
@@ -64,8 +65,9 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
   Portal-Projekten zu kombinieren. Wenn aktiviert, lädt das Script Daten von beiden Projekt-IDs und aggregiert sie in
   der angezeigten Progressbar (Summe aller Stunden, kombinierte Auslastung). Jedes Board-Projekt speichert diese
   Einstellung separat.
-- Zeigt in der Toolbar zwei MR-Icon-Buttons („Meine MRs" / „MRs, bei denen ich Reviewer bin"), die direkt zur
-  gefilterten Merge-Request-Liste des aktuellen Projekts verlinken.
+- Zeigt neben dem Zahnrad zwei MR-Buttons „R“ („MRs, bei denen ich Reviewer bin“) und „A“ („Meine MRs“), die direkt
+  zur gefilterten Merge-Request-Liste des aktuellen Projekts verlinken. Gefiltert wird nach dem eingeloggten
+  GitLab-User.
 
 ## MR-Badge auf Board-Karten
 
@@ -108,11 +110,9 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
 
 - Auf der Merge-Request-Detailseite zeigt das Script oberhalb des GitLab-Assignee-Blocks an, wer aktuell dem
   verlinkten Ticket (Issue) zugewiesen ist.
-- Zwei Quick-Buttons erlauben das Umzuweisen des Tickets auf den MR-Assignee und eine zweite Person, ohne das
-  Ticket selbst öffnen zu müssen. Die zweite Person ist normalerweise der MR-Author – bist du selbst aber der
-  MR-Assignee (z. B. weil du einen MR vertretungsweise übernommen hast), zeigt der zweite Button stattdessen den
-  MR-Reviewer, da der Author in diesem Fall meist nicht relevant ist. Sind beide Personen identisch oder bereits
-  Ticket-Assignee, wird der jeweilige Button ausgeblendet.
+- Bis zu drei Quick-Buttons erlauben das Umzuweisen des Tickets auf MR-Assignee, MR-Author und MR-Reviewer, ohne
+  das Ticket selbst öffnen zu müssen. Ist eine Person mehrfach vertreten (z. B. Author = Assignee), erscheint sie nur
+  einmal; fehlt eine Rolle, entfällt ihr Button.
 - Das Umzuweisen erfolgt per `PUT /api/v4/projects/:id/issues/:issue_iid` (Session-Auth + CSRF-Token aus der
   Seite), keine zusätzliche Anmeldung nötig.
 
@@ -221,6 +221,16 @@ die Schätzung daraus).
   Gruppe 1 ist die Zahl, Groß-/Kleinschreibung egal, das erste passende Muster gewinnt. Leeres Feld = Standard-Muster
   (wie der Issue-Syncer des Portals: `(n SP)`, `(Timebox: nh)`, `(Spike: nh)`, auch mit `[]`, ohne Doppelpunkt und
   mit `,5` / `.5`). Ungültige Zeilen werden ignoriert und per Hinweis gemeldet.
+
+## Split-Labels
+
+- Scoped Labels (`scope::Name`, z. B. `workflow::Design`, `prio::Hoch`) werden als `[Scope | Name]` gezeichnet: links
+  in der Label-Farbe, rechts die Label-Farbe als Schrift (wie bei GitLab), bei zu wenig Kontrast automatisch
+  aufgehellt bzw. abgedunkelt.
+- Gilt auf Karten, in Spalten-Headern, im Issue-Detail, Board-Drawer und in der MR-Sidebar (auch bei eingeklappter
+  linker Navigation), nicht in Dropdowns und der Filterleiste.
+- Entfernbare Labels (Ticket-Detail) behalten ihr `×`, es klickt GitLabs ausgeblendeten Entfernen-Button.
+- Schalter: Zahnrad → Globale Einstellungen → Karten → „Scoped Labels (::) als Split-Label“.
 
 ## Neu in 2026.10.6 (aus den Experimenten übernommen)
 
