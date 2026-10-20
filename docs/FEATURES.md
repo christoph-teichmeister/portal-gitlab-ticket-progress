@@ -207,6 +207,21 @@ Normaler Text neben den Quick Actions wird als sichtbarer Kommentar auf dem Tick
 - Du brauchst im Projekt die Rechte, die jeweiligen Quick Actions auszuführen (für Labels/Assignees mind.
   Reporter/Developer). Unbekannte Labels werden von GitLab stillschweigend ignoriert, prüfe deshalb die Schreibweise.
 
+## Schätzung als Badge am Titel
+
+Auf Board-Karten (nur in Spalten, in denen das Script aktiv ist), im Ticket-Detail (inkl. Board-Drawer und mitlaufendem Kopf) und auf der MR-Seite wird
+die Schätzung aus dem angezeigten Titel genommen und als runder Badge gezeigt (auf Karten fest oben rechts, der
+Titel bricht davor um; sonst direkt hinter dem Titel): `(3 SP)` → grünes `3 SP`,
+`(Timebox: 4h)` / `[Spike 2h]` → gelbes `Timebox 4h`, keine Schätzung → rotes `? SP`. Bei MRs gibt es kein `? SP`,
+weil das zugehörige Ticket trotzdem geschätzt sein kann. Der echte GitLab-Titel bleibt unverändert (das Portal liest
+die Schätzung daraus).
+
+- Schalter: Zahnrad → Globale Einstellungen → Karten → „Schätzung als Badge am Titel“ (Standard an).
+- Muster: Zahnrad → Erweitert → „Schätzungs-Muster“. Eine Zeile pro Muster, `sp: <Regex>` oder `timebox: <Regex>`,
+  Gruppe 1 ist die Zahl, Groß-/Kleinschreibung egal, das erste passende Muster gewinnt. Leeres Feld = Standard-Muster
+  (wie der Issue-Syncer des Portals: `(n SP)`, `(Timebox: nh)`, `(Spike: nh)`, auch mit `[]`, ohne Doppelpunkt und
+  mit `,5` / `.5`). Ungültige Zeilen werden ignoriert und per Hinweis gemeldet.
+
 ## Neu in 2026.10.6 (aus den Experimenten übernommen)
 
 - **Warnfarbe im Balken:** gelb ab 80 % verbrauchter Stunden; der Prozentwert steht im Tooltip und Screenreader-Text.
