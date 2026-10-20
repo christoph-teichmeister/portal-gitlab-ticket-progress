@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.10.35
+
+- Schätzungs-Badge im Ticket-Detail, im Drawer und auf der MR-Seite vertikal mittig zum Titel statt leicht nach unten versetzt.
+
 ## 2026.10.34
 
 - Schätzungs-Badge im Ticket-Detail, im Drawer und auf der MR-Seite größer: skaliert jetzt mit der Titelschrift,
