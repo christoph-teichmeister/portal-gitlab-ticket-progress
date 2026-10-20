@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.32
+// @version      2026.10.33
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.32';
+  const SCRIPT_VERSION = '2026.10.33';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -88,10 +88,13 @@
     cardNumberText: '.board-card-number span, .board-card-number',
     cardFooter: '.board-card-footer',
     cardBody: '.gl-p-4',
+    cardTitleLink: '[data-testid="board-card-title-link"]',
+    issueTitle: '[data-testid="work-item-title"], [data-testid="base-layout-sticky-header"] a.gl-font-bold',
     cardLabel: '.gl-label',
     detailWrapper: '.work-item-attributes-wrapper',
     detailAssignees: '[data-testid="work-item-assignees"]',
     mrTitle: 'h1[data-testid="title-content"]',
+    mrStickyTitle: '.merge-request-sticky-title',
     mrAssigneeBlock: '[data-testid="assignee-block-container"]',
     breadcrumbsWrapper: '#js-vue-page-breadcrumbs-wrapper'
   };
@@ -134,12 +137,19 @@
       '.ambient-btn:not(.btn):not(.ambient-btn-primary):hover:not(:disabled){background:#374151 !important;border-color:#9ca3af !important;color:#fff !important}' +
       '.ambient-btn.btn:not(.btn-confirm):hover{background:var(--gl-background-color-strong,rgba(128,128,128,.18)) !important}' +
       '.ambient-split-label{min-width:0;max-width:100%;flex:0 1 auto}' +
-      // seit dem GitLab-Update ohne #js-injected-page-breadcrumbs: MR-Buttons und Toolbar in die Breadcrumb-Zeile holen
-      '#js-vue-page-breadcrumbs-wrapper:has(>#js-my-mr-links,>#ambient-progress-toolbar){display:flex;align-items:center}' +
+      // seit dem GitLab-Update ohne #js-injected-page-breadcrumbs: MR-Buttons und Toolbar in die Breadcrumb-Zeile holen;
+      // bei schmalem Fenster kürzen sich die Breadcrumbs, unsere Buttons bleiben rechts
+      '#js-vue-page-breadcrumbs-wrapper:has(>#js-my-mr-links,>#ambient-progress-toolbar){display:flex;align-items:center;gap:.25rem}' +
+      '#js-vue-page-breadcrumbs-wrapper:has(>#js-my-mr-links,>#ambient-progress-toolbar)>nav.gl-breadcrumbs{flex:1 1 auto;min-width:0}' +
+      '#js-my-mr-links,#js-vue-page-breadcrumbs-wrapper>#ambient-progress-toolbar{flex:0 0 auto}' +
+      '#js-my-mr-links{margin-left:auto}' +
       '.ambient-split-label>span:first-child{flex:0 0 auto}' +
       '.ambient-split-label>span:nth-child(2){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
       // GitLabs h2 hat hier Standard-Abstände (20px oben / 10px unten) und sitzt dadurch ~5px unter den Icons
       '[data-testid="board-list-header"] .board-title-text{min-width:0;margin-top:0 !important;margin-bottom:0 !important}' +
+      // Titel füllt die Kartenbreite, damit der Schätzungs-Badge (float) ganz rechts steht – links von GitLabs
+      // Verschiebe-Menü, das beim Hover in der reservierten rechten Ecke erscheint
+      '.board-card-title:has(.ambient-estimate-badge){flex-grow:1}' +
       // Hover für das MR-Badge: Fläche per box-shadow vergrößert, damit sich das Layout nicht verschiebt
       '.ambient-mr-badge:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.22));box-shadow:0 0 0 3px var(--gl-background-color-strong,rgba(128,128,128,.22));border-radius:4px;text-decoration:underline !important}' +
       // Einstellungs-Panel: eigene Chevrons statt Browser-Dreieck, Zeilen-Hover, Karten-Optik
@@ -394,6 +404,7 @@
     'Assignee-/Reviewer-Avatare': 'Assignee/reviewer avatars',
     'Verweildauer (Uhr im Footer)': 'Time in column (clock in footer)',
     'Scoped Labels (::) als Split-Label': 'Scoped labels (::) as split label',
+    'Schätzung als Badge am Titel': 'Estimate as badge next to title',
     'Median-Verweildauer im Header': 'Median time in column in header',
     'Progress im Issue-Detail': 'Progress in issue detail',
     'Progress im MR': 'Progress in MR',
@@ -2689,6 +2700,7 @@
       card.removeAttribute('data-ambient-skip');
     });
     document.querySelectorAll('.ambient-column-avg').forEach(function (el) { el.remove(); });
+    removeEstimateBadges(); // Muster können sich geändert haben
     if (rescanHook) rescanHook();
   }
 
@@ -3041,6 +3053,7 @@
   function clearCardInjections(cardElem) {
     cardElem.querySelectorAll('.ambient-progress-badge, .ambient-mr-badge, .ambient-column-age, ' +
       '.ambient-card-actions, .ambient-card-actions-row').forEach(function (el) { el.remove(); });
+    removeEstimateBadges(cardElem);
     ['data-ambient-progress-processed', 'data-ambient-entered-at', 'data-ambient-above-avg', 'data-ambient-loaded-at']
       .forEach(function (attr) { cardElem.removeAttribute(attr); });
     cardElem.style.boxShadow = '';
@@ -3815,6 +3828,113 @@
    * Split-Labels: "scope::Name" als [Scope | Name] in Label-Farbe
    ******************************************************************/
 
+  // Schätzung im Kartentitel („(3 SP)", „[Spike: 1,5h]") als Badge statt im Text – der echte GitLab-Titel bleibt,
+  // das Portal liest die Schätzung daraus. Standard-Muster wie beim Issue-Syncer des Portals.
+  const DEFAULT_ESTIMATE_PATTERNS =
+    'sp: [(\\[]\\s*(\\d+(?:[.,]\\d+)?)\\s*SP\\s*[)\\]]\n' +
+    'timebox: [(\\[]\\s*(?:Timebox|Spike)\\s*:?\\s*(\\d+(?:[.,]\\d+)?)\\s*h\\s*[)\\]]';
+  // GitLabs Badge-Varianten (wie „Open"-Status), passen sich hellem/dunklem Theme an
+  const ESTIMATE_BADGE_VARIANTS = {sp: 'badge-success', timebox: 'badge-warning', none: 'badge-danger'};
+  let estimatePatternCache = {text: null, patterns: []};
+
+  // Eine Zeile pro Muster: „sp: <Regex>" oder „timebox: <Regex>"; kaputte Zeilen landen in errors
+  function parseEstimatePatterns(text) {
+    const patterns = [];
+    const errors = [];
+    String(text || '').split('\n').forEach(function (line) {
+      if (!line.trim()) return;
+      const match = line.match(/^\s*(sp|timebox)\s*:\s*(.+?)\s*$/i);
+      try {
+        if (!match) throw new Error('Format „sp: <Regex>" / „timebox: <Regex>"');
+        patterns.push({kind: match[1].toLowerCase(), regex: new RegExp(match[2], 'i')});
+      } catch (e) {
+        errors.push(line.trim());
+      }
+    });
+    return {patterns: patterns, errors: errors};
+  }
+
+  function getEstimatePatterns() {
+    const text = String(expSetting('estimatePatterns', DEFAULT_ESTIMATE_PATTERNS));
+    if (estimatePatternCache.text !== text) {
+      const parsed = parseEstimatePatterns(text);
+      if (parsed.errors.length) warn('Ungültige Schätzungs-Muster ignoriert:', parsed.errors);
+      estimatePatternCache = {
+        text: text,
+        patterns: parsed.patterns.length ? parsed.patterns : parseEstimatePatterns(DEFAULT_ESTIMATE_PATTERNS).patterns
+      };
+    }
+    return estimatePatternCache.patterns;
+  }
+
+  // Erstes passendes Muster gewinnt; ohne Treffer kind „none"
+  function parseEstimate(title, patterns) {
+    for (let i = 0; i < patterns.length; i++) {
+      const match = title.match(patterns[i].regex);
+      if (!match) continue;
+      const value = match[1] || '';
+      return {
+        kind: patterns[i].kind,
+        label: patterns[i].kind === 'sp' ? (value || '?') + ' SP' : ('Timebox ' + (value ? value + 'h' : '')).trim(),
+        cleanTitle: (title.slice(0, match.index) + ' ' + title.slice(match.index + match[0].length)).replace(/\s+/g, ' ').trim()
+      };
+    }
+    return {kind: 'none', label: '? SP', cleanTitle: title};
+  }
+
+  // Nur der Text-Knoten mit der Schätzung wird gekürzt, der Rest bleibt GitLabs (MR-Titel enthalten Links wie #123).
+  // Rendert GitLab den Titel neu, steht die Schätzung wieder im Text → Badge wird neu gebaut.
+  // showMissing: rotes „? SP" ohne Schätzung (Tickets ja, MRs nein – deren Ticket kann trotzdem geschätzt sein)
+  // pinRight (Board-Karten): Badge fest oben rechts, der Titel bricht davor um
+  function applyEstimateBadge(container, showMissing, pinRight) {
+    const patterns = getEstimatePatterns();
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    let textNode = null;
+    let estimate = null;
+    for (let node = walker.nextNode(); node && !textNode; node = walker.nextNode()) {
+      if (node.parentElement.closest('.ambient-estimate-badge')) continue;
+      const parsed = parseEstimate(node.data, patterns);
+      if (parsed.kind !== 'none') {
+        textNode = node;
+        estimate = parsed;
+      }
+    }
+    const existing = container.querySelector('.ambient-estimate-badge');
+    if (!textNode && (existing || !showMissing)) return;
+    if (existing) existing.remove(); // GitLab hat den Text zurückgesetzt, nicht wiederherstellen
+
+    const badge = createTextSpan(estimate ? estimate.label : '? SP', pinRight
+      ? {float: 'right', marginLeft: '0.5rem', whiteSpace: 'nowrap'}
+      : {marginLeft: '0.35em', whiteSpace: 'nowrap', verticalAlign: 'middle'});
+    badge.className = 'ambient-estimate-badge gl-badge badge badge-pill ' +
+      ESTIMATE_BADGE_VARIANTS[estimate ? estimate.kind : 'none'];
+    if (!textNode) badge.title = 'Keine Schätzung im Titel';
+    if (pinRight) container.prepend(badge); // Float muss vor dem Text stehen
+    else if (textNode) textNode.after(badge);
+    else container.appendChild(badge);
+    if (!textNode) return;
+    badge.ambientTextNode = textNode;
+    badge.dataset.ambientOriginal = textNode.data;
+    textNode.data = textNode.data.match(/^\s*/)[0] + estimate.cleanTitle; // führendes Leerzeichen nach einem Link bleibt
+  }
+
+  // Board-Karten laufen über scanBoard (nur aktive Spalten), hier Issue-Detail/-Drawer und MR-Seite
+  function applyEstimateBadges() {
+    document.querySelectorAll(SEL.issueTitle).forEach(function (el) {
+      applyEstimateBadge(el, true);
+    });
+    document.querySelectorAll(SEL.mrTitle + ', ' + SEL.mrStickyTitle).forEach(function (el) {
+      applyEstimateBadge(el, false);
+    });
+  }
+
+  function removeEstimateBadges(root) {
+    (root || document).querySelectorAll('.ambient-estimate-badge').forEach(function (badge) {
+      if (badge.ambientTextNode) badge.ambientTextNode.data = badge.dataset.ambientOriginal;
+      badge.remove();
+    });
+  }
+
   const SPLIT_LABEL_EXCLUDED = '.gl-new-dropdown-panel, .gl-dropdown-menu, [role="listbox"], [role="menu"], ' +
     '[data-testid*="filtered-search"], .gl-filtered-search-token, .filtered-search-box';
   const SPLIT_LABEL_PATTERN = /^(.+)::(.+)$/;
@@ -4087,6 +4207,8 @@
           continue;
         }
         cardElem.removeAttribute('data-ambient-skip');
+        const titleLink = isFeatureOn('estimateBadge') && cardElem.querySelector(SEL.cardTitleLink);
+        if (titleLink) applyEstimateBadge(titleLink, true, true);
 
         // Experiment: in andere Spalte gezogen → Verweildauer neu bestimmen
         const trackedIid = getIssueIidFromCard(cardElem);
@@ -5373,6 +5495,7 @@
         ' .ambient-progress-detail-badge, .ambient-progress-mr-badge, .ambient-ticket-assignee-badge'
       ).forEach(function (el) { el.remove(); });
       removeSplitLabels();
+      removeEstimateBadges();
       document.querySelectorAll('[data-ambient-progress-processed]').forEach(clearCardInjections);
       document.querySelectorAll(
         '[data-ambient-progress-issue-iid], [data-ambient-progress-mr-issue-iid], [data-ambient-ticket-assignee-iid]'
@@ -6133,7 +6256,8 @@
       ['mrBadge', 'MR-Badge'],
       ['mrAvatars', 'Assignee-/Reviewer-Avatare'],
       ['columnAge', 'Verweildauer (Uhr im Footer)'],
-      ['splitLabels', 'Scoped Labels (::) als Split-Label']
+      ['splitLabels', 'Scoped Labels (::) als Split-Label'],
+      ['estimateBadge', 'Schätzung als Badge am Titel']
     ]},
     {title: 'Spalten', items: [
       ['columnAvg', 'Median-Verweildauer im Header']
@@ -6156,7 +6280,7 @@
     const keys = ['breadcrumbsWrapper'];
     if (isBoardView()) {
       keys.push('boardsApp', 'boardList', 'boardCard', 'boardListHeader', 'boardListButtons',
-        'listTitle', 'cardNumber', 'cardFooter', 'cardBody');
+        'listTitle', 'cardNumber', 'cardFooter', 'cardBody', 'cardTitleLink');
     }
     if (shouldAttemptIssueDetailInjection()) keys.push('detailWrapper');
     return keys;
@@ -6619,6 +6743,14 @@
     const extraIdsField = createExperimentSettingField('Weitere Portal-Projekt-IDs (Komma, max. 3) – zusätzliche Balken',
       'extraProjectIds', '', {placeholder: '1234, 5678'});
     advanced.body.appendChild(extraIdsField);
+    const estimateField = createExperimentSettingField(
+      'Schätzungs-Muster (eine Zeile pro Muster: „sp: <Regex>" oder „timebox: <Regex>", Gruppe 1 = Zahl; leer = Standard)',
+      'estimatePatterns', DEFAULT_ESTIMATE_PATTERNS, {multiline: true});
+    estimateField.querySelector('textarea').addEventListener('change', function (ev) {
+      const errors = parseEstimatePatterns(ev.target.value).errors;
+      if (errors.length) showToast({text: 'Ungültige Schätzungs-Muster ignoriert: ' + errors.join(' | '), variant: 'warning'});
+    });
+    advanced.body.appendChild(estimateField);
     const toolGrid = document.createElement('div');
     applyStyles(toolGrid, {display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.5rem', padding: '0 0.6rem'});
     createDataToolButtons(projectSettings).forEach(function (button) {
@@ -7039,6 +7171,9 @@
       repositionMrLinksIfNeeded();
       if (isFeatureOn('splitLabels')) {
         applySplitLabels(document.body); // auch Issue-Detail, Board-Drawer und MR-Seite
+      }
+      if (isFeatureOn('estimateBadge')) {
+        applyEstimateBadges(); // Issue-Detail/-Drawer, MR-Seite (Karten in scanBoard)
       }
       if (isMergeRequestPage()) {
         scanMergeRequestPage(hostConfig, projectSettings);

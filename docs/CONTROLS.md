@@ -12,12 +12,13 @@ geänderte Feld leuchtet kurz grün. Das Menü ist per Tastatur erreichbar.
   Sichtbar bleibt nur das Zahnrad, um es wieder einzuschalten. Beim Aktivieren wird das Board erneut gescannt.
 - **Globale Einstellungen** (`ambientProgressFeatures`): ein Schalter pro Feature, gruppiert nach Ort:
   - *Karten*: Progress-Bar (Portal) mit Unterpunkt Portal- & Timesheet-Buttons, MR-Badge mit Unterpunkt
-    Assignee-/Reviewer-Avatare, Verweildauer (Uhr im Footer), `workflow::`-Labels als Split-Label.
+    Assignee-/Reviewer-Avatare, Verweildauer (Uhr im Footer), `workflow::`-Labels als Split-Label, Schätzung als Badge am Titel.
   - *Spalten*: Median-Verweildauer im Header (benötigt Verweildauer).
   - *Andere Ansichten*: MR-Buttons in der Topbar, Progress im Issue-Detail, Progress im MR,
     Ticket-Assignee-Buttons im MR.
   - *Erweitert* (zugeklappt): Debug – aktiviert `console.log` mit zusätzlichen Informationen. Außerdem:
-    Selektor-Selbsttest, Debug-Info kopieren (ohne Portal-URL), Konfiguration exportieren/importieren und
+    Selektor-Selbsttest, Debug-Info kopieren (ohne Portal-URL), Konfiguration exportieren/importieren, Schätzungs-Muster (siehe
+    [Features](FEATURES.md#schätzung-als-badge-am-titel)) und
     „Alle lokalen Daten löschen“.
 
   Unterpunkte sind ausgegraut, solange das übergeordnete Feature aus ist. Ausgeschaltete Features laden auch keine

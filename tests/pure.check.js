@@ -20,9 +20,11 @@ function extract(name) {
 
 const names = ['parseVersionSegments', 'normalizeVersionValue', 'isRemoteVersionGreater', 'formatDuration', 'median',
   'normalizeListNameForMatching', 'normalizeLabelNameForMatching', 'parseTicketActions', 'assigneeSortKey', 'planReorder',
-  'extractHourNumber', 'computeEnteredAt'];
+  'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate'];
 const isExp = function () { return false; };
-const code = 'const MAX_HOURS_VALUE = 100000; const COLUMN_BLIP_MS = 15 * 60 * 1000;\n' + names.map(extract).join('\n') + '\nreturn {' + names.join(',') + '};';
+const patternsStart = source.indexOf('  const DEFAULT_ESTIMATE_PATTERNS');
+const defaultPatterns = source.slice(patternsStart, source.indexOf(';\n', patternsStart) + 1);
+const code = 'const MAX_HOURS_VALUE = 100000; const COLUMN_BLIP_MS = 15 * 60 * 1000;\n' + defaultPatterns + '\n' + names.map(extract).join('\n') + '\nreturn {DEFAULT_ESTIMATE_PATTERNS,' + names.join(',') + '};';
 const fn = new Function('isExp', 'expSetting', 'log', 'warn', 'error', code);
 const noop = function () {};
 const f = fn(isExp, function (key, fallback) { return fallback; }, noop, noop, noop);
@@ -81,3 +83,21 @@ console.log('pure.check.js: alle Checks bestanden');
   assert.strictEqual(f.computeEnteredAt(longGap, target).toISOString(), '2026-10-02T10:00:00.000Z');
 }
 console.log('computeEnteredAt ok');
+
+// parseEstimate: Standard-Muster wie der Portal-Syncer, eigene Muster zeilenweise, kaputte Zeilen werden gemeldet
+{
+  const defaults = f.parseEstimatePatterns(f.DEFAULT_ESTIMATE_PATTERNS);
+  assert.deepStrictEqual(defaults.errors, []);
+  const est = function (title) { return f.parseEstimate(title, defaults.patterns); };
+  assert.deepStrictEqual(est('Login bauen (3 SP)'), {kind: 'sp', label: '3 SP', cleanTitle: 'Login bauen'});
+  assert.deepStrictEqual(est('[0,5 sp] Typo fixen'), {kind: 'sp', label: '0,5 SP', cleanTitle: 'Typo fixen'});
+  assert.deepStrictEqual(est('Recherche (Timebox: 4h)'), {kind: 'timebox', label: 'Timebox 4h', cleanTitle: 'Recherche'});
+  assert.deepStrictEqual(est('Recherche [Spike 1.5h] Teil 2'), {kind: 'timebox', label: 'Timebox 1.5h', cleanTitle: 'Recherche Teil 2'});
+  assert.deepStrictEqual(est('Timebox (Spike: 2,5h)'), {kind: 'timebox', label: 'Timebox 2,5h', cleanTitle: 'Timebox'});
+  assert.deepStrictEqual(est('Ohne Schätzung (v2)'), {kind: 'none', label: '? SP', cleanTitle: 'Ohne Schätzung (v2)'});
+
+  const custom = f.parseEstimatePatterns('SP: \\{(\\d+)\\}\n\nfoo: x\nsp: (unclosed');
+  assert.deepStrictEqual(custom.errors, ['foo: x', 'sp: (unclosed']);
+  assert.deepStrictEqual(f.parseEstimate('Ticket {5}', custom.patterns), {kind: 'sp', label: '5 SP', cleanTitle: 'Ticket'});
+}
+console.log('parseEstimate ok');

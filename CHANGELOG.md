@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.10.33
+
+- Schätzung als Badge am Titel (#16) auf Board-Karten, im Ticket-Detail (auch Drawer und mitlaufender Kopf) und auf
+  der MR-Seite: `(3 SP)` erscheint als grünes `3 SP`, `(Timebox: 4h)` / `[Spike 2h]` als
+  gelbes `Timebox 4h`, ohne Schätzung ein rotes `? SP` (nicht bei MRs). Nur die Anzeige ändert sich, der GitLab-Titel bleibt.
+  Schaltbar unter Globale Einstellungen → Karten; eigene Muster (Regex, eine Zeile pro Muster) unter Erweitert.
+- Bei schmalem Fenster kürzen sich die Breadcrumbs, MR-Buttons und Zahnrad bleiben rechts in derselben Zeile.
+
 ## 2026.10.32
 
 - Nach dem GitLab-Update (ohne `#js-injected-page-breadcrumbs`) sitzen Einstellungs-Icon und die beiden MR-Buttons
