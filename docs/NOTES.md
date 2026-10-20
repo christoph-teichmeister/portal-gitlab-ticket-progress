@@ -18,6 +18,9 @@
   mehr, zeigt der „Selektor-Selbsttest“ (Erweitert) welche.
 - Solange das Portal antwortet, zeigt jede Karte einen pulsierenden Platzhalter („Skeleton“) an der Stelle der Bar. Er
   verschwindet bei Fehlern oder „keine Buchungen“ wieder; bei `prefers-reduced-motion` pulsiert er nicht.
-- Split-Labels: Labels wie `workflow::Design` auf Karten und in den Spalten-Headern werden als `[Workflow | Design]` gezeichnet (links in der
-  Label-Farbe, rechts neutral). Das Original-Label bleibt im DOM (ausgeblendet), Klicks werden daran weitergereicht.
-  Die Farbe wird aus dem gerenderten Label gelesen; zuschaltbar unter Globale Einstellungen → Karten.
+- Split-Labels: Scoped Labels wie `workflow::Design` werden als `[Workflow | Design]` gezeichnet (links in der
+  Label-Farbe, rechts Label-Farbe als Schrift, kontrastkorrigiert); Details in [Features](FEATURES.md#split-labels).
+  Das Original-Label bleibt im DOM (ausgeblendet), Klicks werden daran weitergereicht. Die Farbe wird aus dem
+  gerenderten Label gelesen.
+- Beim Start schreibt das Script immer (auch ohne Debug) eine Zeile `v<Version> injiziert auf <URL>` in die Konsole.
+  Fehlt sie, hat Tampermonkey das Script nicht geladen.

@@ -34,10 +34,10 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    wählen, aber **nicht** „alle Domains“.
 5. Die `@updateURL`/`@downloadURL` im Skriptkopf halten alles automatisch aktuell – nach der einmaligen Installation
    liefert Tampermonkey neue Versionen direkt aus diesem Repo.
-6. Über das Zahnrad in der GitLab-Topbar öffnest du das Einstellungs-Seitenpanel (Anzeige, einzelne Features, Debug).
-   Das Zahnrad hängt direkt rechts vom oberen Menü und bleibt beim Scrollen sichtbar; Debug ist standardmäßig aus,
+6. Über das Zahnrad rechts in der Breadcrumb-Zeile öffnest du das Einstellungs-Seitenpanel (Anzeige, einzelne
+   Features, Debug). Daneben sitzen die MR-Buttons „R“ und „A“; Debug ist standardmäßig aus,
    die Anzeige (Badges) standardmäßig an. Änderungen gelten sofort, einen Speichern-Button gibt es nicht.
-7. Klicke in der GitLab-Topbar auf das Zahnrad, um die „Projekt-Konfiguration“ zu öffnen, und trage dort die
+7. Klicke auf das Zahnrad, um die „Projekt-Konfiguration“ zu öffnen, und trage dort die
    Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Erlaubt ist nur `https://` ohne
    Benutzername/Passwort; Query und Fragment werden verworfen. Die Eingabe wird automatisch gespeichert (das Feld
    leuchtet kurz grün) und ausschließlich lokal im Browser abgelegt (per Projekt). Du musst sie nur einmal hinterlegen.
