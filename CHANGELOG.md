@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.34
+
+- Schätzungs-Badge im Ticket-Detail, im Drawer und auf der MR-Seite größer: skaliert jetzt mit der Titelschrift,
+  statt in fester Badge-Größe neben der großen Überschrift zu verschwinden. Board-Karten unverändert.
+
 ## 2026.10.33
 
 - Schätzung als Badge am Titel (#16) auf Board-Karten, im Ticket-Detail (auch Drawer und mitlaufender Kopf) und auf
