@@ -20,7 +20,8 @@ function extract(name) {
 
 const names = ['parseVersionSegments', 'normalizeVersionValue', 'isRemoteVersionGreater', 'formatDuration', 'median',
   'normalizeListNameForMatching', 'normalizeLabelNameForMatching', 'parseTicketActions', 'assigneeSortKey', 'planReorder',
-  'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate'];
+  'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate', 'relativeLuminance',
+  'parseCssColorToRgb', 'getContrastTextColor'];
 const isExp = function () { return false; };
 const patternsStart = source.indexOf('  const DEFAULT_ESTIMATE_PATTERNS');
 const defaultPatterns = source.slice(patternsStart, source.indexOf(';\n', patternsStart) + 1);
@@ -101,3 +102,15 @@ console.log('computeEnteredAt ok');
   assert.deepStrictEqual(f.parseEstimate('Ticket {5}', custom.patterns), {kind: 'sp', label: '5 SP', cleanTitle: 'Ticket'});
 }
 console.log('parseEstimate ok');
+
+// Farben: rgb()/rgba() (auch Leerzeichen-Syntax) und #rgb/#rrggbb(aa); Unbekanntes → null
+{
+  assert.deepStrictEqual(f.parseCssColorToRgb('#abc'), {r: 170, g: 187, b: 204});
+  assert.deepStrictEqual(f.parseCssColorToRgb('#1F75CBff'), {r: 31, g: 117, b: 203});
+  assert.deepStrictEqual(f.parseCssColorToRgb('rgba(10, 20, 30, 0.5)'), {r: 10, g: 20, b: 30});
+  assert.deepStrictEqual(f.parseCssColorToRgb('rgb(10 20 30 / 50%)'), {r: 10, g: 20, b: 30});
+  assert.strictEqual(f.parseCssColorToRgb('red'), null);
+  assert.strictEqual(f.getContrastTextColor('#ffffff', '#1f2937', '#fff'), '#1f2937');
+  assert.strictEqual(f.getContrastTextColor('#000'), '#f8fafc');
+}
+console.log('colors ok');
