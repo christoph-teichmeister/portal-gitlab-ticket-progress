@@ -217,6 +217,11 @@ weil das zugehörige Ticket trotzdem geschätzt sein kann. Der echte GitLab-Tite
 die Schätzung daraus).
 
 - Schalter: Zahnrad → Anzeige → Board-Karten → „Schätzung als Badge“ (Standard an).
+- Unterpunkt „Schätzung aus dem Titel nehmen“ (Standard an): aus, bleibt `(3 SP)` zusätzlich zum Badge im Titel stehen,
+  z. B. für andere Scripte, die SP aus dem angezeigten Titel zusammenzählen.
+- Pro Board: Zahnrad → Dieses Board → „Schätzung als Badge auf diesem Board“. Aus für Boards ohne Schätzungen, dann
+  gibt es dort weder Badges noch rote `? SP`. Der globale Schalter zeigt dann einen Chip „aus auf N Boards“ bzw. „aus auf
+  diesem Board“ (Tooltip: welche Boards).
 - Muster: Zahnrad → Erweitert → „Schätzungs-Muster“ (mit Gültigkeitsanzeige). Eine Zeile pro Muster, `sp: <Regex>` oder `timebox: <Regex>`,
   Gruppe 1 ist die Zahl, Groß-/Kleinschreibung egal, das erste passende Muster gewinnt. Leeres Feld = Standard-Muster
   (wie der Issue-Syncer des Portals: `(n SP)`, `(Timebox: nh)`, `(Spike: nh)`, auch mit `[]`, ohne Doppelpunkt und

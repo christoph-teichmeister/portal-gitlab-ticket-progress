@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.10.40
+
+- Schätzungs-Badge pro Board abschaltbar: Zahnrad → Dieses Board → „Schätzung als Badge auf diesem Board“. Boards ohne
+  SP/Timeboxen zeigen dann kein rotes `? SP` mehr auf jeder Karte. Der globale Schalter unter Anzeige zeigt per Chip,
+  auf wie vielen Boards er überstimmt ist.
+- Neuer Unterpunkt „Schätzung aus dem Titel nehmen“ (Standard an): ausgeschaltet bleibt `(3 SP)` zusätzlich zum Badge im
+  Titel stehen, damit andere Scripte die SP weiter aus dem Titel zählen können.
+
 ## 2026.10.39
 
 - Aufgeräumt, ohne sichtbare Funktionsänderung: feste Stile (Fortschrittsbalken, Toast, Einstellungs-Panel, Tabs,

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.39
+// @version      2026.10.40
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.39';
+  const SCRIPT_VERSION = '2026.10.40';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -386,6 +386,7 @@
   const FEATURE_PARENTS = {
     portalButtons: 'progress',
     mrAvatars: 'mrBadge',
+    estimateStripTitle: 'estimateBadge',
     columnAvg: 'columnAge',
     issuePortalButtons: 'issueDetail',
     issueActions: 'issueDetail',
@@ -407,6 +408,8 @@
   // Default an; Unter-Features nur aktiv, wenn das Eltern-Feature aktiv ist
   function isFeatureOn(key) {
     if (!showEnabled) return false; // „Anzeigen" ist Hauptschalter für alles
+    // Board ohne Schätzungen (Tab „Dieses Board“): kein Badge, auch kein rotes „? SP“
+    if (key === 'estimateBadge' && currentScanContext && currentScanContext.projectSettings.estimateEnabled === false) return false;
     const parent = FEATURE_PARENTS[key];
     return features[key] !== false && (!parent || isFeatureOn(parent));
   }
@@ -1603,7 +1606,8 @@
       showEnabled: showEnabled,
       debugEnabled: debugEnabled,
       mrLinksEnabled: mrLinksEnabled,
-      ticketActions: (storedProjectConfig && storedProjectConfig.ticketActions) || ''
+      ticketActions: (storedProjectConfig && storedProjectConfig.ticketActions) || '',
+      estimateEnabled: !storedProjectConfig || storedProjectConfig.estimateEnabled !== false
     });
   }
 
@@ -3589,7 +3593,9 @@
       }
     }
     const existing = container.querySelector('.ambient-estimate-badge');
+    const stripTitle = isFeatureOn('estimateStripTitle');
     if (!textNode && (existing || !showMissing)) return;
+    if (!stripTitle && existing && existing.ambientTextNode === textNode) return; // Titel bleibt ungekürzt, Badge steht schon
     if (existing) existing.remove(); // GitLab hat den Text zurückgesetzt, nicht wiederherstellen
 
     const badge = createTextSpan(estimate ? estimate.label : '? SP', pinRight
@@ -3605,7 +3611,7 @@
     if (!textNode) return;
     badge.ambientTextNode = textNode;
     badge.dataset.ambientOriginal = textNode.data;
-    textNode.data = textNode.data.match(/^\s*/)[0] + estimate.cleanTitle; // führendes Leerzeichen nach einem Link bleibt
+    if (stripTitle) textNode.data = textNode.data.match(/^\s*/)[0] + estimate.cleanTitle; // führendes Leerzeichen nach einem Link bleibt
   }
 
   // Board-Karten laufen über scanBoard (nur aktive Spalten), hier Issue-Detail/-Drawer und MR-Seite
@@ -5348,6 +5354,7 @@
         tabPanels[k].style.display = selected ? 'flex' : 'none';
       });
       pinnedPreview.style.display = key === 'anzeige' ? 'block' : 'none';
+      if (key === 'anzeige' && previous && previous !== key) displayTab.refresh(); // Board-Overrides neu zählen
       if (previous && previous !== key) {
         const direction = keys.indexOf(key) > keys.indexOf(previous) ? 1 : -1;
         animateTabIn(tabPanels[key], direction);
@@ -5806,6 +5813,7 @@
       ['mrBadge', 'MR-Badge', 'Verknüpfte Merge Requests mit Status'],
       ['mrAvatars', 'Assignee- & Reviewer-Avatare', 'Wer am MR arbeitet und wer reviewt'],
       ['estimateBadge', 'Schätzung als Badge', '„(3 SP)“ oder „(Timebox: 4h)“ aus dem Titel wird ein Badge, auch in Ticket und MR'],
+      ['estimateStripTitle', 'Schätzung aus dem Titel nehmen', 'Aus: „(3 SP)“ bleibt zusätzlich im Titel stehen, z. B. für Scripte, die SP aus dem Titel zählen'],
       ['splitLabels', 'Geteilte Scoped Labels', 'workflow::Review zweifarbig darstellen, auch in Ticket und MR'],
       ['cardActions', 'Ticket-Aktionen-Menü', '⋮ im Karten-Footer mit deinen Ticket-Aktionen (Tab „Dieses Board“)']
     ]},
@@ -6225,6 +6233,7 @@
     mrBadge: '.ambient-mr-badge',
     mrAvatars: '.ambient-mr-badge img, .ambient-mr-reviewer-placeholder',
     estimateBadge: '.ambient-estimate-badge',
+    estimateStripTitle: '.ambient-estimate-badge',
     splitLabels: '.ambient-split-label',
     columnAge: '.ambient-column-age',
     columnAvg: '.ambient-column-avg',
@@ -6652,9 +6661,11 @@
 
     function refresh() {
       pausedNote.style.display = showEnabled ? 'none' : 'flex';
+      refreshEstimateOverrides();
       Object.keys(rows).forEach(function (key) {
         const parent = FEATURE_PARENTS[key];
-        setSettingDisabled(rows[key], !showEnabled || Boolean(parent && !isFeatureOn(parent)));
+        const boardOff = key === 'estimateBadge' && projectSettings && projectSettings.estimateEnabled === false;
+        setSettingDisabled(rows[key], !showEnabled || boardOff || Boolean(parent && !isFeatureOn(parent)));
       });
       groups.forEach(function (group) {
         const on = group.items.filter(function (item) {
@@ -6662,6 +6673,25 @@
         }).length;
         group.aside.textContent = on + ' von ' + group.items.length + ' an';
       });
+    }
+
+    // Chip am globalen Schalter, wenn Boards ihn im Tab „Dieses Board“ überstimmen
+    const estimateOverrideChip = createTextSpan('', CHIP_STYLES);
+    rows.estimateBadge.ambientLabel.parentNode.appendChild(estimateOverrideChip);
+
+    function refreshEstimateOverrides() {
+      const configs = readProjectConfigsState();
+      const currentKey = projectSettings && projectSettings.projectKey;
+      const offKeys = Object.keys(configs).filter(function (key) {
+        return configs[key] && configs[key].estimateEnabled === false;
+      });
+      estimateOverrideChip.style.display = offKeys.length ? '' : 'none';
+      estimateOverrideChip.textContent = offKeys.indexOf(currentKey) !== -1
+        ? 'aus auf diesem Board' + (offKeys.length > 1 ? ' +' + (offKeys.length - 1) : '')
+        : 'aus auf ' + offKeys.length + (offKeys.length === 1 ? ' Board' : ' Boards');
+      estimateOverrideChip.title = 'Abgeschaltet (Tab „Dieses Board“):\n' + offKeys.map(function (key) {
+        return key.split('|').pop() + (key === currentKey ? ' (dieses Board)' : '');
+      }).join('\n');
     }
 
     selectSubtab(activeDisplaySubtab);
@@ -6694,6 +6724,7 @@
     const config = createProjectConfigSection(projectSettings, onValuesChanged);
     const age = createAgeHighlightSection(projectSettings);
     panel.appendChild(config.portalCard);
+    panel.appendChild(createBoardEstimateSection(projectSettings));
     panel.appendChild(age.element);
     panel.appendChild(config.actionsCard);
 
@@ -6886,6 +6917,19 @@
     });
     onCountChanged(countOn());
     return panel;
+  }
+
+  // Pro Board: Boards ohne Schätzungen (z. B. Deli) bekommen sonst auf jeder Karte ein rotes „? SP“
+  function createBoardEstimateSection(projectSettings) {
+    const card = createPanelCard('Schätzungen');
+    const toggle = makeSwitch('Schätzung als Badge auf diesem Board', projectSettings.estimateEnabled !== false, function (value) {
+      projectSettings.estimateEnabled = value;
+      writeProjectConfigEntry(projectSettings.projectKey, {estimateEnabled: value});
+      applyExperimentChange();
+    }, {desc: 'Aus, wenn dieses Board keine SP/Timeboxen nutzt. Der globale Schalter liegt unter Anzeige → Board-Karten.'});
+    toggle.style.margin = '0 -1.1rem -1rem';
+    card.element.appendChild(toggle);
+    return card.element;
   }
 
   function createAgeHighlightSection(projectSettings) {

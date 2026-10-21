@@ -18,7 +18,7 @@ Tab, Escape schließt); jede Schalter-Zeile ist als Ganzes klickbar.
   Seite. Jedes eingeschaltete Element ist dadurch immer zu sehen. Ausgeschaltetes fehlt dort wie später auch; Hover oder Fokus auf einem
   Schalter umrandet sein Element. Je Gruppe ein Zähler „x von y an“.
   - *Board-Karte*: Board-Karten (Fortschrittsbalken mit Unterpunkt Portal- & Timesheet-Buttons, MR-Badge mit Unterpunkt
-    Assignee- & Reviewer-Avatare, Schätzung als Badge, Geteilte Scoped Labels, Ticket-Aktionen-Menü ⋮) und Verweildauer
+    Assignee- & Reviewer-Avatare, Schätzung als Badge mit Unterpunkt Schätzung aus dem Titel nehmen, Geteilte Scoped Labels, Ticket-Aktionen-Menü ⋮) und Verweildauer
     (Uhr im Karten-Footer mit Unterpunkt Median im Spalten-Header).
   - *Ticket*: Fortschrittsbalken mit Unterpunkten Portal- & Timesheet-Buttons und Ticket-Aktionen (Dropdown).
   - *Merge Request*: Fortschrittsbalken mit Unterpunkten Portal- & Timesheet-Buttons und Ticket-Aktionen (Buttons),
@@ -37,6 +37,8 @@ Tab, Escape schließt); jede Schalter-Zeile ist als Ganzes klickbar.
     Ist das Board noch nicht eingerichtet, öffnet das Panel direkt hier, der Tab trägt ein „!“, die beiden Felder sind
     nummeriert und die übrigen Karten gesperrt. Nach der Einrichtung: Schalter **Zweites Portal-Projekt** mit Feld
     und **Weitere Projekt-IDs** (Chip „alle Boards“, bis zu 3 zusätzliche Balken).
+  - *Schätzungen*: Schalter **Schätzung als Badge auf diesem Board** (Standard an). Aus für Boards ohne SP/Timeboxen,
+    sonst trägt jede Karte ein rotes `? SP`. Gilt pro Projekt, auch für Ticket- und MR-Seiten des Projekts.
   - *Liegezeit hervorheben* (`ambientProgressAgeHighlightLists`): ein Chip pro Label-Spalte des Boards. Nur in
     ausgewählten Spalten bekommen Tickets, die länger als der Spalten-Median dort liegen, einen roten Rahmen. Wird
     sofort pro Projektschlüssel gespeichert. Benötigt „Uhr im Karten-Footer“.
