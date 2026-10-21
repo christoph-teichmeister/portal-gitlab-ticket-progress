@@ -22,7 +22,8 @@ des Boards; die Einstellung gilt pro Board. Das frühere „zweite Portal-Projek
 - Fügt pro Board-Spalte einen Augen-Button in GitLabs Button-Gruppe (neben `+` und `⚙`) ein, mit dem du das Script
   für die Spalte ein- oder ausschaltest (Auge = an, durchgestrichenes Auge = aus). In eingeklappten Spalten blendet
   GitLab die Button-Gruppe samt Augen-Button aus. Die Auswahl wird lokal gespeichert (haftet an den Projekt-Keys) und aktiviert den
-  expliziten Modus, wenn du manuell eingreifst.
+  expliziten Modus, wenn du manuell eingreifst. In der Closed-Spalte wirkt das Auge nur auf Tickets, die in den
+  letzten 28 Tagen geschlossen wurden (einstellbar unter Dieses Board → Closed-Spalte, höchstens 40).
 - Fügt pro Board-Karte ein Overlay-Badge ein, das eine farbige Progressbar, `spent`/`remaining`-Labels (oder
   Over-/Booked-Hours-Fallback) sowie einen `↗`-Button zum entsprechenden Portal-Ticket enthält. Booked-Hours-Fallbacks
   nutzen einen deutlich blauen Balken, damit sie sich besser von den normalen Fortschrittsdaten abheben.

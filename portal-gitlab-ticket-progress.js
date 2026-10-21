@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.48
+// @version      2026.10.49
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.48';
+  const SCRIPT_VERSION = '2026.10.49';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -1477,7 +1477,8 @@
       portalBaseUrl,
       ticketActions: (storedProjectConfig && storedProjectConfig.ticketActions) || '',
       estimateEnabled: !storedProjectConfig || storedProjectConfig.estimateEnabled !== false,
-      portalWarning: !storedProjectConfig || storedProjectConfig.portalWarning !== false
+      portalWarning: !storedProjectConfig || storedProjectConfig.portalWarning !== false,
+      closedDays: clampClosedDays(storedProjectConfig && storedProjectConfig.closedDays)
     };
   }
 
@@ -2323,6 +2324,53 @@
     return memoPromise(labelEventsCache, projectPath + '#' + issueIid, COLUMN_AGE_CACHE_TTL_MS, function () {
       return glApi(projectPath, '/issues/' + issueIid + '/resource_label_events?per_page=100', 'Label-Events');
     });
+  }
+
+  // Closed-Spalte: nur Tickets, die in den letzten N Tagen geschlossen wurden (Standard 28, höchstens 40)
+  const CLOSED_DAYS_DEFAULT = 28;
+  const CLOSED_DAYS_MAX = 40;
+
+  function clampClosedDays(value) {
+    const days = Math.round(Number(value));
+    if (!days || days < 1) return CLOSED_DAYS_DEFAULT;
+    return Math.min(days, CLOSED_DAYS_MAX);
+  }
+
+  // GitLabs eingebaute Closed-Liste hat kein Label
+  function isClosedListHeader(header, listNameLower) {
+    return Boolean(header) && !header.querySelector(SEL.listTitleLabel) &&
+      (listNameLower === 'closed' || listNameLower === 'geschlossen');
+  }
+
+  const recentlyClosedCache = {}; // key: projectPath#Tage → {promise, timestamp}
+  const recentlyClosedIids = {}; // gleicher key → Set der IIDs, sobald geladen (bleibt bis zum nächsten Laden stehen)
+
+  // Synchron für scanBoard: null, solange noch nichts geladen ist; das Laden stößt danach einen Scan an
+  function getRecentlyClosedIids(projectSettings) {
+    const days = projectSettings.closedDays || CLOSED_DAYS_DEFAULT;
+    const key = projectSettings.projectPath + '#' + days;
+    memoPromise(recentlyClosedCache, key, COLUMN_AGE_CACHE_TTL_MS, function () {
+      const cutoff = Date.now() - days * 86400000;
+      const since = encodeURIComponent(new Date(cutoff).toISOString());
+      const iids = new Set();
+      // Kein closed_after in der API: geschlossen heißt auch aktualisiert, closed_at filtert den Rest
+      // ponytail: höchstens 3 Seiten à 100 – bei mehr als 300 geänderten geschlossenen Tickets fehlen die ältesten
+      function loadPage(page) {
+        return glApi(projectSettings.projectPath, '/issues?state=closed&order_by=updated_at&per_page=100&page=' + page +
+          '&updated_after=' + since, 'Geschlossene Tickets').then(function (issues) {
+          (issues || []).forEach(function (issue) {
+            if (Date.parse(issue.closed_at) >= cutoff) iids.add(String(issue.iid));
+          });
+          if (issues && issues.length === 100 && page < 3) return loadPage(page + 1);
+        });
+      }
+      return loadPage(1).then(function () {
+        recentlyClosedIids[key] = iids;
+        log('Closed-Spalte: ' + iids.size + ' Tickets der letzten ' + days + ' Tage');
+        if (rescanHook) rescanHook();
+      });
+    }).catch(function (err) { warn('Geschlossene Tickets nicht geladen:', err); });
+    return recentlyClosedIids[key] || null;
   }
 
   // Eintrittszeit pro Ticket+Spalte 30 min in localStorage halten
@@ -3648,13 +3696,17 @@
         avgElem.remove();
       }
 
+      // Closed-Spalte: Script nur auf kürzlich geschlossenen Karten (null = Liste lädt noch)
+      const isClosedList = isAllowed && isClosedListHeader(header, listNameLower);
+      const closedIids = isClosedList ? getRecentlyClosedIids(projectSettings) : null;
+
       const cards = boardListElem.querySelectorAll(SEL.boardCard);
       log('Liste #' + li + ' "' + displayListName + '" allowed: ' + isAllowed + ', Karten: ' + cards.length);
 
       for (let k = 0; k < cards.length; k++) {
         const cardElem = cards[k];
         const titleLink = isFeatureOn('estimateBadge') && cardElem.querySelector(SEL.cardTitleLink);
-        if (!isAllowed) {
+        if (!isAllowed || (isClosedList && !(closedIids && closedIids.has(getIssueIidFromCard(cardElem))))) {
           markCardSkipped(cardElem);
           // inaktive Spalten (z. B. Closed): SP-Badge ja, rotes „? SP" nein
           if (titleLink) applyEstimateBadge(titleLink, false, true);
@@ -3692,7 +3744,7 @@
         if (isFeatureOn('mrBadge')) {
           fetchAndDisplayMrInfo(projectSettings, issueIid, cardElem);
         }
-        if (isFeatureOn('columnAge')) {
+        if (isFeatureOn('columnAge') && !isClosedList) { // Liegezeit in Closed sagt nichts
           fetchAndDisplayColumnAge(projectSettings, issueIid, cardElem, columnLabelText);
         }
         if (isFeatureOn('cardActions')) injectCardActions(cardElem, issueIid, projectSettings);
@@ -6163,6 +6215,7 @@
     const age = createAgeHighlightSection(projectSettings);
     panel.appendChild(config.portalCard);
     panel.appendChild(createBoardEstimateSection(projectSettings));
+    panel.appendChild(createClosedDaysSection(projectSettings));
     panel.appendChild(age.element);
     panel.appendChild(config.actionsCard);
 
@@ -6367,6 +6420,31 @@
     }, {desc: 'Aus, wenn dieses Board keine SP/Timeboxen nutzt. Der globale Schalter liegt unter Anzeige → Board-Karten.'});
     toggle.style.margin = '0 -1.1rem -1rem';
     card.element.appendChild(toggle);
+    return card.element;
+  }
+
+  // Pro Board: wie weit die Closed-Spalte zurückschaut (wirkt nur, wenn ihr Auge an ist)
+  function createClosedDaysSection(projectSettings) {
+    const card = createPanelCard('Closed-Spalte');
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '1';
+    input.max = String(CLOSED_DAYS_MAX);
+    input.step = '1';
+    input.setAttribute('aria-label', 'Tage zurück in der Closed-Spalte');
+    input.className = FORM_INPUT_CLASSES;
+    applyStyles(input, EXPERIMENT_INPUT_STYLES);
+    input.value = String(projectSettings.closedDays || CLOSED_DAYS_DEFAULT);
+    input.addEventListener('change', function () {
+      const days = clampClosedDays(input.value);
+      input.value = String(days);
+      projectSettings.closedDays = days;
+      writeProjectConfigEntry(projectSettings.projectKey, {closedDays: days});
+      if (rescanHook) rescanHook();
+    });
+    card.element.appendChild(input);
+    card.element.appendChild(createTextSpan('Ist das Auge der Closed-Spalte an, läuft das Script nur auf Tickets, die in ' +
+      'so vielen Tagen geschlossen wurden (1–' + CLOSED_DAYS_MAX + ').', FIELD_HINT_STYLES));
     return card.element;
   }
 

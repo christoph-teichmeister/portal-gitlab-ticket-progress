@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.10.49
+
+- Closed-Spalte: Schaltest du ihr Auge an, läuft das Script nur auf Tickets, die in den letzten 28 Tagen geschlossen
+  wurden (Balken, MR-Badge, Ticket-Aktionen; keine Verweildauer-Uhr). Ältere Karten bekommen nur das SP-Badge.
+  Zeitraum pro Board einstellbar: Zahnrad → Dieses Board → „Closed-Spalte“ (1–40 Tage). Eine API-Abfrage pro Board,
+  5 Minuten zwischengespeichert.
+
 ## 2026.10.48
 
 - Ohne Portal-URL und Projekt-ID zeigen die Spalten kein Auge mehr (es hätte nichts zu schalten); das Gruppieren

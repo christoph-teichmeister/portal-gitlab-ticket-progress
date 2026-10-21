@@ -22,13 +22,13 @@ const names = ['parseVersionSegments', 'isRemoteVersionGreater', 'formatDuration
   'normalizeListNameForMatching', 'normalizeLabelNameForMatching', 'parseTicketActions', 'assigneeSortKey', 'planReorder',
   'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate', 'relativeLuminance',
   'parseCssColorToRgb', 'getContrastTextColor', 'formatBookedHoursDisplay', 'isNumericId',
-  'parseExtraProjectIds', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery'];
+  'parseExtraProjectIds', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays'];
 const isExp = function () { return false; };
 const patternsStart = source.indexOf('  const DEFAULT_ESTIMATE_PATTERNS');
 const defaultPatterns = source.slice(patternsStart, source.indexOf(';\n', patternsStart) + 1);
 const filterStart = source.indexOf('  const BOARD_FILTER_TO_API');
 const boardFilterMap = source.slice(filterStart, source.indexOf('};\n', filterStart) + 2);
-const code = 'const MAX_HOURS_VALUE = 100000; const COLUMN_BLIP_MS = 15 * 60 * 1000;\n' + defaultPatterns + '\n' + boardFilterMap + '\n' + names.map(extract).join('\n') + '\nreturn {DEFAULT_ESTIMATE_PATTERNS,' + names.join(',') + '};';
+const code = 'const CLOSED_DAYS_DEFAULT = 28; const CLOSED_DAYS_MAX = 40; const MAX_HOURS_VALUE = 100000; const COLUMN_BLIP_MS = 15 * 60 * 1000;\n' + defaultPatterns + '\n' + boardFilterMap + '\n' + names.map(extract).join('\n') + '\nreturn {DEFAULT_ESTIMATE_PATTERNS,' + names.join(',') + '};';
 const fn = new Function('isExp', 'expSetting', 'log', 'warn', 'error', code);
 const noop = function () {};
 const f = fn(isExp, function (key, fallback) { return fallback; }, noop, noop, noop);
@@ -36,6 +36,12 @@ const f = fn(isExp, function (key, fallback) { return fallback; }, noop, noop, n
 assert.strictEqual(f.isRemoteVersionGreater('2026.10.5', '2026.10.4'), true);
 assert.strictEqual(f.isRemoteVersionGreater('2026.10.4', '2026.10.4'), false);
 assert.strictEqual(f.isRemoteVersionGreater('2026.9.9', '2026.10.1'), false);
+
+assert.strictEqual(f.clampClosedDays(undefined), 28);
+assert.strictEqual(f.clampClosedDays('14'), 14);
+assert.strictEqual(f.clampClosedDays(99), 40);
+assert.strictEqual(f.clampClosedDays(0), 28);
+assert.strictEqual(f.clampClosedDays('abc'), 28);
 
 assert.strictEqual(f.formatDuration(30 * 60000), '30min');
 assert.strictEqual(f.formatDuration(5 * 3600000), '5h');
