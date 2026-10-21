@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.50
+
+- Closed-Spalte bekommt ihr Auge jetzt auch, wenn GitLab dort keine Button-Gruppe (`+`/`⚙`) zeichnet: das Script
+  setzt eine eigene neben den Zähler. Damit lässt sich die Closed-Ansicht aus 2026.10.49 überhaupt einschalten.
+
 ## 2026.10.49
 
 - Closed-Spalte: Schaltest du ihr Auge an, läuft das Script nur auf Tickets, die in den letzten 28 Tagen geschlossen
