@@ -37,6 +37,8 @@ Tab, Escape schließt); jede Schalter-Zeile ist als Ganzes klickbar.
     (kommagetrennt, bis zu 3 zusätzliche Balken für Tickets, die auch in anderen Portal-Projekten gebucht werden).
   - *Schätzungen*: Schalter **Schätzung als Badge auf diesem Board** (Standard an). Aus für Boards ohne SP/Timeboxen,
     sonst trägt jede Karte ein rotes `? SP`. Gilt pro Projekt, auch für Ticket- und MR-Seiten des Projekts.
+  - *Closed-Spalte*: Zahl der Tage (Standard 28, höchstens 40). Ist das Auge der Closed-Spalte an, läuft das Script
+    dort nur auf Tickets, die in diesem Zeitraum geschlossen wurden (`closed_at`); ohne Verweildauer-Uhr.
   - *Liegezeit hervorheben* (`ambientProgressAgeHighlightLists`): ein Chip pro Label-Spalte des Boards. Nur in
     ausgewählten Spalten bekommen Tickets, die länger als der Spalten-Median dort liegen, einen roten Rahmen. Wird
     sofort pro Projektschlüssel gespeichert. Benötigt „Uhr im Karten-Footer“.
