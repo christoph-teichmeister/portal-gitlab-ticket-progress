@@ -8,6 +8,8 @@
 - Hintergrund- und Textfarbe der Toolbar und des Panels kommen aus GitLabs CSS-Variablen; ein Theme-Wechsel baut die
   Toolbar nicht mehr neu auf. Die Dark-Mode-Erkennung wird gecacht statt für jede Karte neu berechnet.
 - Füll-Animation und Hover des Fortschrittsbalkens laufen per CSS statt per JavaScript-Listener pro Karte.
+- Fix: Der Balken auf der MR-Seite wird ab 80 % verbrauchter Stunden gelb, wie auf dem Board und im Ticket-Detail
+  (blieb dort grün).
 
 ## 2026.10.38
 

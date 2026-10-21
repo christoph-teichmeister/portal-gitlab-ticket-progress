@@ -1375,6 +1375,7 @@
       barBackground: barBackground,
       textColor: textColor,
       styles: {
+        warnPct: WARN_PCT, // für alle Balken (Karte, Ticket, MR) gleich
         bar: barStyle,
         textLayer: {color: textColor},
         spentLabel: Object.assign({}, labelBase),
@@ -2274,7 +2275,6 @@
     });
     container.style.color = theme.textColor;
     theme.styles.animate = animateFill;
-    theme.styles.warnPct = WARN_PCT;
     const loadedAt = Number(cardElem.getAttribute('data-ambient-loaded-at'));
 
     if (progressData && progressData2) {
@@ -4806,7 +4806,6 @@
     const theme = getThemeAwareBarStyles({
       barOverrides: {flex: '1 1 auto', minWidth: '0'}
     });
-    theme.styles.warnPct = WARN_PCT;
     const textColor = theme.textColor;
     let container = detailWrapperElem.querySelector('.ambient-progress-detail-badge');
     if (!container) {
