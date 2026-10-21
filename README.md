@@ -34,15 +34,15 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    wählen, aber **nicht** „alle Domains“.
 5. Die `@updateURL`/`@downloadURL` im Skriptkopf halten alles automatisch aktuell – nach der einmaligen Installation
    liefert Tampermonkey neue Versionen direkt aus diesem Repo.
-6. Über das Zahnrad rechts in der Breadcrumb-Zeile öffnest du das Einstellungs-Seitenpanel (Anzeige, einzelne
-   Features, Debug). Daneben sitzen die MR-Buttons „R“ und „A“; Debug ist standardmäßig aus,
+6. Über das Zahnrad rechts in der Breadcrumb-Zeile öffnest du das Einstellungs-Seitenpanel (Tabs Anzeige,
+   Dieses Board, Erweitert, Experimente). Daneben sitzen die MR-Buttons „R“ und „A“; Debug ist standardmäßig aus,
    die Anzeige (Badges) standardmäßig an. Änderungen gelten sofort, einen Speichern-Button gibt es nicht.
-7. Klicke auf das Zahnrad, um die „Projekt-Konfiguration“ zu öffnen, und trage dort die
-   Portal-Base-URL ein (z. B. `https://user-portal.arbeitgeber.com`). Erlaubt ist nur `https://` ohne
+7. Klicke auf das Zahnrad: Auf einem noch nicht eingerichteten Board öffnet es direkt den Tab „Dieses Board“.
+   Trag dort die Portal-URL und die Portal-Projekt-ID ein (z. B. `https://user-portal.arbeitgeber.com`). Erlaubt ist nur `https://` ohne
    Benutzername/Passwort; Query und Fragment werden verworfen. Die Eingabe wird automatisch gespeichert (das Feld
    leuchtet kurz grün) und ausschließlich lokal im Browser abgelegt (per Projekt). Du musst sie nur einmal hinterlegen.
-8. Wenn die Portal-Base-URL fehlt, blendet das Script einen kleinen Toast von oben rechts ein („Portal-Base URL fehlt –
-   ⚙ → Projekt-Konfiguration öffnen und eintragen.”). Nach fünf Sekunden verschwindet der Hinweis wieder; du kannst
+8. Wenn die Portal-Base-URL fehlt, blendet das Script einen kleinen Toast von oben rechts ein („Portal-URL fehlt –
+   Zahnrad → „Dieses Board“ öffnen und eintragen.”). Nach fünf Sekunden verschwindet der Hinweis wieder; du kannst
    ihn bei Bedarf erneut triggern, indem du das Zahnrad öffnest.
 
 ## Ticket-Aktionen im MR
@@ -88,14 +88,14 @@ Weitere Details zur Nutzung und Konfiguration:
 - Lokal im Browser (`localStorage` der GitLab-Seite) liegen: Portal-Base-URL und Projekt-IDs, Ticket-Aktionen,
   Spaltenauswahl, Feature-Schalter sowie ein Cache der gebuchten Stunden pro Ticket (1 Stunde, „keine Buchungen“
   10 Minuten). Andere Scripts/Erweiterungen auf derselben GitLab-Seite könnten diese Daten lesen.
-- Unter Zahnrad → Globale Einstellungen → Erweitert lassen sich alle lokalen Daten löschen sowie Konfiguration
+- Unter Zahnrad → Erweitert lassen sich alle lokalen Daten löschen (Gefahrenzone) sowie Konfiguration
   exportieren/importieren, der Selektor-Selbsttest ausführen und Debug-Infos (ohne Portal-URL) kopieren.
 - Updates kommen vom `main`-Branch auf GitHub. Wer mehr Kontrolle möchte, kann die `@updateURL`/`@downloadURL` auf
   einen Release-Tag (`refs/tags/<version>`) pinnen; siehe [Sicherheitsaspekte](docs/SECURITY.md).
 
 ## Bedienung, Barrierefreiheit & Sprache
 
-- Das Einstellungs-Panel ist per Tastatur bedienbar (Tab, Escape schließt und setzt den Fokus aufs Zahnrad); Schalter
+- Das Einstellungs-Panel ist per Tastatur bedienbar (Tab, Pfeiltasten wechseln die Tabs, Escape schließt und setzt den Fokus aufs Zahnrad); Schalter
   haben einen sichtbaren Fokusring, Fortschrittsbalken eine Textalternative. Animationen respektieren
   `prefers-reduced-motion`.
 - Die Oberfläche ist auf Deutsch; Datumsangaben folgen der Sprache der GitLab-Seite. GitLab-Begriffe wie

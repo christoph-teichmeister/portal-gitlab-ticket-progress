@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.36
+// @version      2026.10.37
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.36';
+  const SCRIPT_VERSION = '2026.10.37';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -152,16 +152,12 @@
       '.board-card-title:has(.ambient-estimate-badge){flex-grow:1}' +
       // Hover für das MR-Badge: Fläche per box-shadow vergrößert, damit sich das Layout nicht verschiebt
       '.ambient-mr-badge:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.22));box-shadow:0 0 0 3px var(--gl-background-color-strong,rgba(128,128,128,.22));border-radius:4px;text-decoration:underline !important}' +
-      // Einstellungs-Panel: eigene Chevrons statt Browser-Dreieck, Zeilen-Hover, Karten-Optik
-      '#ambient-progress-settings summary{list-style:none}' +
+      // Einstellungs-Panel: Trennlinien zwischen Zeilen einer Karte, Zeilen- und Tab-Hover
       '#ambient-progress-settings [role=alert]:empty{display:none}' +
-      '#ambient-progress-settings summary::-webkit-details-marker{display:none}' +
-      '#ambient-progress-settings .ambient-chevron-left::before{content:"▸";display:inline-block;width:1.1em;opacity:.7}' +
-      '#ambient-progress-settings details[open]>.ambient-chevron-left::before{content:"▾"}' +
-      '#ambient-progress-settings .ambient-chevron-right::after{content:"▸";opacity:.7;margin-left:auto;padding-left:.75rem}' +
-      '#ambient-progress-settings details[open]>.ambient-chevron-right::after{content:"▾"}' +
+      '#ambient-progress-settings .ambient-setting-list>*+*:not(.ambient-row-extra){border-top:1px solid var(--gl-border-color-default,#4c4b51)}' +
       '#ambient-progress-settings .ambient-switch-row:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
-      '#ambient-progress-settings .ambient-card>summary:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.1))}' +
+      '#ambient-progress-settings .ambient-tab:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
+      '#ambient-progress-settings code{padding:0.1rem 0.4rem;border-radius:4px;background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
       '.ambient-sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}' +
       '.ambient-skeleton{border-radius:999px;animation:ambient-pulse 1.2s ease-in-out infinite}' +
       '@keyframes ambient-pulse{50%{opacity:.35}}' +
@@ -338,7 +334,15 @@
   // Globale Feature-Schalter (gelten für alle Boards). show/debug/mrLinks liegen ebenfalls hier,
   // fehlen sie, gilt der alte projektbezogene Wert (Migration in init).
   const LS_KEY_FEATURES = 'ambientProgressFeatures';
-  const FEATURE_PARENTS = {portalButtons: 'progress', mrAvatars: 'mrBadge', columnAvg: 'columnAge'};
+  const FEATURE_PARENTS = {
+    portalButtons: 'progress',
+    mrAvatars: 'mrBadge',
+    columnAvg: 'columnAge',
+    issuePortalButtons: 'issueDetail',
+    issueActions: 'issueDetail',
+    mrPortalButtons: 'mrPageProgress',
+    mrActions: 'mrPageProgress'
+  };
   let features = readFeatures();
 
   function readFeatures() {
@@ -358,17 +362,17 @@
     return features[key] !== false && (!parent || isFeatureOn(parent));
   }
 
-  // Experimente (noch nicht übernommene Ideen, standardmäßig aus) unter Zahnrad → Globale Einstellungen → Erweitert →
-  // Experimente. Im selben Objekt liegen auch dauerhafte Einstellungen (Sprache, weitere Portal-Projekt-IDs).
+  // Experimente (noch nicht übernommene Ideen, standardmäßig aus) unter Zahnrad → Tab Experimente,
+  // [Schlüssel, Label, Beschreibung]. Im selben Objekt liegen auch dauerhafte Einstellungen (Sprache, weitere Portal-Projekt-IDs).
   const LS_KEY_EXPERIMENTS = 'ambientProgressExperiments';
   const LS_KEY_ENTERED_AT = 'ambientProgressEnteredAt';
   const LS_KEY_SELFTEST_VERSION = 'ambientProgressSelftestVersion';
   const EXPERIMENT_MENU = [
     {title: 'Merge Requests', items: [
-      ['expMrPipeline', 'Pipeline-Status am MR-Badge']
+      ['expMrPipeline', 'Pipeline-Status am MR-Badge', 'Farbiger Punkt für den letzten Pipeline-Lauf']
     ]},
     {title: 'Betrieb', items: [
-      ['expConfigLink', 'Konfiguration als Link teilen / aus Link übernehmen']
+      ['expConfigLink', 'Konfiguration als Link teilen', 'Board-Setup per Link weitergeben, Empfänger bestätigt vor dem Übernehmen']
     ]}
   ];
   let experiments = readExperiments();
@@ -395,24 +399,26 @@
 
   // Teil-Übersetzung (expEnglish): nur Texte, die hier stehen; alles andere bleibt Deutsch
   const EN_TEXTS = {
-    'Karten': 'Cards',
-    'Spalten': 'Columns',
-    'Andere Ansichten': 'Other views',
-    'Progress-Bar (Portal)': 'Progress bar (portal)',
+    'Board-Karten': 'Board cards',
+    'Verweildauer': 'Time in column',
+    'Fortschrittsbalken': 'Progress bar',
     'Portal- & Timesheet-Buttons': 'Portal & timesheet buttons',
     'MR-Badge': 'MR badge',
-    'Assignee-/Reviewer-Avatare': 'Assignee/reviewer avatars',
-    'Verweildauer (Uhr im Footer)': 'Time in column (clock in footer)',
-    'Scoped Labels (::) als Split-Label': 'Scoped labels (::) as split label',
-    'Schätzung als Badge am Titel': 'Estimate as badge next to title',
-    'Median-Verweildauer im Header': 'Median time in column in header',
-    'Progress im Issue-Detail': 'Progress in issue detail',
-    'Progress im MR': 'Progress in MR',
-    'Ticket-Assignee-Buttons im MR': 'Ticket assignee buttons in MR',
-    'MR-Buttons in der Topbar': 'MR buttons in top bar',
-    'Globale Einstellungen': 'Global settings',
-    'Gelten für alle Boards': 'Apply to all boards',
+    'Assignee- & Reviewer-Avatare': 'Assignee & reviewer avatars',
+    'Schätzung als Badge': 'Estimate badge',
+    'Geteilte Scoped Labels': 'Split scoped labels',
+    'Uhr im Karten-Footer': 'Clock in card footer',
+    'Median im Spalten-Header': 'Median in column header',
+    'Fortschritt im Ticket': 'Progress in ticket',
+    'Fortschritt im Merge Request': 'Progress in merge request',
+    'Ticket-Assignee-Buttons': 'Ticket assignee buttons',
+    'MR-Schnellzugriff': 'MR quick access',
+    'Anzeige': 'Display',
+    'Dieses Board': 'This board',
     'Erweitert': 'Advanced',
+    'Experimente': 'Experiments',
+    'Aktiv': 'Active',
+    'Pausiert': 'Paused',
     'Nicht gefunden': 'Not found',
     'Portal: nicht gefunden': 'Portal: not found',
     'Im Portal öffnen': 'Open in portal',
@@ -548,7 +554,7 @@
     }
     lastPortalWarningAt = now;
     showToast({
-      text: 'Portal-Base URL fehlt oder ist ungültig (nur https) -> Projekt-Konfiguration öffnen und' +
+      text: 'Portal-URL fehlt oder ist ungültig (nur https) -> Zahnrad → „Dieses Board“ öffnen und' +
         ' eintragen.',
       variant: 'warning'
     });
@@ -1524,13 +1530,14 @@
     return button;
   }
 
-  function createPortalLinkButton(url, overrides) {
-    if (!url || !isFeatureOn('portalButtons')) return null;
+  // featureKey: welcher Schalter die Buttons hier steuert (Karte, Ticket oder MR)
+  function createPortalLinkButton(url, overrides, featureKey) {
+    if (!url || !isFeatureOn(featureKey || 'portalButtons')) return null;
     return createProgressIconButton(EXTERNAL_LINK_ICON_SVG, t('Im Portal öffnen'), 'Ticket im Portal öffnen', url, overrides);
   }
 
-  function createTimesheetButton(url, overrides) {
-    if (!url || !isFeatureOn('portalButtons')) return null;
+  function createTimesheetButton(url, overrides, featureKey) {
+    if (!url || !isFeatureOn(featureKey || 'portalButtons')) return null;
     return createProgressIconButton(TIMESHEET_ICON_SVG, t('Timesheet erstellen'), 'Timesheet im Portal erstellen', url, overrides);
   }
 
@@ -3035,6 +3042,7 @@
 
   // Für asynchron zurückkommende Requests: Spalte inzwischen ausgeschaltet → nichts mehr einfügen
   function isCardInActiveColumn(cardElem) {
+    if (cardElem.ambientPreview) return showEnabled; // Karte der Einstellungs-Vorschau
     if (!showEnabled || !cardElem.isConnected) return false;
     const boardListElem = cardElem.closest(SEL.boardList);
     const header = boardListElem && getBoardListHeaderElement(boardListElem);
@@ -4236,7 +4244,7 @@
         if (isFeatureOn('columnAge')) {
           fetchAndDisplayColumnAge(projectSettings, issueIid, cardElem, columnLabelText);
         }
-        injectCardActions(cardElem, issueIid, projectSettings);
+        if (isFeatureOn('cardActions')) injectCardActions(cardElem, issueIid, projectSettings);
 
         if (!isFeatureOn('progress')) {
           cardElem.setAttribute('data-ambient-progress-processed', '1');
@@ -4452,6 +4460,7 @@
     if (!actions.length || !issueIid) return null;
 
     const row = document.createElement('div');
+    row.className = 'ambient-ticket-actions-row';
     applyStyles(row, {
       display: 'flex',
       gap: '0.35rem',
@@ -4700,7 +4709,7 @@
       width: '100%'
     });
 
-    const tsButton = createTimesheetButton(timesheetUrl);
+    const tsButton = createTimesheetButton(timesheetUrl, null, 'mrPortalButtons');
     if (tsButton) {
       row.appendChild(tsButton);
     }
@@ -4710,7 +4719,7 @@
       row.appendChild(barOuter);
     }
 
-    const portalButton = createPortalLinkButton(portalUrl);
+    const portalButton = createPortalLinkButton(portalUrl, null, 'mrPortalButtons');
     if (portalButton) {
       row.appendChild(portalButton);
     }
@@ -4719,7 +4728,7 @@
       container.appendChild(row);
     }
 
-    const actionsRow = createTicketActionsRow(projectSettings, issueIid);
+    const actionsRow = isFeatureOn('mrActions') && createTicketActionsRow(projectSettings, issueIid);
     if (actionsRow) {
       container.appendChild(actionsRow);
     }
@@ -4850,38 +4859,34 @@
     });
   }
 
-  function injectIssueAssigneeBlock(assigneeBlock, projectPath, issueIid) {
-    const parent = assigneeBlock.parentElement;
-    if (!parent || !projectPath || !issueIid) return;
+  function createTicketAssigneeContainer() {
+    const container = document.createElement('div');
+    container.className = 'ambient-ticket-assignee-badge';
+    applyStyles(container, {
+      padding: '0.5rem 0',
+      borderBottomStyle: 'solid',
+      borderBottomWidth: '1px',
+      borderColor: 'var(--gl-border-color-subtle)',
+      background: getGitLabWindowBackgroundColor(true),
+      fontSize: '12px',
+      display: 'flex',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: '0.4rem'
+    });
+    return container;
+  }
 
-    let container = parent.querySelector('.ambient-ticket-assignee-badge');
-    if (!container) {
-      container = document.createElement('div');
-      container.className = 'ambient-ticket-assignee-badge';
-      const windowBackground = getGitLabWindowBackgroundColor(true);
-      applyStyles(container, {
-        padding: '0.5rem 0',
-        borderBottomStyle: 'solid',
-        borderBottomWidth: '1px',
-        borderColor: 'var(--gl-border-color-subtle)',
-        background: windowBackground,
-        fontSize: '12px',
-        display: 'flex',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '0.4rem'
-      });
-      parent.insertBefore(container, assigneeBlock);
-    }
+  // Inhalt des Ticket-Assignee-Blocks: data = {status} (Laden/Fehler) oder {assignees, mrInfo}.
+  // Auch die Einstellungs-Vorschau nutzt das mit Beispieldaten, damit sie genau wie die MR-Seite aussieht.
+  function renderTicketAssigneeBlock(container, data, onAssign) {
     container.innerHTML = '';
-
     const label = document.createElement('span');
     label.textContent = 'Ticket-Assignee:';
     applyStyles(label, {fontWeight: '600', opacity: '0.8'});
     container.appendChild(label);
 
     const currentWrap = document.createElement('span');
-    currentWrap.textContent = 'Lädt…';
     applyStyles(currentWrap, {display: 'inline-flex', alignItems: 'center', gap: '0.25rem'});
     container.appendChild(currentWrap);
 
@@ -4889,10 +4894,35 @@
     applyStyles(quickActionsWrap, {display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem'});
     container.appendChild(quickActionsWrap);
 
-    parent.dataset.ambientTicketAssigneeIid = issueIid;
+    if (data.status) {
+      currentWrap.textContent = data.status;
+      return;
+    }
 
-    function renderQuickActionButton(user, label, currentId) {
-      if (!user || user.id === currentId) return;
+    const assignees = data.assignees;
+    const currentId = assignees[0] ? assignees[0].id : null;
+    if (assignees.length) {
+      const avatar = document.createElement('img');
+      avatar.src = assignees[0].avatar_url;
+      avatar.alt = assignees[0].name;
+      applyStyles(avatar, {width: '16px', height: '16px', borderRadius: '50%'});
+      currentWrap.appendChild(avatar);
+      const name = document.createElement('span');
+      name.textContent = assignees[0].name;
+      currentWrap.appendChild(name);
+    } else {
+      currentWrap.textContent = 'Niemand zugewiesen';
+    }
+
+    const shownIds = {};
+    [
+      [data.mrInfo.assignee, 'MR-Assignee zuweisen'],
+      [data.mrInfo.author, 'MR-Author zuweisen'],
+      [data.mrInfo.reviewer, 'MR-Reviewer zuweisen']
+    ].forEach(function (entry) {
+      const user = entry[0];
+      if (!user || shownIds[user.id] || user.id === currentId) return;
+      shownIds[user.id] = true;
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'ambient-btn btn gl-button btn-default btn-sm';
@@ -4905,30 +4935,36 @@
       button.appendChild(avatar);
 
       const text = document.createElement('span');
-      text.textContent = label + ': ' + user.name;
+      text.textContent = entry[1] + ': ' + user.name;
       applyStyles(text, {fontSize: '11px'});
       button.appendChild(text);
 
-      button.addEventListener(
-        'click',
-        function (ev) {
-          ev.stopPropagation();
-          ev.preventDefault();
-          button.disabled = true;
-          updateIssueAssignee(projectPath, issueIid, user.id)
-            .then(function () {
-              injectIssueAssigneeBlock(assigneeBlock, projectPath, issueIid);
-            })
-            .catch(function (err) {
-              button.disabled = false;
-              error('Konnte Ticket-Assignee nicht aktualisieren für Issue', issueIid, err);
-            });
-        },
-        true
-      );
-
+      if (onAssign) {
+        button.addEventListener(
+          'click',
+          function (ev) {
+            ev.stopPropagation();
+            ev.preventDefault();
+            onAssign(user, button);
+          },
+          true
+        );
+      }
       quickActionsWrap.appendChild(button);
+    });
+  }
+
+  function injectIssueAssigneeBlock(assigneeBlock, projectPath, issueIid) {
+    const parent = assigneeBlock.parentElement;
+    if (!parent || !projectPath || !issueIid) return;
+
+    let container = parent.querySelector('.ambient-ticket-assignee-badge');
+    if (!container) {
+      container = createTicketAssigneeContainer();
+      parent.insertBefore(container, assigneeBlock);
     }
+    parent.dataset.ambientTicketAssigneeIid = issueIid;
+    renderTicketAssigneeBlock(container, {status: 'Lädt…'});
 
     const mrIid = getMrIidFromLocation();
 
@@ -4939,39 +4975,21 @@
         : Promise.resolve({author: null, assignee: null, reviewer: null})
     ])
       .then(function (results) {
-        const assignees = results[0];
-        const mrInfo = results[1];
-        const currentId = assignees[0] ? assignees[0].id : null;
-
-        currentWrap.innerHTML = '';
-        if (assignees.length) {
-          const avatar = document.createElement('img');
-          avatar.src = assignees[0].avatar_url;
-          avatar.alt = assignees[0].name;
-          applyStyles(avatar, {width: '16px', height: '16px', borderRadius: '50%'});
-          currentWrap.appendChild(avatar);
-          const name = document.createElement('span');
-          name.textContent = assignees[0].name;
-          currentWrap.appendChild(name);
-        } else {
-          currentWrap.textContent = 'Niemand zugewiesen';
-        }
-
-        const shownIds = {};
-        [
-          [mrInfo.assignee, 'MR-Assignee zuweisen'],
-          [mrInfo.author, 'MR-Author zuweisen'],
-          [mrInfo.reviewer, 'MR-Reviewer zuweisen']
-        ].forEach(function (entry) {
-          const user = entry[0];
-          if (!user || shownIds[user.id]) return;
-          shownIds[user.id] = true;
-          renderQuickActionButton(user, entry[1], currentId);
+        renderTicketAssigneeBlock(container, {assignees: results[0], mrInfo: results[1]}, function (user, button) {
+          button.disabled = true;
+          updateIssueAssignee(projectPath, issueIid, user.id)
+            .then(function () {
+              injectIssueAssigneeBlock(assigneeBlock, projectPath, issueIid);
+            })
+            .catch(function (err) {
+              button.disabled = false;
+              error('Konnte Ticket-Assignee nicht aktualisieren für Issue', issueIid, err);
+            });
         });
       })
       .catch(function (err) {
         error('Konnte Ticket-Assignee-Infos nicht laden für Issue', issueIid, err);
-        currentWrap.textContent = 'Fehler beim Laden';
+        renderTicketAssigneeBlock(container, {status: 'Fehler beim Laden'});
       });
   }
 
@@ -5123,7 +5141,8 @@
     detailWrapperElem.dataset.ambientProgressIssueIid = issueIid;
   }
 
-  function injectProgressIntoIssueDetail(detailWrapperElem, progressData, portalUrl, timesheetUrl, issueIid) {
+  // settingsOverride: nur die Einstellungs-Vorschau (Beispiel-Ticket-Aktionen)
+  function injectProgressIntoIssueDetail(detailWrapperElem, progressData, portalUrl, timesheetUrl, issueIid, settingsOverride) {
     if (!detailWrapperElem || !progressData) return;
 
     const windowBackground = getGitLabWindowBackgroundColor(true);
@@ -5166,7 +5185,7 @@
       width: '100%'
     });
 
-    const tsButton = createTimesheetButton(timesheetUrl);
+    const tsButton = createTimesheetButton(timesheetUrl, null, 'issuePortalButtons');
     if (tsButton) {
       row.appendChild(tsButton);
     }
@@ -5176,7 +5195,7 @@
       row.appendChild(barOuter);
     }
 
-    const portalButton = createPortalLinkButton(portalUrl);
+    const portalButton = createPortalLinkButton(portalUrl, null, 'issuePortalButtons');
     if (portalButton) {
       row.appendChild(portalButton);
     }
@@ -5185,8 +5204,9 @@
       container.appendChild(row);
     }
 
-    if (issueIid && currentScanContext) {
-      const dropdown = createTicketActionsDropdown(currentScanContext.projectSettings, issueIid, true);
+    const actionSettings = settingsOverride || (currentScanContext && currentScanContext.projectSettings);
+    if (issueIid && actionSettings && isFeatureOn('issueActions')) {
+      const dropdown = createTicketActionsDropdown(actionSettings, issueIid, true);
       if (dropdown) {
         applyStyles(dropdown, {marginTop: '0.5rem'});
         container.appendChild(dropdown);
@@ -5316,32 +5336,47 @@
 
   let switchIdCounter = 0;
 
-  function makeSwitch(labelText, checked, onChange) {
+  // Ganze Zeile ist ein <label>: Klick irgendwo schaltet um, die Checkbox (role=switch) trägt Zustand und Fokus.
+  // options: desc (zweite Zeile), where (Chip hinter dem Label), child (Unter-Feature, eingerückt), compact (Pill im Kopf)
+  function makeSwitch(labelText, checked, onChange, options) {
+    const opts = options || {};
     switchIdCounter += 1;
     const labelId = 'ambient-switch-label-' + switchIdCounter;
-    const wrapper = document.createElement('div');
+    const wrapper = document.createElement('label');
     wrapper.className = 'ambient-switch-row';
     applyStyles(wrapper, {
       display: 'flex',
       alignItems: 'center',
-      gap: '0.75rem',
+      gap: opts.compact ? '0.6rem' : '0.75rem',
       cursor: 'pointer',
-      padding: '0.4rem 0.6rem',
-      borderRadius: '6px'
+      margin: '0',
+      padding: opts.compact ? '0.3rem 0.5rem 0.3rem 0.8rem' : '0.6rem 1rem',
+      minHeight: opts.compact ? '36px' : '52px',
+      boxSizing: 'border-box',
+      fontWeight: '400'
     });
+    if (opts.compact) {
+      applyStyles(wrapper, {borderRadius: '999px', border: SETTINGS_BORDER});
+    }
 
-    const labelSpan = document.createElement('span');
+    if (opts.child) {
+      const elbow = document.createElement('span');
+      elbow.setAttribute('aria-hidden', 'true');
+      // ↳-Pfeil; fill per style, weil GitLabs CSS SVGs sonst flächig füllt
+      elbow.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" style="fill:none;stroke:currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path style="fill:none" d="M3 2v5a3 3 0 0 0 3 3h7M10 7l3 3-3 3"/></svg>';
+      applyStyles(elbow, {display: 'flex', flex: '0 0 auto', opacity: '0.6', marginTop: '-0.9rem'});
+      wrapper.appendChild(elbow);
+    }
+
+    const text = createRowText(labelText, opts.desc, opts.where);
+    const labelSpan = text.firstChild.firstChild;
     labelSpan.id = labelId;
-    labelSpan.textContent = labelText;
-    applyStyles(labelSpan, {
-      fontWeight: '400',
-      flex: '1 1 auto'
-    });
+    wrapper.ambientLabel = labelSpan;
 
     const switchWrapper = document.createElement('div');
     applyStyles(switchWrapper, {
       position: 'relative',
-      width: '38px',
+      width: '36px',
       height: '20px',
       flex: '0 0 auto'
     });
@@ -5355,7 +5390,6 @@
       right: '0',
       bottom: '0',
       borderRadius: '999px',
-      background: checked ? '#4ade80' : '#4b5563',
       transition: 'background 0.2s ease'
     });
 
@@ -5368,8 +5402,7 @@
       borderRadius: '50%',
       background: '#ffffff',
       boxShadow: '0 1px 2px rgba(0,0,0,0.35)',
-      transition: 'left 0.2s ease',
-      left: checked ? 'calc(100% - 18px)' : '2px'
+      transition: 'left 0.2s ease'
     });
 
     slider.appendChild(knob);
@@ -5379,6 +5412,10 @@
     checkbox.className = 'ambient-switch-input';
     checkbox.setAttribute('role', 'switch');
     checkbox.setAttribute('aria-labelledby', labelId);
+    if (opts.desc) {
+      text.lastChild.id = labelId + '-desc';
+      checkbox.setAttribute('aria-describedby', text.lastChild.id);
+    }
     checkbox.checked = checked;
     applyStyles(checkbox, {
       position: 'absolute',
@@ -5391,12 +5428,11 @@
     });
 
     function updateAppearance(val) {
-      applyStyles(slider, {
-        background: val ? '#4ade80' : '#4b5563'
-      });
+      slider.style.background = val ? SETTINGS_ACCENT : '#89888d';
       knob.style.left = val ? 'calc(100% - 18px)' : '2px';
     }
 
+    updateAppearance(checked);
     checkbox.addEventListener('change', function () {
       updateAppearance(checkbox.checked);
       onChange(checkbox.checked);
@@ -5406,7 +5442,7 @@
     switchWrapper.appendChild(checkbox);
     switchWrapper.appendChild(slider);
 
-    wrapper.appendChild(labelSpan);
+    wrapper.appendChild(text);
     wrapper.appendChild(switchWrapper);
     return wrapper;
   }
@@ -5450,7 +5486,7 @@
 
     let refreshAgeHighlightSection = null;
 
-    const showToggle = makeSwitch('Anzeigen', showEnabled, function (val) {
+    const showToggle = makeSwitch(showEnabled ? t('Aktiv') : t('Pausiert'), showEnabled, function (val) {
       showEnabled = val;
       saveFeature('show', showEnabled);
       log('Anzeigen geändert auf:', showEnabled);
@@ -5461,26 +5497,10 @@
         if (existingMrLinks) existingMrLinks.remove();
       }
       // entfernt alle Injektionen; Scans fügen bei „aus" nichts mehr ein
-      rerenderFeatures();
-    });
-
-    const debugToggle = makeSwitch('Debug', debugEnabled, function (val) {
-      debugEnabled = val;
-      saveFeature('debug', debugEnabled);
-      console.log(LOG_PREFIX, 'Debug geändert auf:', debugEnabled);
-    });
-
-    const mrLinksToggle = makeSwitch('MR Buttons anzeigen', mrLinksEnabled, function (val) {
-      mrLinksEnabled = val;
-      saveFeature('mrLinks', mrLinksEnabled);
-      log('MR-Buttons geändert auf:', mrLinksEnabled);
-      if (mrLinksEnabled) {
-        createMrLinksBar();
-      } else {
-        const existingMrLinks = document.getElementById('js-my-mr-links');
-        if (existingMrLinks) existingMrLinks.remove();
-      }
-    });
+      scheduleRerender();
+      showToggle.ambientLabel.textContent = showEnabled ? t('Aktiv') : t('Pausiert');
+      displayTab.refresh();
+    }, {compact: true});
 
     // Alle Injektionen entfernen und neu scannen – Daten kommen aus den Caches, kein Request-Burst
     function rerenderFeatures() {
@@ -5506,11 +5526,6 @@
         scanIssueDetail(hostConfig, projectSettings);
       }
     }
-
-    const globalSection = createGlobalSettingsSection(mrLinksToggle, debugToggle, projectSettings, function () {
-      rerenderFeatures();
-      if (refreshAgeHighlightSection) refreshAgeHighlightSection();
-    });
 
     const gearWrapper = document.createElement('div');
     gearWrapper.classList.add('gl-disclosure-dropdown', 'super-sidebar-new-menu-dropdown', 'gl-new-dropdown');
@@ -5613,9 +5628,8 @@
     dropdown.id = 'ambient-progress-settings';
     dropdown.setAttribute('role', 'dialog');
     dropdown.setAttribute('aria-label', 'Progress-Einstellungen');
-    // Seitenpanel wie GitLabs Ticket-Vorschau (Drawer): rechts angedockt, unter der Top-Bar, ca. halbe Fensterbreite.
-    // `top` wird beim Öffnen aus der Höhe der Top-Bar berechnet. Das Panel hängt am body, damit kein transformierter
-    // Vorfahre das position: fixed bricht.
+    // Seitenpanel wie GitLabs Ticket-Vorschau (Drawer): rechts angedockt, unter der Top-Bar. `top` wird beim Öffnen aus
+    // der Höhe der Top-Bar berechnet. Das Panel hängt am body, damit kein transformierter Vorfahre das position: fixed bricht.
     applyStyles(dropdown, {
       position: 'fixed',
       top: '49px',
@@ -5623,7 +5637,7 @@
       bottom: '0',
       background: windowBackground,
       color: toolbarTextColor,
-      borderLeft: '1px solid var(--gl-border-color-default, #4c4b51)',
+      borderLeft: SETTINGS_BORDER,
       borderRadius: '12px 0 0 0',
       boxShadow: '-8px 0 24px rgba(15, 23, 42, 0.35)',
       display: 'flex',
@@ -5632,76 +5646,62 @@
       gap: '0',
       padding: '0',
       fontSize: '14px',
-      width: 'clamp(480px, 48vw, 1400px)',
+      width: 'clamp(480px, 42vw, 720px)',
       maxWidth: '100vw',
       overflowY: 'auto',
-      opacity: '0',
-      transform: 'translateX(32px)',
+      // Platz für den Scrollbalken immer reservieren (sonst springt die Breite zwischen kurzen und langen Reitern);
+      // horizontal abschneiden, damit das Einschieben der Reiter keinen zweiten Scrollbalken erzeugt
+      scrollbarGutter: 'stable',
+      overflowX: 'hidden',
+      transform: SETTINGS_PANEL_HIDDEN_TRANSFORM,
       pointerEvents: 'none',
       visibility: 'hidden', // geschlossen auch aus Tab-Reihenfolge und Screenreader-Baum
-      transition: 'opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s'
+      transition: 'transform 0.25s ease, visibility 0s linear 0.25s'
     });
 
+    // Kopf (Titel, Hauptschalter, Schließen, Tabs) und Fuß (Datenstand, Neu laden) bleiben beim Scrollen stehen
     const panelHeader = document.createElement('div');
     applyStyles(panelHeader, {
       display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: '0.5rem',
-      padding: '0.9rem 1.25rem',
+      flexDirection: 'column',
+      gap: '0.6rem',
+      padding: '0.9rem 1.25rem 0',
       position: 'sticky',
       top: '0',
       zIndex: '2',
       background: windowBackground,
-      borderBottom: '1px solid var(--gl-border-color-default, #4c4b51)'
+      borderBottom: SETTINGS_BORDER
     });
-    const panelTitle = createTextSpan(t('Progress-Einstellungen'), {fontSize: '1.1rem', fontWeight: '700'});
+    const titleRow = document.createElement('div');
+    applyStyles(titleRow, {display: 'flex', alignItems: 'center', gap: '0.75rem'});
+    const titleBox = document.createElement('div');
+    applyStyles(titleBox, {flex: '1 1 auto', minWidth: '0', display: 'flex', flexDirection: 'column'});
+    titleBox.appendChild(createTextSpan(t('Progress-Einstellungen'), {fontSize: '1.05rem', fontWeight: '600'}));
+    titleBox.appendChild(createTextSpan('Version ' + SCRIPT_VERSION, {fontSize: '0.78rem', color: SETTINGS_SUBTLE_TEXT}));
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
     closeButton.className = 'ambient-btn btn gl-button btn-default btn-default-tertiary btn-icon btn-sm';
     closeButton.title = t('Schließen');
     closeButton.setAttribute('aria-label', t('Schließen'));
     closeButton.innerHTML = '<svg class="gl-button-icon gl-icon s16" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
-    panelHeader.appendChild(panelTitle);
-    panelHeader.appendChild(closeButton);
+    showToggle.title = 'Blendet alle Anzeigen des Scripts auf einmal aus (gilt für alle Boards)';
+    titleRow.appendChild(titleBox);
+    titleRow.appendChild(showToggle);
+    titleRow.appendChild(closeButton);
+    panelHeader.appendChild(titleRow);
     dropdown.appendChild(panelHeader);
 
-    // Inhalt scrollt, Kopf und Speichern-Leiste bleiben stehen
     const content = document.createElement('div');
     applyStyles(content, {
       display: 'flex',
       flexDirection: 'column',
-      gap: '1rem',
-      padding: '1rem 1.25rem',
+      gap: '1.25rem',
+      padding: '1.25rem',
       flex: '1 0 auto'
     });
     dropdown.appendChild(content);
 
-    // Status-Karte: Version, Anzeige-Schalter, letzte Aktualisierung
-    const statusCard = document.createElement('div');
-    statusCard.className = 'ambient-card-box';
-    applyStyles(statusCard, CARD_STYLES);
-    applyStyles(statusCard, {padding: '0.5rem 0.4rem', gap: '0.1rem'});
-    content.appendChild(statusCard);
-
-    const versionRow = document.createElement('div');
-    applyStyles(versionRow, {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: '0.5rem'
-    });
-    const versionLabel = document.createElement('div');
-    versionLabel.textContent = 'Version ' + SCRIPT_VERSION;
-    applyStyles(versionLabel, {fontSize: '0.85rem', fontWeight: '600', padding: '0 0.6rem'});
-    showToggle.title = 'Blendet alle Anzeigen des Scripts auf einmal aus (gilt für alle Boards)';
-    applyStyles(showToggle, {flex: '0 0 auto'});
-    showToggle.firstChild.style.flex = '0 0 auto';
-    versionRow.appendChild(versionLabel);
-    versionRow.appendChild(showToggle);
-    statusCard.appendChild(versionRow);
-
-    // Update-Hinweis über der Status-Karte, damit er vor dem ↻-Knopf (lädt nur Daten neu) ins Auge fällt
+    // Update-Hinweis ganz oben, damit er vor „Daten neu laden" (lädt nur Daten) ins Auge fällt
     const releaseNotificationRow = document.createElement('div');
     applyStyles(releaseNotificationRow, {
       display: 'none',
@@ -5727,41 +5727,7 @@
     releaseNotificationElements.messageRow = releaseNotificationRow;
     releaseNotificationElements.messageText = releaseNotificationText;
     releaseNotificationElements.messageNotes = releaseNotificationNotes;
-    content.insertBefore(releaseNotificationRow, statusCard);
-
-    const timestampRow = document.createElement('div');
-    applyStyles(timestampRow, {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: '0.5rem',
-      padding: '0.25rem 0.6rem'
-    });
-
-    const timestampLabel = document.createElement('div');
-    applyStyles(timestampLabel, {
-      fontSize: '0.8rem',
-      opacity: '0.7'
-    });
-    lastRefreshLabelElement = timestampLabel;
-    updateLastRefreshLabel();
-    timestampRow.appendChild(timestampLabel);
-
-    if (projectSettings) {
-      const refreshButton = document.createElement('button');
-      refreshButton.type = 'button';
-      refreshButton.textContent = '↻';
-      refreshButton.title = t('Daten neu laden');
-      refreshButton.setAttribute('aria-label', 'Cache leeren und neu laden');
-      refreshButton.className = 'ambient-btn ambient-btn-primary btn gl-button btn-confirm btn-sm';
-      refreshButton.addEventListener('click', function () {
-        softRefresh(projectSettings);
-      });
-      manualRefreshButtonElement = refreshButton;
-      timestampRow.appendChild(refreshButton);
-    }
-
-    statusCard.appendChild(timestampRow);
+    content.appendChild(releaseNotificationRow);
 
     const rateLimitNotificationRow = document.createElement('div');
     applyStyles(rateLimitNotificationRow, CARD_STYLES);
@@ -5781,30 +5747,182 @@
     content.appendChild(rateLimitNotificationRow);
     updateRateLimitWarningUI(getCachedRateLimitWarning());
 
-    content.appendChild(globalSection);
-    let projectConfigDetails = null;
-    if (projectSettings) {
-      const boardConfigured = Boolean(projectSettings.projectId && projectSettings.portalBaseUrl);
-      // Zugeklappt, sobald das Board eingerichtet ist
-      const boardSection = createCollapsibleGroup(
-        'Board-Einstellungen',
-        'Gelten nur für ' + (projectSettings.projectPath || 'dieses Board'),
-        !boardConfigured
-      );
-      const ageHighlightSection = createAgeHighlightSection(projectSettings);
-      refreshAgeHighlightSection = ageHighlightSection.refresh;
-      boardSection.appendChild(ageHighlightSection.element);
+    // Tabs (WAI-ARIA-Tabs: Pfeiltasten wechseln, nur der aktive Tab ist in der Tab-Reihenfolge)
+    const tabDefs = [['anzeige', t('Anzeige')], ['board', t('Dieses Board')], ['erweitert', t('Erweitert')],
+      ['labor', t('Experimente')]].filter(function (def) {
+      return def[0] !== 'board' || projectSettings;
+    });
+    const tabList = document.createElement('div');
+    tabList.setAttribute('role', 'tablist');
+    tabList.setAttribute('aria-label', 'Bereiche');
+    applyStyles(tabList, {display: 'flex', gap: '0.25rem', overflowX: 'auto'});
+    const tabButtons = {};
+    const tabBadges = {};
+    tabDefs.forEach(function (def) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'ambient-tab';
+      button.id = 'ambient-tab-' + def[0];
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-controls', 'ambient-tabpanel-' + def[0]);
+      applyStyles(button, {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.4rem',
+        minHeight: '44px',
+        padding: '0 0.75rem',
+        border: '0',
+        borderRadius: '6px 6px 0 0',
+        background: 'transparent',
+        color: 'inherit',
+        fontSize: '0.9rem',
+        whiteSpace: 'nowrap',
+        cursor: 'pointer'
+      });
+      button.appendChild(createTextSpan(def[1]));
+      const badge = createTextSpan('', {
+        display: 'none',
+        minWidth: '18px',
+        height: '18px',
+        padding: '0 5px',
+        boxSizing: 'border-box',
+        borderRadius: '999px',
+        fontSize: '0.7rem',
+        fontWeight: '600',
+        alignItems: 'center',
+        justifyContent: 'center'
+      });
+      button.appendChild(badge);
+      button.addEventListener('click', function () {
+        selectTab(def[0]);
+      });
+      tabButtons[def[0]] = button;
+      tabBadges[def[0]] = badge;
+      tabList.appendChild(button);
+    });
+    tabList.addEventListener('keydown', function (event) {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      const keys = tabDefs.map(function (def) { return def[0]; });
+      const step = event.key === 'ArrowRight' ? 1 : keys.length - 1;
+      const next = keys[(keys.indexOf(activeSettingsTab) + step) % keys.length];
+      selectTab(next);
+      tabButtons[next].focus();
+      event.preventDefault();
+    });
+    panelHeader.appendChild(tabList);
 
-      const projectConfigSection = createProjectConfigSection(hostConfig, projectSettings, scheduleAutosave);
-      // Eingerichtete Boards brauchen die Konfiguration selten → zugeklappt
-      projectConfigDetails = createCollapsible(
-        'Projekt-Konfiguration',
-        !boardConfigured
-      );
-      projectConfigDetails.body.appendChild(projectConfigSection);
-      boardSection.appendChild(projectConfigDetails.element);
-      content.appendChild(boardSection);
+    function setTabBadge(key, text, warning) {
+      const badge = tabBadges[key];
+      if (!badge) return;
+      badge.textContent = text;
+      applyStyles(badge, {
+        display: text ? 'inline-flex' : 'none',
+        background: warning ? '#e9be74' : 'var(--gl-background-color-strong, rgba(128, 128, 128, 0.25))',
+        color: warning ? '#1f1e24' : 'inherit'
+      });
     }
+
+    // Das Board erst nach dem nächsten Paint neu aufbauen: der Schalter springt sofort um, schnelle Klicks werden
+    // gebündelt. Synchron blockierte das Neu-Rendern aller Karten den Klick spürbar.
+    let rerenderTimer = null;
+
+    function scheduleRerender() {
+      clearTimeout(rerenderTimer);
+      rerenderTimer = setTimeout(function () {
+        rerenderFeatures();
+        if (refreshAgeHighlightSection) refreshAgeHighlightSection();
+      }, 120);
+    }
+
+    const onFeatureChanged = scheduleRerender;
+
+    const displayTab = createDisplayTab(onFeatureChanged, function () {
+      const input = showToggle.querySelector('input');
+      input.checked = true;
+      input.dispatchEvent(new Event('change')); // speichert und aktualisiert Schalter, Label und Tab
+    }, projectSettings);
+    const tabPanels = {anzeige: displayTab.element};
+    // Vorschau unter den Tabs im festen Kopf: bleibt sichtbar, die Schalter scrollen darunter durch
+    const pinnedPreview = document.createElement('div');
+    applyStyles(pinnedPreview, {padding: '0.75rem 0 0.9rem'});
+    pinnedPreview.appendChild(displayTab.pinned);
+    panelHeader.appendChild(pinnedPreview);
+    let boardTab = null;
+    if (projectSettings) {
+      boardTab = createBoardTab(projectSettings, scheduleAutosave, function (configured) {
+        setTabBadge('board', configured ? '' : '!', true);
+      });
+      refreshAgeHighlightSection = boardTab.refreshAgeHighlight;
+      tabPanels.board = boardTab.element;
+    }
+    tabPanels.erweitert = createAdvancedTab(projectSettings);
+    tabPanels.labor = createExperimentsTab(projectSettings, function (count) {
+      setTabBadge('labor', count ? String(count) : '', false);
+    });
+    Object.keys(tabPanels).forEach(function (key) {
+      tabPanels[key].id = 'ambient-tabpanel-' + key;
+      tabPanels[key].setAttribute('role', 'tabpanel');
+      tabPanels[key].setAttribute('aria-labelledby', 'ambient-tab-' + key);
+      content.appendChild(tabPanels[key]);
+    });
+
+    function selectTab(key) {
+      const keys = tabDefs.map(function (def) { return def[0]; });
+      const previous = activeSettingsTab;
+      activeSettingsTab = key;
+      Object.keys(tabButtons).forEach(function (k) {
+        const selected = k === key;
+        tabButtons[k].setAttribute('aria-selected', String(selected));
+        tabButtons[k].tabIndex = selected ? 0 : -1;
+        applyStyles(tabButtons[k], {
+          fontWeight: selected ? '600' : '400',
+          opacity: selected ? '1' : '0.75',
+          boxShadow: 'inset 0 -2px 0 ' + (selected ? SETTINGS_ACCENT : 'transparent')
+        });
+        tabPanels[k].style.display = selected ? 'flex' : 'none';
+        pinnedPreview.style.display = key === 'anzeige' ? 'block' : 'none';
+      });
+      if (previous && previous !== key) {
+        const direction = keys.indexOf(key) > keys.indexOf(previous) ? 1 : -1;
+        animateTabIn(tabPanels[key], direction);
+        if (key === 'anzeige') animateTabIn(pinnedPreview, direction);
+      }
+    }
+
+    // Ein noch nicht eingerichtetes Board öffnet direkt auf „Dieses Board"
+    const boardConfigured = !projectSettings || Boolean(projectSettings.projectId && projectSettings.portalBaseUrl);
+    selectTab(boardConfigured ? (activeSettingsTab || 'anzeige') : 'board');
+
+    const panelFooter = document.createElement('div');
+    applyStyles(panelFooter, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.75rem',
+      padding: '0.7rem 1.25rem',
+      position: 'sticky',
+      bottom: '0',
+      zIndex: '2',
+      background: windowBackground,
+      borderTop: SETTINGS_BORDER
+    });
+    const timestampLabel = document.createElement('div');
+    applyStyles(timestampLabel, {flex: '1 1 auto', fontSize: '0.8rem', color: SETTINGS_SUBTLE_TEXT});
+    lastRefreshLabelElement = timestampLabel;
+    updateLastRefreshLabel();
+    panelFooter.appendChild(timestampLabel);
+    if (projectSettings) {
+      const refreshButton = document.createElement('button');
+      refreshButton.type = 'button';
+      refreshButton.textContent = '↻ ' + t('Daten neu laden');
+      refreshButton.title = 'Cache leeren und Portal-Daten neu laden';
+      refreshButton.className = 'ambient-btn btn gl-button btn-default btn-sm';
+      refreshButton.addEventListener('click', function () {
+        softRefresh(projectSettings);
+      });
+      manualRefreshButtonElement = refreshButton;
+      panelFooter.appendChild(refreshButton);
+    }
+    dropdown.appendChild(panelFooter);
 
     // Änderungen werden entprellt sofort übernommen; geänderte Felder leuchten kurz grün
     let autosaveTimer = null;
@@ -5889,6 +6007,7 @@
         projectSettings.useSecondPortalProjectId = entry.useSecondPortalProjectId;
       }
       if (entry.ticketActions !== undefined) projectSettings.ticketActions = entry.ticketActions;
+      if (boardTab) boardTab.updateStatus();
       [projectStatusElement, portalStatusElement, projectId2StatusElement].forEach(function (el) {
         if (el) el.textContent = '';
       });
@@ -5920,13 +6039,13 @@
 
     function updateDropdownVisibility() {
       const isOpen = dropdownLocked;
-      dropdown.style.opacity = isOpen ? '1' : '0';
-      dropdown.style.transform = isOpen ? 'translateX(0)' : 'translateX(32px)';
+      // fährt von rechts herein und nach rechts hinaus, ohne Ausblenden
+      dropdown.style.transform = isOpen ? 'translateX(0)' : SETTINGS_PANEL_HIDDEN_TRANSFORM;
       dropdown.style.pointerEvents = isOpen ? 'auto' : 'none';
       dropdown.style.visibility = isOpen ? 'visible' : 'hidden';
       dropdown.style.transition = isOpen
-        ? 'opacity 0.2s ease, transform 0.2s ease, visibility 0s'
-        : 'opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s';
+        ? 'transform 0.25s ease-out, visibility 0s'
+        : 'transform 0.25s ease-in, visibility 0s linear 0.25s';
       gearButton.setAttribute('aria-expanded', String(isOpen));
     }
 
@@ -5938,6 +6057,7 @@
         dropdown.style.top = (topbar ? Math.round(topbar.getBoundingClientRect().bottom) + 1 : 49) + 'px';
       }
       if (open && refreshAgeHighlightSection) refreshAgeHighlightSection();
+      if (open) displayTab.refreshPreview();
       updateDropdownVisibility();
       if (open) {
         const firstFocusable = dropdown.querySelector('input, button, summary, textarea');
@@ -6155,75 +6275,125 @@
     }
   }
 
+  // Einstellungs-Panel: Farben aus GitLabs Theme-Variablen, damit Hell und Dunkel ohne eigene Paletten passen
+  const SETTINGS_ACCENT = '#1f75cb';
+  const SETTINGS_BORDER = '1px solid var(--gl-border-color-default, #4c4b51)';
+  const SETTINGS_SUBTLE_TEXT = 'var(--gl-text-color-subtle, rgba(128, 128, 128, 0.95))';
+  const SETTINGS_DANGER = 'var(--gl-text-color-danger, #dd2b0e)';
+  const SETTINGS_SUCCESS = 'var(--gl-text-color-success, #108548)';
+  const SETTINGS_STRONG_BACKGROUND = 'var(--gl-background-color-strong, rgba(128, 128, 128, 0.14))';
+
   const SETTINGS_SUBHEADING_STYLES = {
-    fontSize: '0.85rem',
+    margin: '0',
+    padding: '0 0.25rem',
+    fontSize: '0.8rem',
     fontWeight: '600',
-    opacity: '0.85'
+    color: SETTINGS_SUBTLE_TEXT
   };
 
   // Beschriftung über Formularfeldern
   const FIELD_LABEL_STYLES = {fontSize: '0.85rem', fontWeight: '600'};
-  const FIELD_HINT_STYLES = {fontSize: '0.78rem', opacity: '0.65', lineHeight: '1.35'};
+  const FIELD_HINT_STYLES = {fontSize: '0.8rem', color: SETTINGS_SUBTLE_TEXT, lineHeight: '1.4'};
+  const CHIP_STYLES = {
+    fontSize: '0.7rem',
+    fontWeight: '500',
+    padding: '0 0.45rem',
+    borderRadius: '999px',
+    border: SETTINGS_BORDER,
+    color: SETTINGS_SUBTLE_TEXT,
+    whiteSpace: 'nowrap'
+  };
+  const TAB_PANEL_STYLES = {display: 'flex', flexDirection: 'column', gap: '1.25rem'};
+  // Geschlossenes Panel: ganz rechts aus dem Bild, samt Schatten
+  const SETTINGS_PANEL_HIDDEN_TRANSFORM = 'translateX(calc(100% + 32px))';
+
+  // Neuer Reiter gleitet kurz aus der Richtung ein, in die gewechselt wurde (1 = nach rechts, -1 = nach links)
+  function animateTabIn(el, direction) {
+    if (!el.animate || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+    el.animate([
+      {opacity: 0, transform: 'translateX(' + (direction * 24) + 'px)'},
+      {opacity: 1, transform: 'translateX(0)'}
+    ], {duration: 200, easing: 'ease-out'});
+  }
 
   const CARD_STYLES = {
     display: 'flex',
     flexDirection: 'column',
-    border: '1px solid var(--gl-border-color-default, #4c4b51)',
+    border: SETTINGS_BORDER,
     borderRadius: '10px',
     background: 'var(--gl-background-color-subtle, rgba(128, 128, 128, 0.07))'
   };
 
-  // Aufklappbare Karte (Titel + Untertitel, Chevron rechts); Inhalt hängt direkt am <details>
-  function createCollapsibleGroup(title, subtitle, open) {
-    const details = document.createElement('details');
-    details.open = Boolean(open);
-    details.className = 'ambient-card';
-    applyStyles(details, CARD_STYLES);
-    applyStyles(details, {overflow: 'hidden', paddingBottom: open ? '0.75rem' : '0'});
-    details.addEventListener('toggle', function () {
-      details.style.paddingBottom = details.open ? '0.75rem' : '0';
-    });
-    const summary = document.createElement('summary');
-    summary.className = 'ambient-chevron-right';
-    applyStyles(summary, {display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '0.8rem 1rem'});
-    const text = document.createElement('div');
-    applyStyles(text, {display: 'flex', flexDirection: 'column', gap: '0.1rem'});
-    text.appendChild(createTextSpan(title, {fontSize: '1rem', fontWeight: '700'}));
-    text.appendChild(createTextSpan(subtitle, {fontSize: '0.8rem', opacity: '0.65'}));
-    summary.appendChild(text);
-    details.appendChild(summary);
-    return details;
+  // Gruppe: Überschrift (+ Zusatz rechts) über einer Karte, deren Zeilen per Stylesheet Trennlinien bekommen
+  function createSettingsGroup(title, aside) {
+    const group = document.createElement('section');
+    applyStyles(group, {display: 'flex', flexDirection: 'column', gap: '0.5rem'});
+    const head = document.createElement('div');
+    applyStyles(head, {display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '0.5rem'});
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    applyStyles(heading, SETTINGS_SUBHEADING_STYLES);
+    const asideElement = createTextSpan(aside || '', {fontSize: '0.78rem', color: SETTINGS_SUBTLE_TEXT});
+    head.appendChild(heading);
+    head.appendChild(asideElement);
+    const list = document.createElement('div');
+    list.className = 'ambient-setting-list';
+    applyStyles(list, CARD_STYLES);
+    applyStyles(list, {overflow: 'hidden'});
+    group.appendChild(head);
+    group.appendChild(list);
+    return {element: group, list: list, heading: heading, aside: asideElement};
   }
 
-  // Unterbereich innerhalb einer Karte: Trennlinie oben, Chevron links
-  function createCollapsible(title, open) {
-    const details = document.createElement('details');
-    details.open = Boolean(open);
-    applyStyles(details, {
-      margin: '0.5rem 1rem 0',
-      padding: '0.6rem 0 0',
-      borderTop: '1px solid var(--gl-border-color-default, #4c4b51)'
-    });
-    const summary = document.createElement('summary');
-    summary.className = 'ambient-chevron-left';
-    summary.textContent = title;
-    applyStyles(summary, Object.assign({cursor: 'pointer', padding: '0.2rem 0'}, SETTINGS_SUBHEADING_STYLES));
-    const body = document.createElement('div');
-    applyStyles(body, {paddingTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.6rem'});
-    details.appendChild(summary);
-    details.appendChild(body);
-    return {element: details, body: body};
+  // Karte mit Titel (rechts Platz für einen Status) und optionalem Erklärtext
+  function createPanelCard(title, text) {
+    const card = document.createElement('section');
+    applyStyles(card, CARD_STYLES);
+    applyStyles(card, {padding: '1rem 1.1rem', gap: '0.8rem'});
+    const head = document.createElement('div');
+    applyStyles(head, {display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem'});
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    applyStyles(heading, {margin: '0', fontSize: '0.95rem', fontWeight: '600'});
+    head.appendChild(heading);
+    card.appendChild(head);
+    if (text) card.appendChild(createTextSpan(text, FIELD_HINT_STYLES));
+    return {element: card, head: head};
   }
 
-  // Schalter in zwei Spalten, solange das Panel breit genug ist
-  function createSwitchGrid() {
-    const grid = document.createElement('div');
-    applyStyles(grid, {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-      gap: '0.1rem 0.75rem'
+  // Label (+ Chip) und Beschreibung einer Zeile
+  function createRowText(label, desc, where) {
+    const text = document.createElement('span');
+    applyStyles(text, {flex: '1 1 auto', minWidth: '0', display: 'flex', flexDirection: 'column', gap: '0.1rem'});
+    const title = document.createElement('span');
+    applyStyles(title, {display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '500'});
+    title.appendChild(createTextSpan(label));
+    if (where) title.appendChild(createTextSpan(where, CHIP_STYLES));
+    text.appendChild(title);
+    if (desc) text.appendChild(createTextSpan(desc, FIELD_HINT_STYLES));
+    return text;
+  }
+
+  // Zeile mit Text links und Button rechts (Diagnose, Gefahrenzone)
+  function createActionRow(label, desc, buttonText, onClick, danger) {
+    const row = document.createElement('div');
+    applyStyles(row, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.75rem',
+      padding: '0.6rem 1rem',
+      minHeight: '52px',
+      boxSizing: 'border-box'
     });
-    return grid;
+    row.appendChild(createRowText(label, desc));
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = buttonText;
+    button.className = 'ambient-btn btn gl-button btn-sm ' + (danger ? 'btn-danger btn-danger-secondary' : 'btn-default');
+    applyStyles(button, {flex: '0 0 auto', minWidth: '92px'});
+    button.addEventListener('click', onClick);
+    row.appendChild(button);
+    return row;
   }
 
   function setSettingDisabled(elem, disabled) {
@@ -6232,29 +6402,40 @@
     if (input) input.disabled = disabled;
   }
 
+  // Pro Unterreiter (view) des Anzeige-Tabs: [Schlüssel, Label, Beschreibung]. Unter-Features (FEATURE_PARENTS) stehen direkt hinter
+  // ihrem Eltern-Feature und werden eingerückt.
   const FEATURE_MENU = [
-    {title: 'Karten', items: [
-      ['progress', 'Progress-Bar (Portal)'],
-      ['portalButtons', 'Portal- & Timesheet-Buttons'],
-      ['mrBadge', 'MR-Badge'],
-      ['mrAvatars', 'Assignee-/Reviewer-Avatare'],
-      ['columnAge', 'Verweildauer (Uhr im Footer)'],
-      ['splitLabels', 'Scoped Labels (::) als Split-Label'],
-      ['estimateBadge', 'Schätzung als Badge am Titel']
+    {view: 'board', title: 'Board-Karten', items: [
+      ['progress', 'Fortschrittsbalken', 'Gebuchte vs. geschätzte Stunden aus dem Portal'],
+      ['portalButtons', 'Portal- & Timesheet-Buttons', 'Direkt zum Ticket im Portal oder zur Buchung'],
+      ['mrBadge', 'MR-Badge', 'Verknüpfte Merge Requests mit Status'],
+      ['mrAvatars', 'Assignee- & Reviewer-Avatare', 'Wer am MR arbeitet und wer reviewt'],
+      ['estimateBadge', 'Schätzung als Badge', '„(3 SP)“ oder „(Timebox: 4h)“ aus dem Titel wird ein Badge, auch in Ticket und MR'],
+      ['splitLabels', 'Geteilte Scoped Labels', 'workflow::Review zweifarbig darstellen, auch in Ticket und MR'],
+      ['cardActions', 'Ticket-Aktionen-Menü', '⋮ im Karten-Footer mit deinen Ticket-Aktionen (Tab „Dieses Board“)']
     ]},
-    {title: 'Spalten', items: [
-      ['columnAvg', 'Median-Verweildauer im Header']
+    {view: 'board', title: 'Verweildauer', items: [
+      ['columnAge', 'Uhr im Karten-Footer', 'Wie lange das Ticket schon in der Spalte liegt'],
+      ['columnAvg', 'Median im Spalten-Header', 'Typische Liegezeit der Spalte']
     ]},
-    {title: 'Andere Ansichten', items: [
-      ['mrLinks'],
-      ['issueDetail', 'Progress im Issue-Detail'],
-      ['mrPageProgress', 'Progress im MR'],
-      ['mrAssigneeButtons', 'Ticket-Assignee-Buttons im MR']
+    {view: 'ticket', title: 'Ticket-Seitenleiste', items: [
+      ['issueDetail', 'Fortschrittsbalken', 'Portal-Balken in der Ticket-Ansicht und im Board-Drawer'],
+      ['issuePortalButtons', 'Portal- & Timesheet-Buttons', 'Links und rechts neben dem Balken'],
+      ['issueActions', 'Ticket-Aktionen', 'Dropdown mit deinen Ticket-Aktionen (Tab „Dieses Board“)']
+    ]},
+    {view: 'mr', title: 'Merge-Request-Seitenleiste', items: [
+      ['mrPageProgress', 'Fortschrittsbalken', 'Portal-Balken des verknüpften Tickets'],
+      ['mrPortalButtons', 'Portal- & Timesheet-Buttons', 'Links und rechts neben dem Balken'],
+      ['mrActions', 'Ticket-Aktionen', 'Buttons mit deinen Ticket-Aktionen (Tab „Dieses Board“)'],
+      ['mrAssigneeButtons', 'Ticket-Assignee-Buttons', 'Ticket per Klick an MR-Assignee, -Author oder -Reviewer geben']
+    ]},
+    {view: 'topbar', title: 'Breadcrumb-Zeile', items: [
+      ['mrLinks', 'MR-Schnellzugriff', 'Buttons zu deinen offenen MRs neben dem Zahnrad']
     ]}
   ];
 
   /******************************************************************
-   * Diagnose- und Daten-Werkzeuge (Einstellungen → Globale Einstellungen → Erweitert)
+   * Diagnose- und Daten-Werkzeuge (Einstellungen → Tab Erweitert)
    ******************************************************************/
 
   // Selektoren, die auf der aktuellen Ansicht Treffer liefern sollten
@@ -6432,7 +6613,7 @@
   }
 
   /******************************************************************
-   * Experimente-Menü (Erweitert → Experimente)
+   * Eingabefelder und Buttons für die Einstellungs-Tabs
    ******************************************************************/
 
   // Eingabefelder: GitLabs Formularklassen liefern Rahmen/Hintergrund passend zum Theme
@@ -6454,23 +6635,26 @@
     boxSizing: 'border-box'
   };
 
+  // options: placeholder, hint (Text unter dem Feld), chip (z. B. „alle Boards" hinter dem Label)
   function createExperimentSettingField(labelText, key, fallback, options) {
     const opts = options || {};
     const wrap = document.createElement('label');
-    applyStyles(wrap, {display: 'flex', flexDirection: 'column', gap: '0.3rem', padding: '0 0.6rem'});
-    wrap.appendChild(createTextSpan(labelText, FIELD_LABEL_STYLES));
-    const input = document.createElement(opts.multiline ? 'textarea' : 'input');
+    applyStyles(wrap, {display: 'flex', flexDirection: 'column', gap: '0.35rem', margin: '0', fontWeight: '400'});
+    const label = createTextSpan(labelText, Object.assign({display: 'flex', alignItems: 'center', gap: '0.5rem'}, FIELD_LABEL_STYLES));
+    if (opts.chip) label.appendChild(createTextSpan(opts.chip, CHIP_STYLES));
+    wrap.appendChild(label);
+    const input = document.createElement('input');
     input.className = FORM_INPUT_CLASSES;
-    if (opts.multiline) input.rows = 3;
     input.value = String(expSetting(key, fallback));
     input.placeholder = opts.placeholder || '';
     applyStyles(input, EXPERIMENT_INPUT_STYLES);
     input.addEventListener('change', function () {
-      saveExperiment(key, opts.number ? Number(input.value) || fallback : input.value.trim());
+      saveExperiment(key, input.value.trim());
       applyExperimentChange();
       flashSaved(input);
     });
     wrap.appendChild(input);
+    if (opts.hint) wrap.appendChild(createTextSpan(opts.hint, FIELD_HINT_STYLES));
     return wrap;
   }
 
@@ -6480,68 +6664,10 @@
     button.textContent = text;
     button.title = title;
     button.className = 'ambient-btn btn gl-button btn-default btn-sm';
-    applyStyles(button, {width: '100%', justifyContent: 'flex-start'});
     button.addEventListener('click', onClick);
     return button;
   }
 
-  function createExperimentsSection(projectSettings) {
-    const section = createCollapsible('Experimente (zum Testen)', false);
-    const intro = document.createElement('div');
-    intro.style.padding = '0 0.6rem';
-    intro.textContent = 'Noch nicht übernommene Ideen, standardmäßig aus. Änderungen wirken sofort auf dem Board.';
-    applyStyles(intro, FIELD_HINT_STYLES);
-    section.body.appendChild(intro);
-
-    const switches = {};
-    const extraFields = {};
-    const extraButtons = {
-      expConfigLink: function () {
-        return createExperimentButton('Konfig-Link kopieren', 'Projekt-Konfiguration als Link teilen', function () {
-          copyConfigLink(projectSettings);
-        });
-      }
-    };
-
-    EXPERIMENT_MENU.forEach(function (group) {
-      const groupElem = document.createElement('div');
-      applyStyles(groupElem, {display: 'flex', flexDirection: 'column', gap: '0.25rem'});
-      const heading = document.createElement('div');
-      heading.textContent = group.title;
-      applyStyles(heading, Object.assign({padding: '0 0.6rem'}, SETTINGS_SUBHEADING_STYLES));
-      groupElem.appendChild(heading);
-      group.items.forEach(function (item) {
-        const key = item[0];
-        const row = makeSwitch(t(item[1]), isExp(key), function (val) {
-          saveExperiment(key, val);
-          applyExperimentChange();
-        });
-        applyStyles(row, {justifyContent: 'space-between'});
-        switches[key] = row;
-        groupElem.appendChild(row);
-        (extraFields[key] || []).forEach(function (def) {
-          groupElem.appendChild(createExperimentSettingField(def[0], def[1], def[2], def[3]));
-        });
-        if (extraButtons[key]) groupElem.appendChild(extraButtons[key]());
-      });
-      section.body.appendChild(groupElem);
-    });
-
-    const allButtons = document.createElement('div');
-    applyStyles(allButtons, {display: 'flex', gap: '0.4rem'});
-    [['Alle an', true], ['Alle aus', false]].forEach(function (def) {
-      allButtons.appendChild(createExperimentButton(def[0], def[0] + ' (nur Schalter, Werte bleiben)', function () {
-        Object.keys(switches).forEach(function (key) {
-          const input = switches[key].querySelector('input');
-          if (!input || input.checked === def[1]) return;
-          input.checked = def[1];
-          input.dispatchEvent(new Event('change')); // speichert und aktualisiert den Schalter-Look
-        });
-      }));
-    });
-    section.body.appendChild(allButtons);
-    return section.element;
-  }
 
   // Alles entfernen, was das Script lokal gespeichert hat
   function clearAllScriptData() {
@@ -6647,414 +6773,939 @@
       });
   }
 
-  function createDataToolButtons(projectSettings) {
+  // [Label, Beschreibung, Button, Aktion] für „Diagnose & Daten" im Tab Erweitert
+  function createDataToolDefs(projectSettings) {
     const defs = [
-      ['Selektor-Selbsttest', 'Prüft, ob die GitLab-Elemente gefunden werden, auf die sich das Script verlässt', runSelectorSelftest],
-      ['Debug-Info kopieren', 'Version, Ansicht und Selektor-Treffer für Fehlerberichte (ohne Portal-URL)', function () {
+      ['Selektor-Selbsttest', 'Prüft, ob die GitLab-Elemente gefunden werden, auf die sich das Script verlässt', 'Ausführen',
+        runSelectorSelftest],
+      ['Portal-Fehler', 'Letzte Portal-Fehler dieser Seitensitzung (Toast + Konsole)', 'Anzeigen', showPortalErrors],
+      ['Debug-Info', 'Version, Ansicht und Selektor-Treffer für Fehlerberichte (ohne Portal-URL)', 'Kopieren', function () {
         copyToClipboard(buildDebugInfo(), 'Debug-Info kopiert.');
       }]
     ];
     if (projectSettings) {
-      defs.push(['Konfiguration exportieren', 'Projekt-ID, Portal-URL und Ticket-Aktionen als JSON kopieren', function () {
+      defs.push(['Konfiguration exportieren', 'Projekt-ID, Portal-URL und Ticket-Aktionen als JSON', 'Kopieren', function () {
         exportProjectConfig(projectSettings);
       }]);
-      defs.push(['Konfiguration importieren', 'Zuvor exportiertes JSON einfügen', function () {
+      defs.push(['Konfiguration importieren', 'Zuvor exportiertes JSON einfügen', 'Einfügen…', function () {
         importProjectConfig(projectSettings);
       }]);
     }
-    defs.push(['Portal-Fehler anzeigen', 'Letzte Portal-Fehler dieser Seitensitzung (Toast + Konsole)', showPortalErrors]);
-    defs.push(['Alle lokalen Daten löschen', 'Entfernt Konfiguration, Cache und Einstellungen dieses Scripts', clearAllScriptData]);
-    return defs.map(function (def) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = def[0];
-      button.title = def[1];
-      button.className = 'ambient-btn btn gl-button btn-default btn-sm';
-      applyStyles(button, {width: '100%', justifyContent: 'flex-start'});
-      button.addEventListener('click', def[2]);
-      return button;
+    return defs;
+  }
+
+  /******************************************************************
+   * Einstellungs-Tabs: Anzeige, Dieses Board, Erweitert, Experimente
+   ******************************************************************/
+
+  let activeSettingsTab = null; // bleibt beim Neuaufbau der Toolbar (Theme-Wechsel) erhalten
+
+  function setMrLinksEnabled(val) {
+    mrLinksEnabled = val;
+    saveFeature('mrLinks', mrLinksEnabled);
+    log('MR-Buttons geändert auf:', mrLinksEnabled);
+    if (mrLinksEnabled) {
+      createMrLinksBar();
+    } else {
+      const existingMrLinks = document.getElementById('js-my-mr-links');
+      if (existingMrLinks) existingMrLinks.remove();
+    }
+  }
+
+  // Vorschau im Anzeige-Tab, eine pro Unterreiter. Sie zeigt das echte Ergebnis: die Board-Karte ist eine Kopie einer
+  // Karte von diesem Board (samt Spalten-Header), Ticket-, MR- und Topbar-Ausschnitt baut dieselben Funktionen wie die
+  // echten Seiten, nur mit Beispieldaten. Ausgeschaltetes fehlt also genau wie später; Hover umrandet das Element.
+  function portalButtonSelector(scope) {
+    return scope + ' button[aria-label="Ticket im Portal öffnen"], ' + scope + ' button[aria-label="Timesheet im Portal erstellen"]';
+  }
+
+  const PREVIEW_FEATURE_SELECTORS = {
+    progress: '.ambient-progress-badge .ambient-progress-bar',
+    portalButtons: portalButtonSelector('.ambient-progress-badge'),
+    cardActions: '.ambient-card-actions',
+    issuePortalButtons: portalButtonSelector('.ambient-progress-detail-badge'),
+    issueActions: '.ambient-progress-detail-badge .ambient-card-actions',
+    mrPortalButtons: portalButtonSelector('.ambient-progress-mr-badge'),
+    mrActions: '.ambient-ticket-actions-row',
+    mrBadge: '.ambient-mr-badge',
+    mrAvatars: '.ambient-mr-badge img, .ambient-mr-reviewer-placeholder',
+    estimateBadge: '.ambient-estimate-badge',
+    splitLabels: '.ambient-split-label',
+    columnAge: '.ambient-column-age',
+    columnAvg: '.ambient-column-avg',
+    issueDetail: '.ambient-progress-detail-badge',
+    mrPageProgress: '.ambient-progress-mr-badge',
+    mrAssigneeButtons: '.ambient-ticket-assignee-badge',
+    mrLinks: '.ambient-preview-mr-links'
+  };
+  const PREVIEW_SAMPLE_PROGRESS = {booked: '3.5h', bookedLabel: 'Booked Hours'};
+  const PREVIEW_SAMPLE_ACTIONS = '[Ticket abschließen]\n/done';
+  let previewCardIid = null; // dieselbe Karte bleibt über Aktualisierungen hinweg die Vorschau
+
+  function previewAvatarUrl(initials, color) {
+    return 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">' +
+      '<circle cx="16" cy="16" r="16" fill="' + color + '"/><text x="16" y="21" font-family="sans-serif" font-size="13" ' +
+      'fill="#fff" text-anchor="middle">' + initials + '</text></svg>');
+  }
+
+  // Karte nur als GitLab-Gerüst (Titel, Labels, Footer); bevorzugt eine mit Scoped Label, damit „Geteilte Scoped
+  // Labels“ etwas zu zeigen hat. Alles vom Script wird danach mit Beispieldaten neu gezeichnet.
+  function findPreviewCard() {
+    const cards = Array.prototype.slice.call(document.querySelectorAll(SEL.boardCard), 0, 80);
+    const same = cards.filter(function (card) { return previewCardIid && getIssueIidFromCard(card) === previewCardIid; })[0];
+    if (same) return same;
+    const scoped = cards.filter(function (card) {
+      return Array.prototype.some.call(card.querySelectorAll(SEL.cardLabel), function (label) {
+        return SPLIT_LABEL_PATTERN.test(normalizeWhitespace(label.textContent));
+      });
+    })[0];
+    const best = scoped || cards[0] || null;
+    previewCardIid = best ? getIssueIidFromCard(best) : null;
+    return best;
+  }
+
+  // Split-Labels zurück auf GitLabs Original
+  function resetPreviewSplitLabels(root) {
+    root.querySelectorAll('.ambient-split-label').forEach(function (el) { el.remove(); });
+    root.querySelectorAll('[data-ambient-split]').forEach(function (el) { el.removeAttribute('data-ambient-split'); });
+  }
+
+  // Alles entfernen, was das Script in die Karten-Kopie eingefügt hat (der Schätzungs-Badge hat den Titeltext gekürzt)
+  function resetPreviewCard(clone) {
+    clone.querySelectorAll('.ambient-estimate-badge').forEach(function (badge) {
+      const original = badge.dataset.ambientOriginal;
+      const parent = badge.parentNode;
+      badge.remove();
+      if (original === undefined) return;
+      const walker = document.createTreeWalker(parent, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (node.data.trim()) {
+          node.data = original;
+          return;
+        }
+      }
+    });
+    resetPreviewSplitLabels(clone);
+    clearCardInjections(clone);
+    clone.querySelectorAll('[class*="ambient-"]').forEach(function (el) { el.remove(); });
+  }
+
+  function stripPreviewIds(root) {
+    [root].concat(Array.prototype.slice.call(root.querySelectorAll('[id], [data-testid]'))).forEach(function (el) {
+      el.removeAttribute('id');
+      el.removeAttribute('data-testid');
     });
   }
 
-  function createGlobalSettingsSection(mrLinksToggle, debugToggle, projectSettings, onFeatureChanged) {
-    // Globale Einstellungen ändern sich selten → standardmäßig zugeklappt
-    const section = createCollapsibleGroup(t('Globale Einstellungen'), t('Gelten für alle Boards'), false);
-    const subRows = [];
+  // Spalten-Header und Karte: GitLab-Gerüst kopieren, dann mit denselben Funktionen wie auf dem Board zeichnen
+  function renderPreviewBoard(content, card, projectSettings, urls) {
+    const iid = getIssueIidFromCard(card) || '1';
+    const list = card.closest(SEL.boardList);
+    const header = list && list.querySelector(SEL.boardListHeader);
+    const nodes = []; // Karte; der Header behält data-testid (siehe unten)
+    // Spalte (Farbe wie GitLabs Board-Spalte) in einem dunkleren Block, wie auf dem Board vor dem Seitenhintergrund
+    const dark = isGitLabDarkModeActive();
+    applyStyles(content, {
+      background: dark ? '#1e1d23' : '#ffffff',
+      padding: '0.75rem',
+      borderRadius: '8px',
+      boxSizing: 'border-box'
+    });
+    const column = document.createElement('div');
+    applyStyles(column, {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.5rem',
+      width: 'fit-content',
+      maxWidth: '100%',
+      padding: '0.5rem',
+      borderRadius: '8px',
+      boxSizing: 'border-box',
+      background: dark ? '#2c2b31' : '#ececef'
+    });
+    content.appendChild(column);
 
-    function updateSubRows() {
-      subRows.forEach(function (row) {
-        setSettingDisabled(row.elem, !isFeatureOn(FEATURE_PARENTS[row.key]));
+    if (header) {
+      const headerClone = header.cloneNode(true);
+      resetPreviewSplitLabels(headerClone);
+      headerClone.querySelectorAll('.ambient-column-avg').forEach(function (el) { el.remove(); });
+      applyStyles(headerClone, {width: header.getBoundingClientRect().width + 'px', maxWidth: '100%', boxSizing: 'border-box'});
+      column.appendChild(headerClone); // angehängt, damit berechnete Styles (Label-Farben) stimmen
+      // data-testid bleibt am Header: Layout-Regeln (GitLab und unser min-width:0) hängen daran; gesucht wird der
+      // Header nur innerhalb einer echten Spalte, die Kopie fällt also nie in einen Scan
+      headerClone.querySelectorAll('[id]').forEach(function (el) { el.removeAttribute('id'); });
+      const countBadge = headerClone.querySelector(SEL.issueCountBadge);
+      if (countBadge && isFeatureOn('columnAvg')) {
+        createColumnAvgElement(countBadge).lastChild.textContent = formatDuration(2 * 24 * 3600 * 1000);
+      }
+      // nach dem Median, damit das Split-Label wie im Original auf den restlichen Platz schrumpft
+      if (showEnabled && isFeatureOn('splitLabels')) {
+        applySplitLabels(headerClone);
+        headerClone.querySelectorAll('.ambient-split-label').forEach(fitSplitLabel);
+      }
+    }
+
+    const clone = card.cloneNode(true);
+    clone.ambientPreview = true; // isCardInActiveColumn: Kopie gilt als aktive Spalte
+    resetPreviewCard(clone);
+    applyStyles(clone, {width: card.getBoundingClientRect().width + 'px', maxWidth: '100%', listStyle: 'none'});
+    column.appendChild(clone);
+    nodes.push(clone);
+    if (showEnabled) {
+      if (isFeatureOn('splitLabels')) applySplitLabels(clone);
+      const titleLink = clone.querySelector(SEL.cardTitleLink);
+      if (titleLink && isFeatureOn('estimateBadge')) applyEstimateBadge(titleLink, true, true);
+      if (isFeatureOn('progress')) {
+        clone.setAttribute('data-ambient-progress-url', urls.portal);
+        clone.setAttribute('data-ambient-timesheet-url', urls.timesheet);
+        injectProgressIntoCard(clone, urls.data);
+      }
+      if (isFeatureOn('mrBadge')) {
+        injectMrBadgeIntoCard(clone, [{
+          iid: 87,
+          title: 'Beispiel-Merge-Request',
+          state: 'opened',
+          web_url: '#',
+          assignee: {id: 2, name: 'Jana E.', avatar_url: previewAvatarUrl('JE', '#1f8a8a')},
+          reviewers: [{id: 3, name: 'Max M.', avatar_url: previewAvatarUrl('MM', '#6f5bd2')}]
+        }], projectSettings ? projectSettings.projectPath : '', iid);
+      }
+      if (isFeatureOn('columnAge')) {
+        injectColumnAgeIntoCard(clone, new Date(Date.now() - 22 * 3600 * 1000));
+        const ageText = clone.querySelector('.ambient-column-age-text');
+        if (ageText) ageText.textContent = formatDuration(22 * 3600 * 1000);
+      }
+      if (isFeatureOn('cardActions')) {
+        injectCardActions(clone, iid, Object.assign({}, projectSettings, {
+          ticketActions: (projectSettings && projectSettings.ticketActions) || PREVIEW_SAMPLE_ACTIONS
+        }));
+      }
+    }
+    // gleich im selben Durchlauf: Scans und Selektoren dürfen die Kopien nie für echte Elemente halten
+    nodes.forEach(stripPreviewIds);
+  }
+
+  // Kopie ohne ids/data-testid, damit Scans, Selektoren und getElementById die Kopie nicht für das Original halten
+  function clonePreviewNode(node) {
+    const clone = node.cloneNode(true);
+    [clone].concat(Array.prototype.slice.call(clone.querySelectorAll('[id], [data-testid]'))).forEach(function (el) {
+      el.removeAttribute('id');
+      el.removeAttribute('data-testid');
+    });
+    applyStyles(clone, {width: node.getBoundingClientRect().width + 'px', maxWidth: '100%', margin: '0', boxSizing: 'border-box'});
+    return clone;
+  }
+
+  function createPreviewContext(label, value) {
+    const row = document.createElement('div');
+    applyStyles(row, {padding: '0.5rem 0', borderBottom: '1px solid var(--gl-border-color-subtle, rgba(128, 128, 128, 0.25))', fontSize: '12px', opacity: '0.55'});
+    row.appendChild(createTextSpan(label, {display: 'block', fontWeight: '600'}));
+    row.appendChild(createTextSpan(value));
+    return row;
+  }
+
+  function buildPreviewContent(view, projectSettings) {
+    const iid = previewCardIid || '1';
+    const data = PREVIEW_SAMPLE_PROGRESS;
+    // Ticket-Aktionen immer zeigen: die eigenen, sonst ein Beispiel
+    const sampleSettings = Object.assign({}, projectSettings, {
+      ticketActions: (projectSettings && projectSettings.ticketActions) || PREVIEW_SAMPLE_ACTIONS
+    });
+    const portalUrl = (projectSettings && buildPortalUrl(projectSettings, iid)) || 'https://portal.example';
+    const timesheetUrl = (projectSettings && buildTimesheetUrl(projectSettings, iid)) || 'https://portal.example';
+    // Wie GitLabs rechte Seitenleiste: Breite, Seitenhintergrund und Innenabstand, damit die eingefügten Boxen wie auf
+    // der echten Seite mit dem Hintergrund verschmelzen und nicht am Rand kleben
+    const sidebarFrame = {
+      boxSizing: 'border-box',
+      padding: '0.6rem 0.9rem',
+      borderRadius: '8px',
+      border: SETTINGS_BORDER,
+      background: getGitLabWindowBackgroundColor(true)
+    };
+    const sidebar = document.createElement('div');
+    applyStyles(sidebar, Object.assign({width: '320px', maxWidth: '100%', display: 'flex', flexDirection: 'column'}, sidebarFrame));
+
+    if (view === 'board') {
+      const card = findPreviewCard();
+      if (!card) {
+        return createTextSpan('Hier ist kein Board geladen – öffne ein Board, um die Karten-Vorschau zu sehen.', FIELD_HINT_STYLES);
+      }
+      const column = document.createElement('div');
+      applyStyles(column, {display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '100%'});
+      column.renderPreview = function () {
+        renderPreviewBoard(column, card, projectSettings, {portal: portalUrl, timesheet: timesheetUrl, data: data});
+      };
+      return column;
+    }
+
+    if (view === 'ticket') {
+      sidebar.appendChild(createPreviewContext('Assignee', 'Alex K.'));
+      sidebar.appendChild(createPreviewContext('Labels', 'API'));
+      if (isFeatureOn('issueDetail')) injectProgressIntoIssueDetail(sidebar, data, portalUrl, timesheetUrl, iid, sampleSettings);
+      return sidebar;
+    }
+
+    if (view === 'mr') {
+      const assigneeBlock = createPreviewContext('Assignee', 'Jana E.');
+      sidebar.appendChild(assigneeBlock);
+      sidebar.appendChild(createPreviewContext('Reviewer', 'Max M.'));
+      if (isFeatureOn('mrPageProgress')) {
+        injectProgressIntoMRDetail(assigneeBlock, data, portalUrl, timesheetUrl, sampleSettings, iid);
+      }
+      if (isFeatureOn('mrAssigneeButtons')) {
+        const container = createTicketAssigneeContainer();
+        sidebar.insertBefore(container, assigneeBlock);
+        const alex = {id: 1, name: 'Alex K.', avatar_url: previewAvatarUrl('AK', '#b07a2a')};
+        const jana = {id: 2, name: 'Jana E.', avatar_url: previewAvatarUrl('JE', '#1f8a8a')};
+        const max = {id: 3, name: 'Max M.', avatar_url: previewAvatarUrl('MM', '#6f5bd2')};
+        renderTicketAssigneeBlock(container, {assignees: [alex], mrInfo: {assignee: jana, author: jana, reviewer: max}});
+      }
+      return sidebar;
+    }
+
+    // Breadcrumb-Zeile: MR-Buttons (falls an) und das Zahnrad
+    const row = document.createElement('div');
+    applyStyles(row, Object.assign({display: 'flex', alignItems: 'center', gap: '0.25rem'}, sidebarFrame, {padding: '0.35rem 0.6rem'}));
+    row.appendChild(createTextSpan((getCurrentProjectPath() || 'gruppe/projekt') + ' / …', {flex: '1 1 auto', opacity: '0.55', fontSize: '0.85rem'}));
+    if (mrLinksEnabled && showEnabled) {
+      const linksBar = buildMrLinksBar(getCurrentProjectPath() || '');
+      linksBar.removeAttribute('id');
+      linksBar.classList.add('ambient-preview-mr-links');
+      row.appendChild(linksBar);
+    }
+    const gear = gearButtonElement && clonePreviewNode(gearButtonElement);
+    if (gear) {
+      gear.style.width = '';
+      gear.querySelectorAll('span[aria-hidden="true"]').forEach(function (dot) {
+        if (!dot.querySelector('svg')) dot.remove(); // Update-/Rate-Limit-Punkte gehören nicht in die Vorschau
+      });
+      row.appendChild(gear);
+    }
+    return row;
+  }
+
+  function createFeaturePreview(view, projectSettings) {
+    const box = document.createElement('div');
+    applyStyles(box, CARD_STYLES);
+    applyStyles(box, {padding: '0.75rem 0.9rem 0.9rem', gap: '0.6rem', fontSize: '0.8rem'});
+    const head = document.createElement('div');
+    applyStyles(head, {display: 'flex', justifyContent: 'space-between', gap: '0.75rem', color: SETTINGS_SUBTLE_TEXT});
+    head.appendChild(createTextSpan('Vorschau', {fontSize: '0.7rem', fontWeight: '600', letterSpacing: '0.06em', textTransform: 'uppercase'}));
+    const hint = createTextSpan('', {fontSize: '0.78rem', textAlign: 'right'});
+    head.appendChild(hint);
+    box.appendChild(head);
+
+    const body = document.createElement('div');
+    body.setAttribute('aria-hidden', 'true'); // nur Illustration, die Schalter tragen Label und Beschreibung
+    body.inert = true; // echte Buttons: Klicks dürfen nichts auslösen
+    body.className = 'ambient-preview';
+    // kein overflow: der würde Umrandungen (2px außerhalb) und den roten Karten-Rahmen abschneiden; Kopien sind per
+    // maxWidth auf die Vorschaubreite begrenzt. Das Padding lässt Platz für beides.
+    applyStyles(body, {padding: '6px'});
+    box.appendChild(body);
+
+    const labels = {};
+    FEATURE_MENU.forEach(function (group) {
+      group.items.forEach(function (item) {
+        labels[item[0]] = t(item[1]);
+      });
+    });
+    const defaultHint = 'Fahre über einen Schalter, um sein Element zu sehen';
+    let highlighted = null;
+
+    function highlight(key) {
+      highlighted = key;
+      body.querySelectorAll('[data-ambient-preview-outline]').forEach(function (el) {
+        applyStyles(el, {outline: '', outlineOffset: '', backgroundColor: el.getAttribute('data-ambient-preview-outline')});
+        el.removeAttribute('data-ambient-preview-outline');
+      });
+      if (!key) {
+        hint.textContent = defaultHint;
+        return;
+      }
+      const found = body.querySelectorAll(PREVIEW_FEATURE_SELECTORS[key]);
+      // Umrandung nach innen plus Tönung: manche Eltern (z. B. Karten-Footer) schneiden alles außerhalb ab
+      found.forEach(function (el) {
+        el.setAttribute('data-ambient-preview-outline', el.style.backgroundColor);
+        applyStyles(el, {outline: '2px solid ' + SETTINGS_ACCENT, outlineOffset: '-2px', backgroundColor: 'rgba(31, 117, 203, 0.18)'});
+      });
+      hint.textContent = labels[key] + (found.length ? '' : isFeatureOn(key) ? ' – hier gerade nicht sichtbar' : ' – aus, erscheint nicht');
+    }
+
+    function refresh() {
+      body.textContent = '';
+      const content = buildPreviewContent(view, projectSettings);
+      content.classList.add('ambient-preview-content'); // eigener Knoten: löst keinen Board-Scan aus
+      body.appendChild(content);
+      if (content.renderPreview) content.renderPreview(); // Board-Karte braucht den DOM (berechnete Farben)
+      highlight(highlighted);
+    }
+
+    hint.textContent = defaultHint;
+    return {element: box, refresh: refresh, highlight: highlight};
+  }
+
+  const DISPLAY_SUBTABS = [['board', 'Board-Karte'], ['ticket', 'Ticket'], ['mr', 'Merge Request'], ['topbar', 'Topbar']];
+  let activeDisplaySubtab = 'board';
+
+  function createDisplayTab(onFeatureChanged, onResume, projectSettings) {
+    const panel = document.createElement('div');
+    applyStyles(panel, TAB_PANEL_STYLES);
+
+    const pausedNote = document.createElement('div');
+    pausedNote.setAttribute('role', 'status');
+    applyStyles(pausedNote, {
+      display: 'none',
+      alignItems: 'center',
+      gap: '0.75rem',
+      padding: '0.6rem 0.9rem',
+      borderRadius: '8px',
+      background: SETTINGS_STRONG_BACKGROUND,
+      fontSize: '0.85rem'
+    });
+    pausedNote.appendChild(createTextSpan('Alle Anzeigen sind pausiert. Deine Auswahl bleibt erhalten.', {flex: '1 1 auto'}));
+    const resumeButton = document.createElement('button');
+    resumeButton.type = 'button';
+    resumeButton.textContent = 'Fortsetzen';
+    resumeButton.className = 'ambient-btn btn gl-button btn-default btn-sm';
+    resumeButton.addEventListener('click', onResume);
+    pausedNote.appendChild(resumeButton);
+    panel.appendChild(pausedNote);
+
+    // Unterreiter und Vorschau hängt der Aufrufer in den festen Panel-Kopf, damit sie beim Scrollen stehen bleiben
+    const pinned = document.createElement('div');
+    applyStyles(pinned, {display: 'flex', flexDirection: 'column', gap: '0.6rem'});
+    const subnav = document.createElement('div');
+    subnav.setAttribute('role', 'group');
+    subnav.setAttribute('aria-label', 'Ansicht');
+    applyStyles(subnav, {display: 'flex', gap: '2px', padding: '3px', borderRadius: '8px', border: SETTINGS_BORDER});
+    pinned.appendChild(subnav);
+
+    const subtabs = {};
+    DISPLAY_SUBTABS.forEach(function (def) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = t(def[1]);
+      applyStyles(button, {
+        flex: '1 1 0',
+        minHeight: '32px',
+        padding: '0.2rem 0.5rem',
+        border: '0',
+        borderRadius: '6px',
+        color: 'inherit',
+        fontSize: '0.85rem',
+        fontWeight: '500',
+        cursor: 'pointer',
+        whiteSpace: 'nowrap'
+      });
+      button.addEventListener('click', function () {
+        selectSubtab(def[0]);
+      });
+      subnav.appendChild(button);
+      const preview = createFeaturePreview(def[0], projectSettings);
+      pinned.appendChild(preview.element);
+      const section = document.createElement('div');
+      applyStyles(section, TAB_PANEL_STYLES);
+      panel.appendChild(section);
+      subtabs[def[0]] = {button: button, preview: preview, section: section};
+    });
+
+    let previewTimers = [];
+
+    // Erst nach dem Neu-Rendern (scheduleRerender + Scan) neu bauen: das Neu-Rendern räumt auch die Vorschau ab
+    function schedulePreviewRefresh() {
+      previewTimers.forEach(clearTimeout);
+      const preview = subtabs[activeDisplaySubtab].preview;
+      previewTimers = [setTimeout(preview.refresh, 400), setTimeout(preview.refresh, 1200)];
+    }
+
+    const rows = {};
+    const groups = [];
+    FEATURE_MENU.forEach(function (group) {
+      const settingsGroup = createSettingsGroup(t(group.title));
+      const preview = subtabs[group.view].preview;
+      group.items.forEach(function (item) {
+        const key = item[0];
+        const row = makeSwitch(t(item[1]), key === 'mrLinks' ? mrLinksEnabled : features[key] !== false, function (val) {
+          if (key === 'mrLinks') {
+            setMrLinksEnabled(val);
+          } else {
+            saveFeature(key, val);
+            onFeatureChanged();
+          }
+          refresh();
+          schedulePreviewRefresh();
+        }, {desc: item[2], child: Boolean(FEATURE_PARENTS[key])});
+        ['mouseenter', 'focusin'].forEach(function (type) {
+          row.addEventListener(type, function () { preview.highlight(key); });
+        });
+        ['mouseleave', 'focusout'].forEach(function (type) {
+          row.addEventListener(type, function () { preview.highlight(null); });
+        });
+        rows[key] = row;
+        settingsGroup.list.appendChild(row);
+      });
+      groups.push({items: group.items, aside: settingsGroup.aside});
+      subtabs[group.view].section.appendChild(settingsGroup.element);
+    });
+
+    function selectSubtab(key) {
+      const previous = activeDisplaySubtab;
+      const keys = DISPLAY_SUBTABS.map(function (def) { return def[0]; });
+      activeDisplaySubtab = key;
+      Object.keys(subtabs).forEach(function (k) {
+        const selected = k === key;
+        subtabs[k].button.setAttribute('aria-pressed', String(selected));
+        applyStyles(subtabs[k].button, {background: selected ? SETTINGS_STRONG_BACKGROUND : 'transparent', opacity: selected ? '1' : '0.7'});
+        subtabs[k].preview.element.style.display = selected ? 'flex' : 'none';
+        subtabs[k].section.style.display = selected ? 'flex' : 'none';
+      });
+      subtabs[key].preview.refresh();
+      if (previous !== key) {
+        const direction = keys.indexOf(key) > keys.indexOf(previous) ? 1 : -1;
+        animateTabIn(subtabs[key].preview.element, direction);
+        animateTabIn(subtabs[key].section, direction);
+      }
+    }
+
+    function refresh() {
+      pausedNote.style.display = showEnabled ? 'none' : 'flex';
+      Object.keys(rows).forEach(function (key) {
+        const parent = FEATURE_PARENTS[key];
+        setSettingDisabled(rows[key], !showEnabled || Boolean(parent && !isFeatureOn(parent)));
+      });
+      groups.forEach(function (group) {
+        const on = group.items.filter(function (item) {
+          return item[0] === 'mrLinks' ? mrLinksEnabled : features[item[0]] !== false;
+        }).length;
+        group.aside.textContent = on + ' von ' + group.items.length + ' an';
       });
     }
 
-    FEATURE_MENU.forEach(function (group) {
-      const groupElem = document.createElement('div');
-      applyStyles(groupElem, {display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.5rem 1rem 0'});
-      const heading = document.createElement('div');
-      heading.textContent = t(group.title);
-      applyStyles(heading, Object.assign({padding: '0 0.6rem'}, SETTINGS_SUBHEADING_STYLES));
-      groupElem.appendChild(heading);
-      const grid = createSwitchGrid();
-      groupElem.appendChild(grid);
+    selectSubtab(activeDisplaySubtab);
+    refresh();
+    return {
+      element: panel,
+      pinned: pinned,
+      refresh: function () {
+        refresh();
+        schedulePreviewRefresh();
+      },
+      refreshPreview: function () {
+        subtabs[activeDisplaySubtab].preview.refresh();
+      }
+    };
+  }
+
+  function createBoardTab(projectSettings, onValuesChanged, onStatus) {
+    const panel = document.createElement('div');
+    applyStyles(panel, TAB_PANEL_STYLES);
+
+    const scope = document.createElement('div');
+    applyStyles(scope, {display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.85rem', color: SETTINGS_SUBTLE_TEXT});
+    scope.appendChild(createTextSpan('Gilt nur für'));
+    const path = document.createElement('code');
+    path.textContent = projectSettings.projectPath || 'dieses Board';
+    scope.appendChild(path);
+    panel.appendChild(scope);
+
+    const config = createProjectConfigSection(projectSettings, onValuesChanged);
+    const age = createAgeHighlightSection(projectSettings);
+    panel.appendChild(config.portalCard);
+    panel.appendChild(age.element);
+    panel.appendChild(config.actionsCard);
+
+    // Bis Portal-URL und Projekt-ID gespeichert sind, bleiben die übrigen Karten gesperrt
+    function updateStatus() {
+      const configured = Boolean(projectSettings.projectId && projectSettings.portalBaseUrl);
+      config.setConfigured(configured);
+      [age.element, config.actionsCard].forEach(function (el) {
+        el.inert = !configured;
+        el.style.opacity = configured ? '1' : '0.45';
+      });
+      onStatus(configured);
+    }
+
+    updateStatus();
+    return {element: panel, refreshAgeHighlight: age.refresh, updateStatus: updateStatus};
+  }
+
+  function createAdvancedTab(projectSettings) {
+    const panel = document.createElement('div');
+    applyStyles(panel, TAB_PANEL_STYLES);
+
+    const general = createSettingsGroup('Allgemein');
+    const languageRow = document.createElement('div');
+    applyStyles(languageRow, {display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 1rem', minHeight: '52px', boxSizing: 'border-box'});
+    languageRow.appendChild(createRowText('Sprache', 'Teilweise übersetzt · wirkt nach dem Neuladen'));
+    const languageSwitch = document.createElement('div');
+    languageSwitch.setAttribute('role', 'group');
+    languageSwitch.setAttribute('aria-label', 'Sprache');
+    applyStyles(languageSwitch, {display: 'flex', gap: '2px', padding: '3px', borderRadius: '8px', border: SETTINGS_BORDER, flex: '0 0 auto'});
+    const languageButtons = [['de', 'Deutsch'], ['en', 'English']].map(function (def) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = def[1];
+      applyStyles(button, {
+        minHeight: '30px',
+        padding: '0.2rem 0.75rem',
+        border: '0',
+        borderRadius: '6px',
+        color: 'inherit',
+        fontSize: '0.85rem',
+        fontWeight: '500',
+        cursor: 'pointer'
+      });
+      button.addEventListener('click', function () {
+        const english = def[0] === 'en';
+        if ((experiments.english === true) === english) return;
+        saveExperiment('english', english);
+        paintLanguage();
+        showToast({text: english ? 'Language changes after reload.' : 'Sprache ändert sich nach dem Neuladen.', variant: 'info'});
+      });
+      languageSwitch.appendChild(button);
+      return {english: def[0] === 'en', button: button};
+    });
+
+    function paintLanguage() {
+      languageButtons.forEach(function (entry) {
+        const on = entry.english === (experiments.english === true);
+        entry.button.setAttribute('aria-pressed', String(on));
+        applyStyles(entry.button, {background: on ? SETTINGS_STRONG_BACKGROUND : 'transparent', opacity: on ? '1' : '0.7'});
+      });
+    }
+
+    paintLanguage();
+    languageRow.appendChild(languageSwitch);
+    general.list.appendChild(languageRow);
+    general.list.appendChild(makeSwitch('Debug-Logs', debugEnabled, function (val) {
+      debugEnabled = val;
+      saveFeature('debug', debugEnabled);
+      console.log(LOG_PREFIX, 'Debug geändert auf:', debugEnabled);
+    }, {desc: 'Ausführliche Ausgaben in der Browser-Konsole'}));
+    panel.appendChild(general.element);
+
+    panel.appendChild(createEstimatePatternGroup());
+
+    const tools = createSettingsGroup('Diagnose & Daten');
+    createDataToolDefs(projectSettings).forEach(function (def) {
+      tools.list.appendChild(createActionRow(def[0], def[1], def[2], def[3]));
+    });
+    panel.appendChild(tools.element);
+
+    const danger = createSettingsGroup('Gefahrenzone');
+    danger.heading.style.color = SETTINGS_DANGER;
+    danger.list.style.borderColor = SETTINGS_DANGER;
+    danger.list.appendChild(createActionRow('Alle lokalen Daten löschen',
+      'Entfernt Konfiguration, Cache und Einstellungen auf allen Boards. Lässt sich nicht rückgängig machen.',
+      'Löschen…', clearAllScriptData, true));
+    panel.appendChild(danger.element);
+    return panel;
+  }
+
+  function createEstimatePatternGroup() {
+    const group = createSettingsGroup('Schätzungs-Muster');
+    group.list.className = '';
+    applyStyles(group.list, {padding: '0.9rem 1rem', gap: '0.6rem'});
+    group.list.appendChild(createTextSpan('Woran das Script Schätzungen im Titel erkennt. Eine Zeile pro Muster: ' +
+      '„sp: <Regex>" oder „timebox: <Regex>", Gruppe 1 ist die Zahl.', FIELD_HINT_STYLES));
+    const textarea = document.createElement('textarea');
+    textarea.className = FORM_INPUT_CLASSES;
+    textarea.rows = 3;
+    textarea.spellcheck = false;
+    textarea.setAttribute('aria-label', 'Schätzungs-Muster');
+    textarea.value = String(expSetting('estimatePatterns', DEFAULT_ESTIMATE_PATTERNS));
+    applyStyles(textarea, Object.assign({}, EXPERIMENT_INPUT_STYLES, {fontFamily: 'monospace', fontSize: '0.8rem', resize: 'vertical'}));
+    group.list.appendChild(textarea);
+
+    const footer = document.createElement('div');
+    applyStyles(footer, {display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem'});
+    const status = createTextSpan('', {fontSize: '0.8rem'});
+    status.setAttribute('role', 'status');
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.textContent = 'Auf Standard zurücksetzen';
+    reset.className = 'ambient-btn btn gl-button btn-default btn-default-tertiary btn-sm';
+    footer.appendChild(status);
+    footer.appendChild(reset);
+    group.list.appendChild(footer);
+
+    function validate() {
+      const value = textarea.value.trim();
+      const parsed = parseEstimatePatterns(value);
+      const isDefault = !value || value === DEFAULT_ESTIMATE_PATTERNS;
+      if (parsed.errors.length) {
+        status.textContent = parsed.errors.length + ' ungültig (ignoriert): ' + parsed.errors.join(' | ');
+      } else {
+        status.textContent = value ? parsed.patterns.length + ' Muster gültig' + (isDefault ? ' · Standard' : '') : 'Leer · Standard-Muster aktiv';
+      }
+      status.style.color = parsed.errors.length ? SETTINGS_DANGER : SETTINGS_SUCCESS;
+      reset.style.display = isDefault ? 'none' : '';
+    }
+
+    function save(value) {
+      saveExperiment('estimatePatterns', value === DEFAULT_ESTIMATE_PATTERNS ? '' : value);
+      applyExperimentChange();
+      validate();
+    }
+
+    textarea.addEventListener('input', validate);
+    textarea.addEventListener('change', function () {
+      save(textarea.value.trim());
+      flashSaved(textarea);
+    });
+    reset.addEventListener('click', function () {
+      textarea.value = DEFAULT_ESTIMATE_PATTERNS;
+      save(DEFAULT_ESTIMATE_PATTERNS);
+    });
+    validate();
+    return group.element;
+  }
+
+  function createExperimentsTab(projectSettings, onCountChanged) {
+    const panel = document.createElement('div');
+    applyStyles(panel, TAB_PANEL_STYLES);
+    panel.appendChild(createTextSpan('Ideen im Test. Standardmäßig aus, wirken sofort auf dem Board und können sich noch ' +
+      'ändern oder wieder verschwinden.', {
+      padding: '0.7rem 0.9rem',
+      borderRadius: '8px',
+      background: SETTINGS_STRONG_BACKGROUND,
+      fontSize: '0.85rem',
+      lineHeight: '1.45'
+    }));
+
+    // Zusatz-Buttons erscheinen unter ihrem Schalter, solange das Experiment an ist
+    const extraActions = {
+      expConfigLink: function () {
+        return createExperimentButton('Konfig-Link kopieren', 'Projekt-Konfiguration als Link teilen', function () {
+          copyConfigLink(projectSettings);
+        });
+      }
+    };
+
+    function countOn() {
+      let count = 0;
+      EXPERIMENT_MENU.forEach(function (group) {
+        group.items.forEach(function (item) {
+          if (isExp(item[0])) count += 1;
+        });
+      });
+      return count;
+    }
+
+    EXPERIMENT_MENU.forEach(function (group) {
+      const settingsGroup = createSettingsGroup(group.title);
       group.items.forEach(function (item) {
         const key = item[0];
-        const row = key === 'mrLinks'
-          ? mrLinksToggle
-          : makeSwitch(t(item[1]), features[key] !== false, function (val) {
-            saveFeature(key, val);
-            updateSubRows();
-            onFeatureChanged();
-          });
-        if (FEATURE_PARENTS[key]) {
-          row.style.paddingLeft = '1.8rem';
-          subRows.push({key: key, elem: row});
+        let action = null;
+        settingsGroup.list.appendChild(makeSwitch(t(item[1]), isExp(key), function (val) {
+          saveExperiment(key, val);
+          setTimeout(applyExperimentChange, 120); // nach dem Paint, damit der Schalter sofort umspringt
+          if (action) action.style.display = val ? 'flex' : 'none';
+          onCountChanged(countOn());
+        }, {desc: item[2], where: 'Beta'}));
+        if (extraActions[key] && projectSettings) {
+          action = document.createElement('div');
+          action.className = 'ambient-row-extra';
+          applyStyles(action, {display: isExp(key) ? 'flex' : 'none', padding: '0 1rem 0.8rem'});
+          action.appendChild(extraActions[key]());
+          settingsGroup.list.appendChild(action);
         }
-        grid.appendChild(row);
       });
-      section.appendChild(groupElem);
+      panel.appendChild(settingsGroup.element);
     });
-
-    const advanced = createCollapsible(t('Erweitert'), false);
-    const advancedSwitches = createSwitchGrid();
-    advancedSwitches.appendChild(debugToggle);
-    const languageToggle = makeSwitch('Englische Oberfläche (teilweise, Reload nötig)', experiments.english === true, function (val) {
-      saveExperiment('english', val);
-      showToast({text: val ? 'Language changes after reload.' : 'Sprache ändert sich nach dem Neuladen.', variant: 'info'});
-    });
-    advancedSwitches.appendChild(languageToggle);
-    advanced.body.appendChild(advancedSwitches);
-    const extraIdsField = createExperimentSettingField('Weitere Portal-Projekt-IDs (Komma, max. 3) – zusätzliche Balken',
-      'extraProjectIds', '', {placeholder: '1234, 5678'});
-    advanced.body.appendChild(extraIdsField);
-    const estimateField = createExperimentSettingField(
-      'Schätzungs-Muster (eine Zeile pro Muster: „sp: <Regex>" oder „timebox: <Regex>", Gruppe 1 = Zahl; leer = Standard)',
-      'estimatePatterns', DEFAULT_ESTIMATE_PATTERNS, {multiline: true});
-    estimateField.querySelector('textarea').addEventListener('change', function (ev) {
-      const errors = parseEstimatePatterns(ev.target.value).errors;
-      if (errors.length) showToast({text: 'Ungültige Schätzungs-Muster ignoriert: ' + errors.join(' | '), variant: 'warning'});
-    });
-    advanced.body.appendChild(estimateField);
-    const toolGrid = document.createElement('div');
-    applyStyles(toolGrid, {display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.5rem', padding: '0 0.6rem'});
-    createDataToolButtons(projectSettings).forEach(function (button) {
-      toolGrid.appendChild(button);
-    });
-    advanced.body.appendChild(toolGrid);
-    section.appendChild(advanced.element);
-    section.appendChild(createExperimentsSection(projectSettings));
-
-    mrLinksToggle.querySelector('span').textContent = t('MR-Buttons in der Topbar');
-    updateSubRows();
-    return section;
+    onCountChanged(countOn());
+    return panel;
   }
 
   function createAgeHighlightSection(projectSettings) {
-    const panelBackground = getGitLabWindowBackgroundColor(true);
-    const panelTextColor = getToolbarForegroundColor();
-    const section = document.createElement('div');
-    applyStyles(section, {
-      padding: '0.25rem 1rem 0',
-      width: '100%',
-      boxSizing: 'border-box',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '0.45rem',
-      color: panelTextColor
-    });
-    const heading = document.createElement('div');
-    heading.textContent = 'Roter Rahmen bei Median-Überschreitung';
-    applyStyles(heading, FIELD_LABEL_STYLES);
-    const hint = document.createElement('div');
-    hint.textContent = 'Spalten, in denen Tickets über dem Spalten-Median rot umrandet werden.';
-    applyStyles(hint, FIELD_HINT_STYLES);
+    const card = createPanelCard('Liegezeit hervorheben');
+    const hint = createTextSpan('', FIELD_HINT_STYLES);
+    card.element.appendChild(hint);
+    const chips = document.createElement('div');
+    chips.setAttribute('role', 'group');
+    chips.setAttribute('aria-label', 'Spalten mit rotem Rahmen');
+    applyStyles(chips, {display: 'flex', flexWrap: 'wrap', gap: '0.5rem'});
+    card.element.appendChild(chips);
 
-    // <details> als Combobox: Summary zeigt Auswahl, aufgeklappt Checkbox-Liste
-    const combo = document.createElement('details');
-    // contain: Auswahltext darf das Menü nicht verbreitern, Summary kürzt mit Ellipsis
-    applyStyles(combo, {position: 'relative', width: '100%', contain: 'inline-size'});
-    const summary = document.createElement('summary');
-    applyStyles(summary, {
-      padding: '0.4rem 0.6rem',
-      borderRadius: '6px',
-      border: '1px solid var(--gl-border-color-strong, #374151)',
-      background: panelBackground,
-      color: panelTextColor,
-      fontSize: '0.9rem',
-      cursor: 'pointer',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap'
-    });
-    const options = document.createElement('div');
-    applyStyles(options, {
-      marginTop: '0.25rem',
-      padding: '0.25rem 0',
-      borderRadius: '6px',
-      border: '1px solid var(--gl-border-color-strong, #374151)',
-      background: panelBackground,
-      maxHeight: '220px',
-      overflowY: 'auto'
-    });
-    combo.appendChild(summary);
-    combo.appendChild(options);
-    section.appendChild(heading);
-    section.appendChild(hint);
-    section.appendChild(combo);
+    function createChip(key, text, enabled) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.disabled = !enabled;
+      applyStyles(chip, {
+        minHeight: '32px',
+        padding: '0.3rem 0.8rem',
+        borderRadius: '999px',
+        border: '1px solid',
+        fontSize: '0.85rem',
+        fontWeight: '500',
+        cursor: enabled ? 'pointer' : 'not-allowed',
+        opacity: enabled ? '1' : '0.45'
+      });
 
-    function updateSummary(labels) {
-      const selected = labels.filter(function (l) { return ageHighlightLookup[l.key]; });
-      summary.textContent = selected.length
-        ? selected.map(function (l) { return l.text; }).join(', ')
-        : 'Keine Spalte ausgewählt';
-      summary.title = summary.textContent;
+      function paint() {
+        const on = Boolean(ageHighlightLookup[key]);
+        chip.textContent = (on ? '✓ ' : '') + text;
+        chip.setAttribute('aria-pressed', String(on));
+        applyStyles(chip, {
+          background: on ? SETTINGS_ACCENT : 'transparent',
+          borderColor: on ? SETTINGS_ACCENT : 'var(--gl-border-color-strong, #5c5a62)',
+          color: on ? '#ffffff' : 'inherit'
+        });
+      }
+
+      chip.addEventListener('click', function () {
+        if (ageHighlightLookup[key]) {
+          delete ageHighlightLookup[key];
+        } else {
+          ageHighlightLookup[key] = true;
+        }
+        saveAgeHighlightLookup();
+        paint();
+        document.querySelectorAll(SEL.boardList).forEach(updateColumnAgeAverage);
+      });
+      paint();
+      return chip;
     }
 
     // Spalten erst beim Öffnen lesen – Board ist beim Toolbar-Aufbau evtl. noch nicht gerendert
     function refresh() {
       loadAgeHighlightLookup(projectSettings.projectKey);
       // Rahmen braucht die Verweildauer-Daten
-      setSettingDisabled(combo, !isFeatureOn('columnAge'));
-      hint.textContent = isFeatureOn('columnAge')
-        ? 'Spalten, in denen Tickets über dem Spalten-Median rot umrandet werden.'
-        : 'Benötigt die globale Einstellung „Verweildauer".';
-      options.innerHTML = '';
-      const labels = [];
+      const enabled = isFeatureOn('columnAge');
+      hint.textContent = enabled
+        ? 'Tickets, die länger als der Spalten-Median liegen, bekommen in diesen Spalten einen roten Rahmen.'
+        : 'Benötigt „Uhr im Karten-Footer“ im Tab Anzeige.';
+      chips.textContent = '';
+      const seen = {};
       document.querySelectorAll(SEL.boardList).forEach(function (boardListElem) {
         const header = getBoardListHeaderElement(boardListElem);
         if (!header || !header.querySelector('.board-title-text .gl-label')) return; // Open/Closed ohne Label
         const text = getColumnLabelText(boardListElem, header);
         const key = normalizeLabelNameForMatching(text);
-        if (key && !labels.some(function (l) { return l.key === key; })) labels.push({key: key, text: text});
+        if (!key || seen[key]) return;
+        seen[key] = true;
+        chips.appendChild(createChip(key, text, enabled));
       });
-
-      labels.forEach(function (l) {
-        const row = document.createElement('label');
-        applyStyles(row, {
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.4rem',
-          padding: '0.2rem 0.5rem',
-          fontSize: '0.85rem',
-          cursor: 'pointer'
-        });
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = Boolean(ageHighlightLookup[l.key]);
-        checkbox.addEventListener('change', function () {
-          if (checkbox.checked) {
-            ageHighlightLookup[l.key] = true;
-          } else {
-            delete ageHighlightLookup[l.key];
-          }
-          saveAgeHighlightLookup();
-          updateSummary(labels);
-          document.querySelectorAll(SEL.boardList).forEach(updateColumnAgeAverage);
-        });
-        row.appendChild(checkbox);
-        row.appendChild(document.createTextNode(l.text));
-        options.appendChild(row);
-      });
-
-      if (!labels.length) {
-        options.textContent = 'Keine Label-Spalten gefunden.';
-        applyStyles(options, {padding: '0.35rem 0.5rem', fontSize: '0.85rem'});
+      if (!chips.firstChild) {
+        chips.appendChild(createTextSpan('Keine Label-Spalten gefunden.', FIELD_HINT_STYLES));
       }
-      updateSummary(labels);
     }
 
-    return {element: section, refresh: refresh};
+    return {element: card.element, refresh: refresh};
   }
 
-  function createProjectConfigSection(hostConfig, projectSettings, onValuesChanged) {
-    const section = document.createElement('div');
-    const panelBackground = getGitLabWindowBackgroundColor(true);
-    const panelTextColor = getToolbarForegroundColor();
-    applyStyles(section, {
-      padding: '0.25rem 0 0.5rem',
-      width: '100%',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '0.45rem',
-      color: panelTextColor
-    });
-    const heading = document.createElement('div');
-    heading.textContent = 'Portal-Projekt-ID';
-    applyStyles(heading, FIELD_LABEL_STYLES);
+  // Portal-Verbindung (Karte mit Status) und Ticket-Aktionen; Felder speichern per Autosave (onValuesChanged)
+  function createProjectConfigSection(projectSettings, onValuesChanged) {
+    const portal = createPanelCard('Portal-Verbindung');
+    const pill = document.createElement('span');
+    applyStyles(pill, {display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', fontWeight: '500'});
+    pill.appendChild(createTextSpan('', {width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor'}));
+    const pillText = createTextSpan('');
+    pill.appendChild(pillText);
+    portal.head.appendChild(pill);
+    const intro = createTextSpan('Zwei Angaben, dann erscheinen Fortschrittsbalken und Portal-Buttons auf den Karten. ' +
+      'Zugangsdaten speichert das Script nie, nur die URL – lokal in deinem Browser.', FIELD_HINT_STYLES);
+    portal.element.appendChild(intro);
+    const stepNumbers = [];
 
-    const formRow = document.createElement('div');
-    applyStyles(formRow, {
-      display: 'flex',
-      gap: '0.35rem',
-      alignItems: 'center'
-    });
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = 'Projekt ID eingeben';
-    input.value = projectSettings.projectId || '';
-    input.className = FORM_INPUT_CLASSES;
-    applyStyles(input, {flex: '1 1 auto', padding: '0.4rem 0.6rem', fontSize: '0.9rem'});
-    projectIdInputElement = input;
-
-    const status = document.createElement('div');
-    applyStyles(status, {
-      fontSize: '0.75rem',
-      color: '#f87171',
-      minHeight: '0'
-    });
-
-    projectStatusElement = status;
-    status.id = 'ambient-project-status';
-    status.setAttribute('role', 'alert');
-    input.setAttribute('aria-describedby', status.id);
-    input.setAttribute('aria-label', 'Portal-Projekt-ID');
-
-    input.addEventListener('input', function () {
-      status.textContent = '';
-      input.removeAttribute('aria-invalid');
-      if (typeof onValuesChanged === 'function') {
-        onValuesChanged();
+    function createInputField(labelText, input, hintText, statusId, step) {
+      const field = document.createElement('div');
+      applyStyles(field, {display: 'flex', flexDirection: 'column', gap: '0.35rem'});
+      const label = document.createElement('label');
+      label.htmlFor = input.id;
+      applyStyles(label, Object.assign({display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0'}, FIELD_LABEL_STYLES));
+      if (step) {
+        const number = createTextSpan(String(step), {
+          width: '20px',
+          height: '20px',
+          borderRadius: '50%',
+          background: SETTINGS_ACCENT,
+          color: '#ffffff',
+          fontSize: '0.7rem',
+          alignItems: 'center',
+          justifyContent: 'center'
+        });
+        number.setAttribute('aria-hidden', 'true');
+        stepNumbers.push(number);
+        label.appendChild(number);
       }
-    });
-
-    formRow.appendChild(input);
-    section.appendChild(heading);
-    section.appendChild(formRow);
-    section.appendChild(status);
-
-    const portalHeading = document.createElement('div');
-    portalHeading.textContent = 'Portal-Base URL';
-    applyStyles(portalHeading, FIELD_LABEL_STYLES);
-
-    const portalRow = document.createElement('div');
-    applyStyles(portalRow, {
-      display: 'flex',
-      gap: '0.35rem',
-      alignItems: 'center'
-    });
+      label.appendChild(document.createTextNode(labelText));
+      field.appendChild(label);
+      input.className = FORM_INPUT_CLASSES;
+      applyStyles(input, EXPERIMENT_INPUT_STYLES);
+      field.appendChild(input);
+      if (hintText) field.appendChild(createTextSpan(hintText, FIELD_HINT_STYLES));
+      const status = document.createElement('div');
+      status.id = statusId;
+      status.setAttribute('role', 'alert');
+      applyStyles(status, {fontSize: '0.78rem', color: '#f87171'});
+      input.setAttribute('aria-describedby', statusId);
+      input.addEventListener('input', function () {
+        status.textContent = '';
+        input.removeAttribute('aria-invalid');
+        onValuesChanged();
+      });
+      field.appendChild(status);
+      return {element: field, status: status};
+    }
 
     const portalInput = document.createElement('input');
     portalInput.type = 'text';
+    portalInput.id = 'ambient-portal-url';
     portalInput.placeholder = 'https://user-portal.arbeitgeber.com';
     portalInput.value = projectSettings.portalBaseUrl || '';
-    portalInput.className = FORM_INPUT_CLASSES;
-    applyStyles(portalInput, {flex: '1 1 auto', padding: '0.4rem 0.6rem', fontSize: '0.9rem'});
     portalUrlInputElement = portalInput;
+    const portalField = createInputField('Portal-URL', portalInput,
+      'Nur https://, ohne Benutzername/Passwort. Wird nur lokal gespeichert.', 'ambient-portal-status', 1);
+    portalStatusElement = portalField.status;
+    portal.element.appendChild(portalField.element);
 
-    const portalStatus = document.createElement('div');
-    applyStyles(portalStatus, {
-      fontSize: '0.75rem',
-      color: '#f87171',
-      minHeight: '0'
-    });
-    portalStatusElement = portalStatus;
-    portalStatus.id = 'ambient-portal-status';
-    portalStatus.setAttribute('role', 'alert');
-    portalInput.setAttribute('aria-describedby', portalStatus.id);
-    portalInput.setAttribute('aria-label', 'Portal-Base URL');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'ambient-project-id';
+    input.inputMode = 'numeric';
+    input.placeholder = 'z. B. 4711';
+    input.value = projectSettings.projectId || '';
+    projectIdInputElement = input;
+    const projectField = createInputField('Portal-Projekt-ID', input, '', 'ambient-project-status', 2);
+    projectStatusElement = projectField.status;
+    portal.element.appendChild(projectField.element);
 
-    portalInput.addEventListener('input', function () {
-      portalStatus.textContent = '';
-      portalInput.removeAttribute('aria-invalid');
-      if (typeof onValuesChanged === 'function') {
-        onValuesChanged();
-      }
-    });
-
-    portalRow.appendChild(portalInput);
-    section.appendChild(portalHeading);
-    section.appendChild(createTextSpan('Nur https://, ohne Benutzername/Passwort. Wird nur lokal gespeichert.', FIELD_HINT_STYLES));
-    section.appendChild(portalRow);
-    section.appendChild(portalStatus);
-
-
-    const secondIdHeading = document.createElement('div');
-    secondIdHeading.textContent = 'Zweite Portal-Projekt-ID';
-    applyStyles(secondIdHeading, Object.assign({marginTop: '0.9rem'}, FIELD_LABEL_STYLES));
-
-    const toggleContainer = document.createElement('div');
-    applyStyles(toggleContainer, {
-      display: 'flex',
-      gap: '0.5rem',
-      alignItems: 'center',
-      marginBottom: '0.4rem'
-    });
-
-    const toggleSwitch = makeSwitch(
-      'Zweite ID aktivieren',
-      projectSettings.useSecondPortalProjectId || false,
-      function (value) {
-        if (typeof onValuesChanged === 'function') {
-          onValuesChanged();
-        }
-      }
-    );
-    useSecondProjectIdToggleCheckbox = toggleSwitch.querySelector('input[type="checkbox"]');
-
-    toggleContainer.appendChild(toggleSwitch);
-
-    const formRow2 = document.createElement('div');
-    applyStyles(formRow2, {
-      display: 'flex',
-      gap: '0.35rem',
-      alignItems: 'center'
-    });
-
+    // Zweites Projekt und weitere IDs unter einer Trennlinie, erst nach der Einrichtung sichtbar
+    const extras = document.createElement('div');
+    applyStyles(extras, {flexDirection: 'column', margin: '0.25rem -1.1rem -1rem', borderTop: SETTINGS_BORDER});
     const input2 = document.createElement('input');
     input2.type = 'text';
-    input2.placeholder = 'Zweite Projekt ID eingeben';
+    input2.id = 'ambient-project-id2';
+    input2.inputMode = 'numeric';
+    input2.placeholder = 'z. B. 4712';
     input2.value = projectSettings.projectId2 || '';
     input2.disabled = !projectSettings.useSecondPortalProjectId;
-    input2.className = FORM_INPUT_CLASSES;
-    applyStyles(input2, {flex: '1 1 auto', padding: '0.4rem 0.6rem', fontSize: '0.9rem',
-      opacity: input2.disabled ? '0.4' : '1',
-      cursor: input2.disabled ? 'not-allowed' : 'text'});
     projectId2InputElement = input2;
-
-    useSecondProjectIdToggleCheckbox.addEventListener('change', function () {
-      const isEnabled = this.checked;
-      input2.disabled = !isEnabled;
-      applyStyles(input2, {
-        opacity: isEnabled ? '1' : '0.4',
-        cursor: isEnabled ? 'text' : 'not-allowed'
-      });
-      if (typeof onValuesChanged === 'function') {
-        onValuesChanged();
-      }
+    const secondField = createInputField('Zweite Projekt-ID', input2, '', 'ambient-project2-status');
+    projectId2StatusElement = secondField.status;
+    applyStyles(secondField.element, {padding: '0 1.1rem 0.9rem', display: input2.disabled ? 'none' : 'flex'});
+    const secondToggle = makeSwitch('Zweites Portal-Projekt', Boolean(projectSettings.useSecondPortalProjectId), function (value) {
+      input2.disabled = !value;
+      secondField.element.style.display = value ? 'flex' : 'none';
+      onValuesChanged();
+    }, {desc: 'Für Tickets, die in zwei Projekten gebucht werden – eigener Balken mit orangem „gebucht“-Anteil'});
+    secondToggle.style.padding = '0.6rem 1.1rem';
+    useSecondProjectIdToggleCheckbox = secondToggle.querySelector('input[type="checkbox"]');
+    extras.appendChild(secondToggle);
+    extras.appendChild(secondField.element);
+    const extraIdsField = createExperimentSettingField('Weitere Projekt-IDs', 'extraProjectIds', '', {
+      placeholder: '1234, 5678',
+      hint: 'Kommagetrennt, höchstens 3 – je ein zusätzlicher Balken unter den ersten beiden.',
+      chip: 'alle Boards'
     });
+    applyStyles(extraIdsField, {padding: '0.9rem 1.1rem 1rem', borderTop: SETTINGS_BORDER});
+    extras.appendChild(extraIdsField);
+    portal.element.appendChild(extras);
 
-    const status2 = document.createElement('div');
-    applyStyles(status2, {
-      fontSize: '0.75rem',
-      color: '#f87171',
-      minHeight: '0'
-    });
-
-    projectId2StatusElement = status2;
-    status2.id = 'ambient-project2-status';
-    status2.setAttribute('role', 'alert');
-    input2.setAttribute('aria-describedby', status2.id);
-    input2.setAttribute('aria-label', 'Zweite Portal-Projekt-ID');
-
-    input2.addEventListener('input', function () {
-      status2.textContent = '';
-      input2.removeAttribute('aria-invalid');
-      if (typeof onValuesChanged === 'function') {
-        onValuesChanged();
-      }
-    });
-
-    formRow2.appendChild(input2);
-    section.appendChild(secondIdHeading);
-    section.appendChild(toggleContainer);
-    section.appendChild(formRow2);
-    section.appendChild(status2);
-
-
-    const actionsHeading = document.createElement('div');
-    actionsHeading.textContent = 'Ticket-Aktionen im MR';
-    applyStyles(actionsHeading, Object.assign({marginTop: '0.9rem'}, FIELD_LABEL_STYLES));
-
+    const actions = createPanelCard('Ticket-Aktionen im Merge Request',
+      'Eine Zeile [Name] startet einen Button, die Zeilen darunter sind seine Quick Actions.');
     const actionsInput = document.createElement('textarea');
     actionsInput.rows = 5;
     actionsInput.setAttribute('aria-label', 'Ticket-Aktionen im MR');
@@ -7063,17 +7714,51 @@
     actionsInput.className = FORM_INPUT_CLASSES;
     applyStyles(actionsInput, {padding: '0.5rem 0.6rem', fontSize: '0.85rem', fontFamily: 'monospace', resize: 'vertical'});
     ticketActionsInputElement = actionsInput;
-    actionsInput.addEventListener('input', function () {
-      if (typeof onValuesChanged === 'function') {
-        onValuesChanged();
-      }
-    });
+    actions.element.appendChild(actionsInput);
+    // Vorschau der Buttons, die aus dem Text entstehen
+    const actionsPreview = document.createElement('div');
+    applyStyles(actionsPreview, {display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem'});
+    actions.element.appendChild(actionsPreview);
 
-    section.appendChild(actionsHeading);
-    section.appendChild(createTextSpan('Eine Zeile [Name] startet einen Button, die Zeilen darunter sind seine Quick Actions.', FIELD_HINT_STYLES));
-    section.appendChild(actionsInput);
-    return section;
+    function renderActionsPreview() {
+      actionsPreview.textContent = '';
+      actionsPreview.appendChild(createTextSpan('Ergibt:', {color: SETTINGS_SUBTLE_TEXT}));
+      const parsed = parseTicketActions(actionsInput.value);
+      if (!parsed.length) actionsPreview.appendChild(createTextSpan('keine Buttons', {color: SETTINGS_SUBTLE_TEXT}));
+      parsed.forEach(function (action) {
+        actionsPreview.appendChild(createTextSpan(action.label, {
+          padding: '0.15rem 0.55rem',
+          borderRadius: '6px',
+          border: SETTINGS_BORDER,
+          background: SETTINGS_STRONG_BACKGROUND
+        }));
+      });
+    }
+
+    actionsInput.addEventListener('input', function () {
+      renderActionsPreview();
+      onValuesChanged();
+    });
+    renderActionsPreview();
+
+    function setConfigured(configured) {
+      pillText.textContent = configured ? 'Verbunden · Projekt ' + projectSettings.projectId : 'Nicht eingerichtet';
+      pill.style.color = configured ? SETTINGS_SUCCESS : 'var(--gl-text-color-warning, #c17d10)';
+      intro.style.display = configured ? 'none' : '';
+      extras.style.display = configured ? 'flex' : 'none';
+      stepNumbers.forEach(function (el) {
+        el.style.display = configured ? 'none' : 'inline-flex';
+      });
+      applyStyles(portal.element, {
+        borderColor: configured ? 'var(--gl-border-color-default, #4c4b51)' : SETTINGS_ACCENT,
+        boxShadow: configured ? 'none' : '0 0 0 3px rgba(31, 117, 203, 0.18)'
+      });
+    }
+
+    return {portalCard: portal.element, actionsCard: actions.element, setConfigured: setConfigured};
   }
+
+
 
   /******************************************************************
    * Init

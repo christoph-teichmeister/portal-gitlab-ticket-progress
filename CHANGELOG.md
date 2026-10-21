@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026.10.37
+
+- Einstellungen neu aufgebaut: vier Tabs (Anzeige, Dieses Board, Erweitert, Experimente) statt verschachtelter
+  aufklappbarer Bereiche. Im Kopf der Hauptschalter „Aktiv/Pausiert“, im Fuß Datenstand und „↻ Daten neu laden“.
+- Anzeige: Unterreiter Board-Karte, Ticket, Merge Request und Topbar, jeder Schalter mit kurzer Beschreibung,
+  Unterpunkte eingerückt direkt unter ihrem Eltern-Feature. Jeder Unterreiter hat eine angepinnte Vorschau, simuliert
+  mit Beispieldaten, aber mit denselben Funktionen gezeichnet wie Board, Ticket- und MR-Seite (die Board-Karte nutzt eine
+  Karte dieses Boards als Gerüst); Hover auf einem Schalter umrandet sein Element. Portal-Buttons und Ticket-Aktionen sind jetzt pro Ort (Karte, Ticket, MR)
+  getrennt schaltbar, das ⋮-Menü auf der Karte hat einen eigenen Schalter.
+- Dieses Board: Portal-Verbindung mit Status; ein noch nicht eingerichtetes Board öffnet direkt hier mit nummerierten
+  Feldern. Spalten für den roten Rahmen als Chips, Ticket-Aktionen mit Vorschau der Buttons. „Weitere Projekt-IDs“
+  sitzen jetzt neben dem zweiten Portal-Projekt.
+- Erweitert: Sprache als Umschalter, Schätzungs-Muster mit Gültigkeitsanzeige und „Auf Standard zurücksetzen“,
+  Diagnose-Werkzeuge als beschriftete Zeilen, „Alle lokalen Daten löschen“ abgesetzt in einer roten Gefahrenzone.
+- Schalter in GitLab-Blau, ganze Zeile klickbar; Tabs per Pfeiltasten bedienbar.
+- Das Panel fährt von rechts herein und nach rechts hinaus (ohne Ausblenden); Reiter und Unterreiter gleiten beim
+  Wechsel kurz aus der Richtung ein (aus bei `prefers-reduced-motion`).
+
 ## 2026.10.36
 
 - Update-Hinweis deutlicher: gelber Kasten oben im Panel über der Status-Karte mit Schritt-für-Schritt-Anleitung (Tampermonkey-Dashboard),
