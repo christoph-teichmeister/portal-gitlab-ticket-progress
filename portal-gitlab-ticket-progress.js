@@ -5649,6 +5649,10 @@
       width: 'clamp(480px, 42vw, 720px)',
       maxWidth: '100vw',
       overflowY: 'auto',
+      // Platz für den Scrollbalken immer reservieren (sonst springt die Breite zwischen kurzen und langen Reitern);
+      // horizontal abschneiden, damit das Einschieben der Reiter keinen zweiten Scrollbalken erzeugt
+      scrollbarGutter: 'stable',
+      overflowX: 'hidden',
       transform: SETTINGS_PANEL_HIDDEN_TRANSFORM,
       pointerEvents: 'none',
       visibility: 'hidden', // geschlossen auch aus Tab-Reihenfolge und Screenreader-Baum
