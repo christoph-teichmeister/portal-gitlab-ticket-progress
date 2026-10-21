@@ -20,9 +20,10 @@
 
 - Follow the existing 2-space indentation, single quotes for strings where already used, and descriptive helper names (
   e.g., `createProjectConfigSection`).
-- Keep the toolbar/config panels modular and avoid inline styles that clash with GitLab’s theme. Use `applyStyles`
-  helper to keep style adjustments centralized. Exception: things inline styles cannot express (`:focus-visible`,
-  `prefers-reduced-motion`) live in the single injected stylesheet (`ensureStylesheet`).
+- Keep the toolbar/config panels modular and avoid inline styles that clash with GitLab’s theme. Static styles
+  (layout, colors, hover/focus states, animations) go as classes into the single injected stylesheet
+  (`ensureStylesheet`); prefer GitLab CSS variables over computed colors. Use the `applyStyles` helper only for
+  values computed at runtime (widths, positions, per-item colors).
 - Keep GitLab selectors in the central `SEL` table and route GitLab API calls through `glFetch`.
 - Maintain metadata comments (e.g., `// ==UserScript==` block) sorted by importance; update version numbers when
   behavior changes.

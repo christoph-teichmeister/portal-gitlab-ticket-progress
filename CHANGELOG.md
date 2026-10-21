@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.10.38
+
+- Ticket-Detail und MR-Seite fragen das Portal nicht mehr bei jedem Scan erneut an, wenn eine Anfrage fehlschlägt oder
+  keine Daten liefert, und respektieren die Projekt-Sperre nach Fehlern (wie das Board).
+- Baut GitLab die Toolbar neu, werden die Listener des alten Einstellungs-Panels jetzt abgeräumt (vorher sammelten
+  sie sich an).
+- Die Board-Kennung wird nicht mehr für jede Karte bei jedem Scan in den localStorage geschrieben, nur noch bei Wechsel.
+
 ## 2026.10.37
 
 - Einstellungen neu aufgebaut: vier Tabs (Anzeige, Dieses Board, Erweitert, Experimente) statt verschachtelter
