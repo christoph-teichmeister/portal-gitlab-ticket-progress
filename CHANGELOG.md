@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.10.45
+
+- Neu: **SP-Summe im Spalten-Header** (`Σ 13 SP`) für Label-Spalten und Closed. Zählt alle Tickets der Spalte per
+  GitLab-API, nicht nur die geladenen Karten, und berücksichtigt die Filter der Suchleiste. Schalter unter Anzeige →
+  Board-Karten, Unterpunkt von „Schätzung als Badge“.
+
 ## 2026.10.44
 
 - Neu: Schalter **Warnung bei fehlender Portal-URL** unter Zahnrad → Dieses Board. Aus = kein gelber Toast auf

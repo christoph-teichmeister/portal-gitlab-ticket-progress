@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.44
+// @version      2026.10.45
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.44';
+  const SCRIPT_VERSION = '2026.10.45';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -160,6 +160,8 @@
       '.ambient-split-label>span:nth-child(2){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
       // GitLabs h2 hat hier Standard-Abstände (20px oben / 10px unten) und sitzt dadurch ~5px unter den Icons
       '[data-testid="board-list-header"] .board-title-text{min-width:0;margin-top:0 !important;margin-bottom:0 !important}' +
+      // Zähler mit Median/SP-Summe nie stauchen: lange Spalten-Labels kürzen sich (Ellipse) statt dass „Σ 13 SP" umbricht
+      '[data-testid="board-list-header"] [data-testid="issue-count-badge"]:has(.ambient-column-sp,.ambient-column-avg){flex-shrink:0}' +
       // Titel füllt die Kartenbreite, damit der Schätzungs-Badge (float) ganz rechts steht – links von GitLabs
       // Verschiebe-Menü, das beim Hover in der reservierten rechten Ecke erscheint
       '.board-card-title:has(.ambient-estimate-badge){flex-grow:1}' +
@@ -419,6 +421,7 @@
     portalButtons: 'progress',
     mrAvatars: 'mrBadge',
     estimateStripTitle: 'estimateBadge',
+    columnSp: 'estimateBadge',
     columnAvg: 'columnAge',
     issuePortalButtons: 'issueDetail',
     issueActions: 'issueDetail',
@@ -2166,7 +2169,7 @@
       clearCardInjections(card);
       card.removeAttribute('data-ambient-skip');
     });
-    document.querySelectorAll('.ambient-column-avg').forEach(function (el) { el.remove(); });
+    document.querySelectorAll('.ambient-column-avg, .ambient-column-sp').forEach(function (el) { el.remove(); });
     removeEstimateBadges(); // Muster können sich geändert haben
     if (rescanHook) rescanHook();
   }
@@ -2673,6 +2676,97 @@
       (ageHighlightLookup[normalizeLabelNameForMatching(getColumnLabelText(boardListElem))]
         ? 'Tickets über dem Median haben einen roten Rahmen.'
         : 'Roter Rahmen für Tickets über dem Median lässt sich in den Einstellungen pro Spalte aktivieren.');
+  }
+
+  // Board-Filter aus der URL → Parameter der Issues-API, damit die SP-Summe dieselben Tickets zählt wie das Board
+  const BOARD_FILTER_TO_API = {
+    'label_name[]': 'labels', 'not[label_name][]': 'not[labels]',
+    milestone_title: 'milestone', 'not[milestone_title]': 'not[milestone]',
+    assignee_username: 'assignee_username', 'assignee_username[]': 'assignee_username',
+    'not[assignee_username][]': 'not[assignee_username]', assignee_id: 'assignee_id',
+    author_username: 'author_username', 'not[author_username]': 'not[author_username]',
+    search: 'search', my_reaction_emoji: 'my_reaction_emoji', weight: 'weight', iteration_id: 'iteration_id',
+    confidential: 'confidential', 'types[]': 'issue_type'
+  };
+
+  // Query für alle Tickets einer Spalte: Label-Spalte → offen mit Label, Closed → geschlossen; plus Board-Filter
+  function buildColumnIssueQuery(search, columnLabel) {
+    const params = {state: [columnLabel ? 'opened' : 'closed']};
+    if (columnLabel) params.labels = [columnLabel];
+    new URLSearchParams(search).forEach(function (value, key) {
+      const apiKey = BOARD_FILTER_TO_API[key];
+      if (apiKey) (params[apiKey] = params[apiKey] || []).push(value);
+    });
+    return Object.keys(params).sort().map(function (key) {
+      return encodeURIComponent(key) + '=' + encodeURIComponent(params[key].join(','));
+    }).join('&');
+  }
+
+  const COLUMN_SP_MAX_PAGES = 10;
+  const columnSpCache = {};
+
+  // Alle Tickets der Spalte seitenweise laden (nicht nur die geladenen Karten) und SP aus den Titeln summieren
+  function fetchColumnSp(projectPath, query) {
+    return memoPromise(columnSpCache, projectPath + '?' + query, 5 * 60 * 1000, function () {
+      const patterns = getEstimatePatterns();
+      const total = {sp: 0, issues: 0, missing: 0, truncated: false};
+      function loadPage(page) {
+        return glApi(projectPath, '/issues?' + query + '&per_page=100&page=' + page, 'SP-Summe').then(function (issues) {
+          issues.forEach(function (issue) {
+            const estimate = parseEstimate(issue.title || '', patterns);
+            total.issues++;
+            if (estimate.kind === 'sp') total.sp += parseFloat(estimate.label.replace(',', '.')) || 0;
+            else if (estimate.kind === 'none') total.missing++;
+          });
+          if (issues.length < 100) return total;
+          // ponytail: max. 1000 Tickets pro Spalte (Closed ohne Filter), danach „≥“
+          if (page >= COLUMN_SP_MAX_PAGES) {
+            total.truncated = true;
+            return total;
+          }
+          return loadPage(page + 1);
+        });
+      }
+      return loadPage(1);
+    });
+  }
+
+  // „Σ 13 SP“ neben GitLabs Zähler; Label-Spalten und Closed, Open nicht
+  function updateColumnSp(boardListElem, header, projectSettings) {
+    const countBadge = header.querySelector(SEL.issueCountBadge);
+    if (!countBadge) return;
+    let el = countBadge.querySelector('.ambient-column-sp');
+    const columnLabel = header.querySelector(SEL.listTitleLabel) ? getColumnLabelText(boardListElem, header) : null;
+    const isClosed = !columnLabel &&
+      /^(closed|geschlossen)$/.test(normalizeListNameForMatching(getListNameFromBoardListElem(boardListElem, header)));
+    if (!isFeatureOn('columnSp') || !projectSettings.projectPath || (!columnLabel && !isClosed)) {
+      if (el) el.remove();
+      return;
+    }
+    // GitLabs Zähler im Schlüssel: Drag & Drop oder Filterwechsel ändert ihn → neu summieren
+    const gitlabCount = Array.prototype.filter.call(countBadge.childNodes, function (node) {
+      return !(node.classList && /\bambient-/.test(node.className));
+    }).map(function (node) { return node.textContent; }).join('').trim();
+    const query = buildColumnIssueQuery(window.location.search, columnLabel);
+    const key = query + '|' + gitlabCount;
+    if (el && el.getAttribute('data-ambient-key') === key) return;
+    if (!el) {
+      el = document.createElement('span');
+      el.className = 'ambient-column-sp gl-flex gl-items-center gl-whitespace-nowrap gl-text-subtle gl-text-sm gl-font-bold gl-mr-3';
+      el.style.cursor = 'help';
+      countBadge.insertBefore(el, countBadge.firstChild);
+    }
+    el.setAttribute('data-ambient-key', key);
+    fetchColumnSp(projectSettings.projectPath, query).then(function (total) {
+      if (el.getAttribute('data-ambient-key') !== key) return; // inzwischen neu angestoßen
+      el.textContent = 'Σ ' + (total.truncated ? '≥ ' : '') + (Math.round(total.sp * 10) / 10) + ' SP';
+      el.title = 'Story Points aller ' + total.issues + ' Tickets dieser Spalte (auch nicht geladene, mit Board-Filtern)' +
+        (total.missing ? ', ' + total.missing + ' ohne Schätzung' : '') +
+        (total.truncated ? '. Nur die ersten ' + COLUMN_SP_MAX_PAGES * 100 + ' Tickets gezählt.' : '');
+    }).catch(function (err) {
+      warn('SP-Summe fehlgeschlagen:', err);
+      el.remove();
+    });
   }
 
   function fetchAndDisplayColumnAge(projectSettings, issueIid, cardElem, listName) {
@@ -3504,6 +3598,7 @@
       const columnLabelText = getColumnLabelText(boardListElem, header);
       if (columnLabelText) boardColumnLabelSet[normalizeLabelNameForMatching(columnLabelText)] = true;
 
+      if (header) updateColumnSp(boardListElem, header, projectSettings);
       if (listName && header) {
         ensureListSelectionCheckbox(
           header,
@@ -4487,7 +4582,7 @@
     // Alle Injektionen entfernen und neu scannen – Daten kommen aus den Caches, kein Request-Burst
     function rerenderFeatures() {
       document.querySelectorAll(
-        '.ambient-progress-badge, .ambient-mr-badge, .ambient-column-age, .ambient-column-avg,' +
+        '.ambient-progress-badge, .ambient-mr-badge, .ambient-column-age, .ambient-column-avg, .ambient-column-sp,' +
         ' .ambient-progress-detail-badge, .ambient-progress-mr-badge, .ambient-ticket-assignee-badge'
       ).forEach(function (el) { el.remove(); });
       removeSplitLabels();
@@ -5166,6 +5261,7 @@
       ['mrAvatars', 'Assignee- & Reviewer-Avatare', 'Wer am MR arbeitet und wer reviewt'],
       ['estimateBadge', 'Schätzung als Badge', '„(3 SP)“ oder „(Timebox: 4h)“ aus dem Titel wird ein Badge, auch in Ticket und MR'],
       ['estimateStripTitle', 'Schätzung aus dem Titel nehmen', 'Aus: „(3 SP)“ bleibt zusätzlich im Titel stehen, z. B. für Scripte, die SP aus dem Titel zählen'],
+      ['columnSp', 'SP-Summe im Spalten-Header', 'Alle Tickets der Spalte (auch nicht geladene), berücksichtigt die Board-Filter'],
       ['splitLabels', 'Geteilte Scoped Labels', 'workflow::Review zweifarbig darstellen, auch in Ticket und MR'],
       ['cardActions', 'Ticket-Aktionen-Menü', '⋮ im Karten-Footer mit deinen Ticket-Aktionen (Tab „Dieses Board“)']
     ]},
@@ -5546,6 +5642,7 @@
     splitLabels: '.ambient-split-label',
     columnAge: '.ambient-column-age',
     columnAvg: '.ambient-column-avg',
+    columnSp: '.ambient-column-sp',
     issueDetail: '.ambient-progress-detail-badge',
     mrPageProgress: '.ambient-progress-mr-badge',
     mrAssigneeButtons: '.ambient-ticket-assignee-badge',
@@ -5641,7 +5738,7 @@
     if (header) {
       const headerClone = header.cloneNode(true);
       resetPreviewSplitLabels(headerClone);
-      headerClone.querySelectorAll('.ambient-column-avg').forEach(function (el) { el.remove(); });
+      headerClone.querySelectorAll('.ambient-column-avg, .ambient-column-sp').forEach(function (el) { el.remove(); });
       applyStyles(headerClone, {width: header.getBoundingClientRect().width + 'px', maxWidth: '100%', boxSizing: 'border-box'});
       column.appendChild(headerClone); // angehängt, damit berechnete Styles (Label-Farben) stimmen
       // data-testid bleibt am Header: Layout-Regeln (GitLab und unser min-width:0) hängen daran; gesucht wird der

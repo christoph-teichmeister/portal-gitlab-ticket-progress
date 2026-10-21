@@ -215,6 +215,12 @@ die Schätzung daraus).
   Gruppe 1 ist die Zahl, Groß-/Kleinschreibung egal, das erste passende Muster gewinnt. Leeres Feld = Standard-Muster
   (wie der Issue-Syncer des Portals: `(n SP)`, `(Timebox: nh)`, `(Spike: nh)`, auch mit `[]`, ohne Doppelpunkt und
   mit `,5` / `.5`). Ungültige Zeilen werden ignoriert und unter dem Feld gemeldet.
+- SP-Summe im Spalten-Header: `Σ 13 SP` neben GitLabs Zähler, für Label-Spalten und Closed (Open nicht). Zählt alle
+  Tickets der Spalte über die GitLab-API, nicht nur die geladenen Karten, und übernimmt die Board-Filter aus der URL
+  (Labels, Assignee, Autor, Milestone, Suche, …). Tooltip: Anzahl Tickets und wie viele ohne Schätzung. Neu gezählt,
+  wenn sich Filter oder GitLabs Zähler ändern, sonst 5 min Cache. Ab 1000 Tickets (Closed ohne Filter) `≥`.
+  Unterpunkt von „Schätzung als Badge“, also auch pro Board abschaltbar. Die gespeicherte Board-Konfiguration
+  (Milestone/Labels im Board selbst) wird nicht berücksichtigt, nur die Filter in der Suchleiste.
 
 ## Split-Labels
 

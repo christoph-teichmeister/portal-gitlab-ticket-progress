@@ -18,7 +18,7 @@ Tab, Escape schließt); jede Schalter-Zeile ist als Ganzes klickbar.
   Seite. Jedes eingeschaltete Element ist dadurch immer zu sehen. Ausgeschaltetes fehlt dort wie später auch; Hover oder Fokus auf einem
   Schalter umrandet sein Element. Je Gruppe ein Zähler „x von y an“.
   - *Board-Karte*: Board-Karten (Fortschrittsbalken mit Unterpunkt Portal- & Timesheet-Buttons, MR-Badge mit Unterpunkt
-    Assignee- & Reviewer-Avatare, Schätzung als Badge mit Unterpunkt Schätzung aus dem Titel nehmen, Geteilte Scoped Labels, Ticket-Aktionen-Menü ⋮) und Verweildauer
+    Assignee- & Reviewer-Avatare, Schätzung als Badge mit Unterpunkten Schätzung aus dem Titel nehmen und SP-Summe im Spalten-Header, Geteilte Scoped Labels, Ticket-Aktionen-Menü ⋮) und Verweildauer
     (Uhr im Karten-Footer mit Unterpunkt Median im Spalten-Header).
   - *Ticket*: Fortschrittsbalken mit Unterpunkten Portal- & Timesheet-Buttons und Ticket-Aktionen (Dropdown).
   - *Merge Request*: Fortschrittsbalken mit Unterpunkten Portal- & Timesheet-Buttons und Ticket-Aktionen (Buttons),
