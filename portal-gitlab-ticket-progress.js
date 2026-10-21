@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.38
+// @version      2026.10.39
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.38';
+  const SCRIPT_VERSION = '2026.10.39';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -127,10 +127,28 @@
       '#ambient-progress-settings input:focus-visible,#ambient-progress-settings textarea:focus-visible,' +
       '.ambient-btn:focus-visible,.ambient-mr-badge:focus-visible,.ambient-progress-bar:focus-visible,' +
       '.ambient-progress-list-toggle:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}' +
-      '.ambient-switch-input:focus-visible+.ambient-switch-slider{outline:2px solid #60a5fa;outline-offset:2px}' +
+      // Schalter: natives role=switch-Checkbox, ganze Zeile ist das Label
+      '.ambient-setting-row{display:flex;align-items:center;gap:.75rem;padding:.6rem 1rem;min-height:52px;box-sizing:border-box}' +
+      '.ambient-switch-row{cursor:pointer;margin:0;font-weight:400}' +
+      '.ambient-switch-compact{gap:.6rem;padding:.3rem .5rem .3rem .8rem;min-height:36px;border-radius:999px;border:1px solid var(--gl-border-color-default,#4c4b51)}' +
+      '.ambient-switch-elbow{display:flex;flex:0 0 auto;opacity:.6;margin-top:-.9rem}' +
+      '.ambient-switch-input{appearance:none;-webkit-appearance:none;position:relative;flex:0 0 auto;width:36px;height:20px;margin:0;border-radius:999px;background:#89888d;cursor:pointer;transition:background .2s ease}' +
+      '.ambient-switch-input::before{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.35);transition:transform .2s ease}' +
+      '.ambient-switch-input:checked{background:#1f75cb}' +
+      '.ambient-switch-input:checked::before{transform:translateX(16px)}' +
+      '.ambient-switch-input:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}' +
       '.gl-label[data-ambient-split="1"]{display:none !important}' +
       // wie GitLabs Entfernen-Button: beim Hover ein runder Kreis in Label-Farbe hinter dem „×"
       '.ambient-split-label-close:hover,.ambient-split-label-close:focus-visible{background:var(--ambient-close-hover-bg) !important;color:var(--ambient-close-hover-fg) !important}' +
+      // Dropdown-Menü wie GitLabs Dropdowns (z. B. Assignee-Auswahl): Panel mit Kopfzeile, Trennlinie, großzügigen Zeilen
+      '.ambient-dropdown-menu{position:fixed;z-index:10000;min-width:220px;max-width:360px;max-height:60vh;overflow-y:auto;' +
+      'padding:0 0 4px;border-radius:8px;border:1px solid var(--gl-border-color-default,#dcdcde);font-size:14px;' +
+      'background:var(--gl-dropdown-background-color,var(--gl-background-color-overlap,var(--gl-background-color-default,#fff)));' +
+      'color:var(--gl-text-color-default,#333238);box-shadow:0 4px 12px rgba(0,0,0,.3)}' +
+      '.ambient-dropdown-title{display:block;padding:10px 12px;margin-bottom:4px;font-weight:700;border-bottom:1px solid var(--gl-border-color-default,#dcdcde)}' +
+      '.ambient-dropdown-list{padding:0 4px}' +
+      '.ambient-dropdown-item{display:block;width:100%;padding:8px 12px;border:none;border-radius:4px;background:transparent;color:inherit;font-size:14px;line-height:1.4;text-align:left;cursor:pointer}' +
+      '.ambient-dropdown-item>span{display:block}' +
       '.ambient-dropdown-item:hover,.ambient-dropdown-item:focus-visible{background:var(--gl-background-color-strong,rgba(128,128,128,.18)) !important;outline:none}' +
       '.ambient-dropdown-toggle:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.18)) !important}' +
       '.ambient-card-actions svg,.ambient-progress-sort-toggle svg{pointer-events:none}' +
@@ -152,19 +170,65 @@
       '.board-card-title:has(.ambient-estimate-badge){flex-grow:1}' +
       // Hover für das MR-Badge: Fläche per box-shadow vergrößert, damit sich das Layout nicht verschiebt
       '.ambient-mr-badge:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.22));box-shadow:0 0 0 3px var(--gl-background-color-strong,rgba(128,128,128,.22));border-radius:4px;text-decoration:underline !important}' +
+      // Einstellungs-Panel: rechts angedockt, unter der Top-Bar (`top` setzt das Öffnen); hängt am body, damit kein
+      // transformierter Vorfahre position: fixed bricht. Platz für den Scrollbalken immer reservieren (sonst springt die
+      // Breite zwischen Reitern), horizontal abschneiden (Einschieben der Reiter). Geschlossen: aus Tab-Reihenfolge und
+      // Screenreader-Baum (visibility), fährt nach rechts hinaus ohne Ausblenden.
+      "#ambient-progress-settings{position:fixed;top:49px;right:0;bottom:0;z-index:260;display:flex;flex-direction:column;" +
+      "width:clamp(480px,42vw,720px);max-width:100vw;padding:0;font-size:14px;box-sizing:border-box;" +
+      "background:" + THEME_BG + ";color:" + THEME_FG + ";border-left:1px solid var(--gl-border-color-default,#4c4b51);" +
+      "border-radius:12px 0 0 0;box-shadow:-8px 0 24px rgba(15,23,42,.35);overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;" +
+      "transform:translateX(calc(100% + 32px));visibility:hidden;pointer-events:none;transition:transform .25s ease-in,visibility 0s linear .25s}" +
+      '#ambient-progress-settings.ambient-open{transform:none;visibility:visible;pointer-events:auto;transition:transform .25s ease-out,visibility 0s}' +
       // Einstellungs-Panel: Trennlinien zwischen Zeilen einer Karte, Zeilen- und Tab-Hover
       '#ambient-progress-settings [role=alert]:empty{display:none}' +
       '#ambient-progress-settings .ambient-setting-list>*+*:not(.ambient-row-extra){border-top:1px solid var(--gl-border-color-default,#4c4b51)}' +
       '#ambient-progress-settings .ambient-switch-row:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
+      // Segment-Umschalter (Unterreiter, Sprache): gewählter Knopf per aria-pressed
+      '.ambient-seg{display:flex;flex:0 0 auto;gap:2px;padding:3px;border-radius:8px;border:1px solid var(--gl-border-color-default,#4c4b51)}' +
+      '.ambient-seg>button{min-height:32px;padding:.2rem .75rem;border:0;border-radius:6px;background:transparent;color:inherit;font-size:.85rem;font-weight:500;white-space:nowrap;cursor:pointer;opacity:.7}' +
+      '.ambient-seg>button[aria-pressed=true]{background:var(--gl-background-color-strong,rgba(128,128,128,.14));opacity:1}' +
+      '.ambient-seg-fill>button{flex:1 1 0;padding:.2rem .5rem}' +
+      '#ambient-progress-settings .ambient-tab{display:inline-flex;align-items:center;gap:.4rem;min-height:44px;padding:0 .75rem;border:0;border-radius:6px 6px 0 0;background:transparent;color:inherit;font-size:.9rem;white-space:nowrap;cursor:pointer;font-weight:400;opacity:.75}' +
+      '#ambient-progress-settings .ambient-tab[aria-selected=true]{font-weight:600;opacity:1;box-shadow:inset 0 -2px 0 #1f75cb}' +
+      '.ambient-tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;box-sizing:border-box;border-radius:999px;font-size:.7rem;font-weight:600;background:var(--gl-background-color-strong,rgba(128,128,128,.25))}' +
+      '.ambient-tab-badge:empty{display:none}' +
+      '.ambient-tab-badge-warning{background:#e9be74;color:#1f1e24}' +
       '#ambient-progress-settings .ambient-tab:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
       '#ambient-progress-settings code{padding:0.1rem 0.4rem;border-radius:4px;background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
+      // Toast oben rechts; Farbe je data-variant (info ist Standard)
+      '#ambient-progress-toast{position:fixed;top:1rem;right:1rem;z-index:1050;max-width:320px;padding:.75rem 1.25rem;' +
+      'border-radius:10px;box-shadow:0 15px 40px rgba(15,23,42,.35);font-size:.85rem;font-weight:600;line-height:1.4;' +
+      'overflow:hidden;pointer-events:none;background:#0f172a;color:#d1d5db;transform:translateX(110%);opacity:0;' +
+      'transition:transform .35s ease,opacity .35s ease}' +
+      '#ambient-progress-toast.ambient-toast-visible{transform:none;opacity:1}' +
+      '#ambient-progress-toast[data-variant=warning]{background:#fbbf24;color:#1f2937}' +
+      '#ambient-progress-toast[data-variant=success]{background:#10b981;color:#0f172a}' +
+      // Fortschrittsbalken: Segmente nebeneinander (float), Text darübergelegt; Füll-Animation nur bei frisch geladenen Daten
+      '.ambient-bar{position:relative;height:16px;border-radius:999px;overflow:hidden;background:var(--gl-background-color-default,#18171d)}' +
+      '.ambient-bar-fill{height:100%;float:left}' +
+      '.ambient-bar-spent:hover{background:var(--ambient-hover) !important}' +
+      '.ambient-bar-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 8px;pointer-events:none;color:#000}' +
+      '.ambient-bar-grow{animation:ambient-grow .7s cubic-bezier(.22,1,.36,1)}' +
+      '.ambient-bar-shrink{animation:ambient-shrink .7s cubic-bezier(.22,1,.36,1)}' +
+      '.ambient-bar-animate{animation:ambient-fade-in .4s ease .3s backwards}' +
+      '@keyframes ambient-grow{from{width:0}}' +
+      '@keyframes ambient-shrink{from{width:100%}}' +
+      '.ambient-mr-badge-merged{opacity:.6}.ambient-mr-badge-merged:hover{opacity:.8}' +
+      // Buttons in der Breadcrumb-Zeile (Zahnrad, MR-Links) mit 20px-Icon und Punkt/Badge in der Ecke
+      '.ambient-header-btn{padding:.35rem;display:inline-flex;align-items:center;justify-content:center;min-width:38px;min-height:38px;position:relative;overflow:visible;cursor:pointer;color:' + THEME_FG + '}' +
+      '.ambient-header-icon{width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center}' +
+      '.ambient-header-icon svg{width:20px;height:20px;display:block;fill:currentColor}' +
+      '.ambient-header-dot{position:absolute;top:4px;width:10px;height:10px;border-radius:50%;background:#ef4444;box-shadow:0 0 0 2px ' + THEME_BG + ';pointer-events:none}' +
+      '.ambient-mr-link-badge{position:absolute;bottom:2px;right:2px;min-width:12px;height:12px;padding:0 2px;border-radius:6px;color:#fff;font-size:9px;font-weight:700;line-height:12px;text-align:center;box-shadow:0 0 0 2px ' + THEME_BG + ';pointer-events:none}' +
+      '.ambient-mr-link{opacity:.85}.ambient-mr-link:hover{opacity:1}' +
       '.ambient-sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}' +
       '.ambient-skeleton{border-radius:999px;animation:ambient-pulse 1.2s ease-in-out infinite}' +
       '@keyframes ambient-pulse{50%{opacity:.35}}' +
       // Geladene Werte blenden ein, statt hart aufzutauchen
       '@keyframes ambient-fade-in{from{opacity:0}}' +
       '.ambient-fade-in{animation:ambient-fade-in .35s ease-out}' +
-      '@media (prefers-reduced-motion: reduce){#ambient-progress-toolbar *,#ambient-progress-settings,#ambient-progress-settings *,#ambient-progress-toast{transition:none !important}.ambient-skeleton,.ambient-fade-in{animation:none}}';
+      '@media (prefers-reduced-motion: reduce){#ambient-progress-toolbar *,#ambient-progress-settings,#ambient-progress-settings *,#ambient-progress-toast{transition:none !important}.ambient-skeleton,.ambient-fade-in,.ambient-bar-grow,.ambient-bar-shrink,.ambient-bar-animate{animation:none}}';
     (document.head || document.documentElement).appendChild(style);
   }
 
@@ -271,21 +335,6 @@
 
   const TOAST_DEFAULT_DURATION_MS = 5000;
   const PORTAL_WARNING_COOLDOWN_MS = 2 * 60 * 1000;
-  const TOAST_VARIANTS = {
-    warning: {
-      background: '#fbbf24',
-      color: '#1f2937'
-    },
-    success: {
-      background: '#10b981',
-      color: '#0f172a'
-    },
-    info: {
-      background: '#0f172a',
-      color: '#d1d5db'
-    }
-  };
-
   let toastElement = null;
   let toastHideTimer = null;
   let lastPortalWarningAt = 0;
@@ -487,33 +536,13 @@
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
     el.setAttribute('aria-atomic', 'true');
-    applyStyles(el, {
-      position: 'fixed',
-      top: '1rem',
-      right: '1rem',
-      maxWidth: '320px',
-      padding: '0.75rem 1.25rem',
-      borderRadius: '10px',
-      boxShadow: '0 15px 40px rgba(15, 23, 42, 0.35)',
-      zIndex: '1050',
-      fontSize: '0.85rem',
-      fontWeight: '600',
-      lineHeight: '1.4',
-      overflow: 'hidden',
-      pointerEvents: 'none',
-      transform: 'translateX(110%)',
-      opacity: '0',
-      transition: 'transform 0.35s ease, opacity 0.35s ease'
-    });
     document.body.appendChild(el);
     toastElement = el;
     return el;
   }
 
   function hideToast() {
-    if (!toastElement) return;
-    toastElement.style.transform = 'translateX(110%)';
-    toastElement.style.opacity = '0';
+    if (toastElement) toastElement.classList.remove('ambient-toast-visible');
   }
 
   function showToast(options) {
@@ -524,24 +553,15 @@
       duration = TOAST_DEFAULT_DURATION_MS
     } = options;
     const el = ensureToastElement();
-    const variantStyles = TOAST_VARIANTS[variant] || TOAST_VARIANTS.info;
-    applyStyles(el, {
-      background: variantStyles.background,
-      color: variantStyles.color
-    });
+    el.dataset.variant = variant;
     const isAlert = variant === 'warning';
     el.setAttribute('role', isAlert ? 'alert' : 'status');
     el.setAttribute('aria-live', isAlert ? 'assertive' : 'polite');
     el.textContent = text;
     void el.offsetWidth;
-    el.style.transform = 'translateX(0)';
-    el.style.opacity = '1';
-    if (toastHideTimer) {
-      clearTimeout(toastHideTimer);
-    }
-    toastHideTimer = setTimeout(function () {
-      hideToast();
-    }, Math.max(duration, text.length * 60));
+    el.classList.add('ambient-toast-visible');
+    clearTimeout(toastHideTimer);
+    toastHideTimer = setTimeout(hideToast, Math.max(duration, text.length * 60));
   }
 
   function showPortalWarningToast() {
@@ -1214,38 +1234,11 @@
     }
   }
 
-  function attachHoverEffect(element, hoverStyles) {
-    if (!element || !hoverStyles) return;
-    const baseStyles = {};
-    for (const key in hoverStyles) {
-      if (Object.prototype.hasOwnProperty.call(hoverStyles, key)) {
-        baseStyles[key] = element.style[key] || '';
-      }
-    }
-    element.addEventListener('mouseenter', function () {
-      applyStyles(element, hoverStyles);
-    });
-    element.addEventListener('mouseleave', function () {
-      applyStyles(element, baseStyles);
-    });
-  }
-
   function createTextSpan(text, styles) {
     const span = document.createElement('span');
     span.textContent = text;
     applyStyles(span, styles);
     return span;
-  }
-
-  function mergeStyles(base, override) {
-    const merged = {};
-    if (base) {
-      Object.assign(merged, base);
-    }
-    if (override) {
-      Object.assign(merged, override);
-    }
-    return merged;
   }
 
   const BAR_COLORS = {
@@ -1265,36 +1258,6 @@
   ];
   const BAR_COLORS_SECOND = Object.assign({}, BAR_COLORS, {spent: '#f97316', spentHover: '#ea580c'});
 
-  const PROGRESS_BAR_DEFAULTS = {
-    bar: {
-      position: 'relative',
-      height: '16px',
-      borderRadius: '999px',
-      overflow: 'hidden',
-      background: 'var(--gl-background-color-default, #18171d)'
-    },
-    textLayer: {
-      position: 'absolute',
-      top: '0',
-      left: '0',
-      width: '100%',
-      height: '100%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: '0 8px',
-      pointerEvents: 'none',
-      color: '#000000'
-    },
-    label: {
-      fontWeight: '500'
-    },
-    centerLabel: {
-      fontWeight: '600'
-    },
-    colors: BAR_COLORS
-  };
-
   // Text-Alternative für Screenreader und Tooltip (Farben allein tragen keine Information)
   function describeBar(barOuter, label) {
     barOuter.classList.add('ambient-progress-bar');
@@ -1303,168 +1266,88 @@
     barOuter.title = label;
   }
 
+  // Statische Optik in .ambient-bar* im Stylesheet; inline nur Breiten, Farben und Overrides aus customStyles
   function createProgressBarElements(progressData, customStyles) {
     if (!progressData) return null;
     const styles = customStyles || {};
-    const colors = mergeStyles(PROGRESS_BAR_DEFAULTS.colors, styles.colors);
-
-    const barOuter = document.createElement('div');
-    applyStyles(barOuter, mergeStyles(PROGRESS_BAR_DEFAULTS.bar, styles.bar));
-
-    const textLayer = document.createElement('div');
-    applyStyles(textLayer, mergeStyles(PROGRESS_BAR_DEFAULTS.textLayer, styles.textLayer));
-
-    let ariaLabel = '';
+    const colors = Object.assign({}, BAR_COLORS, styles.colors);
     const animate = Boolean(styles.animate);
 
-    // „Füllt sich auf": Breite von from → to; zwei Frames Verzögerung, damit der Startwert gerendert ist
-    const animateWidth = function (el, from, to) {
-      if (!animate) return;
-      el.style.width = from;
-      el.style.transition = 'width 0.7s cubic-bezier(0.22, 1, 0.36, 1)';
-      requestAnimationFrame(function () {
-        requestAnimationFrame(function () {
-          el.style.width = to;
-        });
-      });
-    };
-    const spentLabelStyle = mergeStyles(PROGRESS_BAR_DEFAULTS.label, styles.spentLabel);
-    const remainingLabelStyle = mergeStyles(PROGRESS_BAR_DEFAULTS.label, styles.remainingLabel);
-    const centerLabelStyle = mergeStyles(PROGRESS_BAR_DEFAULTS.centerLabel, styles.centerLabel);
+    const barOuter = document.createElement('div');
+    barOuter.className = 'ambient-bar';
+    applyStyles(barOuter, styles.bar);
 
+    const textLayer = document.createElement('div');
+    textLayer.className = 'ambient-bar-text' + (animate ? ' ambient-bar-animate' : '');
+    applyStyles(textLayer, styles.textLayer);
+
+    // „Füllt sich auf": CSS-Animation von 0 (grow) bzw. 100 % (shrink) auf die gesetzte Breite
+    const addFill = function (width, color, animation) {
+      const fill = document.createElement('div');
+      fill.className = 'ambient-bar-fill' + (animate ? ' ambient-bar-' + animation : '');
+      applyStyles(fill, {width: width + '%', background: color});
+      barOuter.appendChild(fill);
+      return fill;
+    };
     const appendCenterText = function (text) {
       textLayer.style.justifyContent = 'center';
-      textLayer.appendChild(createTextSpan(text, centerLabelStyle));
+      textLayer.appendChild(createTextSpan(text, Object.assign({fontWeight: '600'}, styles.centerLabel)));
     };
 
+    let ariaLabel = '';
     if (progressData.notFound) {
-      const neutralBar = document.createElement('div');
-      applyStyles(neutralBar, {
-        height: '100%',
-        width: '100%',
-        background: colors.neutral
-      });
-      animateWidth(neutralBar, '0%', '100%');
-      barOuter.appendChild(neutralBar);
+      addFill(100, colors.neutral, 'grow');
       appendCenterText(t('Nicht gefunden'));
-      barOuter.appendChild(textLayer);
-      describeBar(barOuter, t('Portal: nicht gefunden'));
-      return barOuter;
-    }
-
-    if (progressData.booked && !progressData.spent && !progressData.remaining && !progressData.over) {
+      ariaLabel = t('Portal: nicht gefunden');
+    } else if (progressData.booked && !progressData.spent && !progressData.remaining && !progressData.over) {
       const bookedText = (progressData.bookedLabel || 'Booked Hours') + ': ' + progressData.booked;
-      const bookedBar = document.createElement('div');
-      applyStyles(bookedBar, {
-        height: '100%',
-        width: '100%',
-        background: colors.bookedFallback || colors.neutral
-      });
-      animateWidth(bookedBar, '0%', '100%');
-      barOuter.appendChild(bookedBar);
+      addFill(100, colors.bookedFallback || colors.neutral, 'grow');
       appendCenterText(bookedText);
       ariaLabel = bookedText;
     } else if (progressData.over) {
-      const overBar = document.createElement('div');
-      applyStyles(overBar, {
-        height: '100%',
-        width: '100%',
-        background: colors.over
-      });
-      animateWidth(overBar, '0%', '100%');
-      barOuter.appendChild(overBar);
+      addFill(100, colors.over, 'grow');
       let centerText = '\u26A0\uFE0F Over: ' + progressData.over; // Symbol, damit „über Budget" nicht nur über die Farbe erkennbar ist
       if (progressData.booked) {
         const bookedHours = extractHourNumber(progressData.booked);
         const overHours = extractHourNumber(progressData.over);
-        let diffText = null;
-        if (bookedHours !== null && overHours !== null) {
-          diffText = formatBookedHoursDisplay(bookedHours - overHours);
-        }
-        centerText += ' (' + progressData.booked;
-        if (diffText) {
-          centerText += '/' + diffText;
-        }
-        centerText += ')';
+        const diffText = bookedHours !== null && overHours !== null ? formatBookedHoursDisplay(bookedHours - overHours) : null;
+        centerText += ' (' + progressData.booked + (diffText ? '/' + diffText : '') + ')';
       }
       appendCenterText(centerText);
       ariaLabel = centerText;
     } else {
       const spentNum = extractHourNumber(progressData.spent);
       const remainingNum = extractHourNumber(progressData.remaining);
-      let total = null;
-      if (spentNum !== null && remainingNum !== null) {
-        total = spentNum + remainingNum;
-      }
+      const total = spentNum !== null && remainingNum !== null ? spentNum + remainingNum : null;
 
       const showSpentBar = spentNum !== null && spentNum > 0;
       let spentWidth = 0;
       let remainingWidth = 100;
-      if (showSpentBar && total && total > 0 && remainingNum !== null) {
+      if (showSpentBar && total > 0) {
         spentWidth = Math.max(5, Math.min(95, (spentNum / total) * 100));
         remainingWidth = Math.max(5, 100 - spentWidth);
       }
 
-      // Experiment: Warnschwelle – Farbe allein trägt keine Information, deshalb steht der Prozentwert im Label
-      const usedPct = total && total > 0 && spentNum !== null ? Math.round((spentNum / total) * 100) : null;
+      // Warnschwelle – Farbe allein trägt keine Information, deshalb steht der Prozentwert im Label
+      const usedPct = total > 0 && spentNum !== null ? Math.round((spentNum / total) * 100) : null;
       const warnActive = Boolean(styles.warnPct) && usedPct !== null && usedPct >= styles.warnPct;
-      const spentColor = warnActive ? WARN_COLORS.spent : colors.spent;
-      const spentHoverColor = warnActive ? WARN_COLORS.spentHover : colors.spentHover;
 
-      let spentBar = null;
       if (showSpentBar) {
-        spentBar = document.createElement('div');
-        applyStyles(spentBar, {
-          height: '100%',
-          width: spentWidth + '%',
-          background: spentColor,
-          float: 'left'
-        });
-        animateWidth(spentBar, '0%', spentWidth + '%');
-        spentBar.addEventListener('mouseenter', function () {
-          spentBar.style.background = spentHoverColor;
-        });
-        spentBar.addEventListener('mouseleave', function () {
-          spentBar.style.background = spentColor;
-        });
+        const spentBar = addFill(spentWidth, warnActive ? WARN_COLORS.spent : colors.spent, 'grow');
+        spentBar.classList.add('ambient-bar-spent');
+        spentBar.style.setProperty('--ambient-hover', warnActive ? WARN_COLORS.spentHover : colors.spentHover);
       }
+      // schrumpft, während die Bar sich füllt
+      addFill(remainingWidth, colors.neutral, showSpentBar ? 'shrink' : '');
 
-      const remainingBar = document.createElement('div');
-      applyStyles(remainingBar, {
-        height: '100%',
-        width: remainingWidth + '%',
-        background: remainingWidth ? colors.neutral : 'transparent',
-        float: 'left'
-      });
-
-      if (spentBar) {
-        animateWidth(remainingBar, '100%', remainingWidth + '%'); // schrumpft, während die Bar sich füllt
-      }
-      barOuter.appendChild(remainingBar);
-      if (spentBar) {
-        barOuter.insertBefore(spentBar, remainingBar);
-      }
-
-      textLayer.appendChild(
-        createTextSpan(progressData.spent || '—', spentLabelStyle)
-      );
-      textLayer.appendChild(
-        createTextSpan(progressData.remaining || '—', remainingLabelStyle)
-      );
+      const labelStyle = {fontWeight: '500'};
+      textLayer.appendChild(createTextSpan(progressData.spent || '—', Object.assign({}, labelStyle, styles.spentLabel)));
+      textLayer.appendChild(createTextSpan(progressData.remaining || '—', Object.assign({}, labelStyle, styles.remainingLabel)));
       ariaLabel = 'Gebucht ' + (progressData.spent || '—') + ', verbleibend ' + (progressData.remaining || '—');
       if (warnActive) ariaLabel += ' – ' + usedPct + ' % verbraucht (Schwelle ' + styles.warnPct + ' %)';
     }
 
     barOuter.appendChild(textLayer);
-    if (animate) {
-      textLayer.style.opacity = '0';
-      textLayer.style.transition = 'opacity 0.4s ease 0.3s';
-      requestAnimationFrame(function () {
-        requestAnimationFrame(function () {
-          textLayer.style.opacity = '1';
-        });
-      });
-    }
     describeBar(barOuter, ariaLabel);
     return barOuter;
   }
@@ -1473,7 +1356,7 @@
     var opts = options || {};
     var isDark = isGitLabDarkModeActive();
     var barBackground = isDark ? 'var(--gl-background-color-default, #18171d)' : 'var(--gl-background-color-subtle, #E5EAF0)';
-    var textColor = getContrastTextColor(PROGRESS_BAR_DEFAULTS.colors.neutral);
+    var textColor = getContrastTextColor(BAR_COLORS.neutral);
 
     var barStyle = {background: barBackground};
     if (opts.barOverrides) {
@@ -1492,6 +1375,7 @@
       barBackground: barBackground,
       textColor: textColor,
       styles: {
+        warnPct: WARN_PCT, // für alle Balken (Karte, Ticket, MR) gleich
         bar: barStyle,
         textLayer: {color: textColor},
         spentLabel: Object.assign({}, labelBase),
@@ -1510,7 +1394,7 @@
     button.title = title;
     button.setAttribute('aria-label', ariaLabel);
     button.className = 'ambient-btn btn gl-button btn-default btn-icon btn-sm js-no-trigger';
-    applyStyles(button, mergeStyles({
+    applyStyles(button, Object.assign({
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -1723,24 +1607,6 @@
     });
   }
 
-  const GITLAB_LIGHT_BG_VARS = [
-    '--body-bg',
-    '--gl-body-bg',
-    '--gl-app-background',
-    '--gl-page-bg',
-    '--gl-warm-background',
-    '--gl-surface-0',
-    '--gl-surface-100'
-  ];
-  const GITLAB_DARK_BG_VARS = [
-    '--gl-background-color-default',
-    '--gl-dark-mode-body-bg',
-    '--gl-dark-surface',
-    '--gl-dark-mode-surface',
-    '--gl-navbar-background',
-    '--gl-top-bar-background',
-    '--gl-page-background'
-  ];
   const GITLAB_BG_SELECTORS = [
     '.top-bar-container',
     '.top-bar-fixed',
@@ -1748,12 +1614,10 @@
     '.gl-top-bar',
     'body'
   ];
-  const gitlabWindowBackgroundCache = {
-    light: null,
-    default: null
-  };
-  const GITLAB_THEME_BG_VAR = '--theme-background-color';
-  const GITLAB_THEME_BG_VARS = [GITLAB_THEME_BG_VAR, '--gl-background-color-default'];
+  const GITLAB_THEME_BG_VARS = ['--theme-background-color', '--gl-background-color-default'];
+  // Seiten- und Textfarbe als CSS-Variablen: folgen einem Theme-Wechsel ohne Neuaufbau
+  const THEME_BG = 'var(--theme-background-color, var(--gl-background-color-default, #fff))';
+  const THEME_FG = 'var(--gl-text-color-default, #28272d)';
 
   function readCssVariableValue(name) {
     if (!name) return null;
@@ -1801,221 +1665,43 @@
     return null;
   }
 
+  // gecacht, läuft pro Karte; der Theme-Observer in init() setzt den Cache zurück
+  let darkModeCache = null;
   function isGitLabDarkModeActive() {
+    if (darkModeCache !== null) return darkModeCache;
     const html = document.documentElement;
-    if (html) {
-      const dataTheme = html.getAttribute('data-theme');
-      if (dataTheme) {
-        const lower = dataTheme.toLowerCase();
-        if (lower.includes('dark')) {
-          log('isGitLabDarkModeActive', {
-            source: 'data-theme',
-            value: dataTheme,
-            result: true
-          });
-          return true;
-        }
-        if (lower.includes('light')) {
-          log('isGitLabDarkModeActive', {
-            source: 'data-theme',
-            value: dataTheme,
-            result: false
-          });
-          return false;
-        }
-      }
-      if (html.classList) {
-        if (
-          html.classList.contains('gl-theme-dark') ||
-          html.classList.contains('gl-dark') ||
-          html.classList.contains('theme-dark')
-        ) {
-          log('isGitLabDarkModeActive', {
-            source: 'html-class',
-            class: 'dark',
-            result: true
-          });
-          return true;
-        }
-        if (
-          html.classList.contains('gl-theme-light') ||
-          html.classList.contains('gl-light') ||
-          html.classList.contains('theme-light')
-        ) {
-          log('isGitLabDarkModeActive', {
-            source: 'html-class',
-            class: 'light',
-            result: false
-          });
-          return false;
-        }
-      }
+    const theme = (html.getAttribute('data-theme') || '').toLowerCase();
+    let dark = theme.includes('dark') ? true : theme.includes('light') ? false : null;
+    if (dark === null) {
+      const classes = html.className + ' ' + (document.body ? document.body.className : '');
+      if (/(^|\s)(gl-theme-|gl-|theme-)dark(\s|$)/.test(classes)) dark = true;
+      else if (/(^|\s)(gl-theme-|gl-|theme-)light(\s|$)/.test(classes)) dark = false;
     }
-
-    const body = document.body;
-    if (body && body.classList) {
-      if (body.classList.contains('gl-theme-dark') || body.classList.contains('gl-dark')) {
-        return true;
-      }
-      if (body.classList.contains('gl-theme-light') || body.classList.contains('gl-light')) {
-        return false;
-      }
+    if (dark === null) {
+      const rgb = parseCssColorToRgb(
+        getFirstCssVariableValue(GITLAB_THEME_BG_VARS) || getComputedBackgroundFromSelectors(GITLAB_BG_SELECTORS)
+      );
+      dark = rgb ? relativeLuminance(rgb) <= 0.55 : false;
     }
-
-    for (const bgVar of GITLAB_THEME_BG_VARS) {
-      const themeBg = readCssVariableValue(bgVar);
-      if (themeBg) {
-        const rgb = parseCssColorToRgb(themeBg);
-        if (rgb) {
-          const luminance = relativeLuminance(rgb);
-          const isDark = luminance <= 0.55;
-          log('isGitLabDarkModeActive', {
-            source: 'theme-var',
-            bgVar,
-            themeBg,
-            luminance: luminance.toFixed(3),
-            isDark
-          });
-          return isDark;
-        }
-      }
-    }
-
-    const computedBg = getComputedBackgroundFromSelectors(GITLAB_BG_SELECTORS);
-    if (computedBg) {
-      const rgb = parseCssColorToRgb(computedBg);
-      if (rgb) {
-        const luminance = relativeLuminance(rgb);
-        const isDark = luminance <= 0.55;
-        log('isGitLabDarkModeActive', {
-          computedBg,
-          luminance: luminance.toFixed(3),
-          isDark
-        });
-        return isDark;
-      }
-    }
-
-    log('isGitLabDarkModeActive', {source: 'default', result: false});
-    return false;
-  }
-
-  function getToolbarForegroundColor() {
-    return isGitLabDarkModeActive() ? '#ececef' : '#28272d';
-  }
-
-  function getGitLabWindowBackgroundColor(preferLightInDarkMode) {
-    const cacheKey = preferLightInDarkMode ? 'light' : 'default';
-
-    if (gitlabWindowBackgroundCache[cacheKey]) {
-      return gitlabWindowBackgroundCache[cacheKey];
-    }
-
-    const isDarkMode = isGitLabDarkModeActive();
-    const preferLight = isDarkMode ? Boolean(preferLightInDarkMode) : true;
-
-    const variableOrder = preferLight
-      ? GITLAB_LIGHT_BG_VARS.concat(GITLAB_DARK_BG_VARS)
-      : GITLAB_DARK_BG_VARS.concat(GITLAB_LIGHT_BG_VARS);
-
-    let value = null;
-    for (const bgVar of GITLAB_THEME_BG_VARS) {
-      value = readCssVariableValue(bgVar);
-      if (value) break;
-    }
-    if (!value) {
-      value = getFirstCssVariableValue(variableOrder);
-    }
-    if (!value) {
-      value = getComputedBackgroundFromSelectors(GITLAB_BG_SELECTORS);
-    }
-
-    if (!value) {
-      value = '#111827';
-    }
-
-    gitlabWindowBackgroundCache[cacheKey] = value;
-    return value;
+    log('isGitLabDarkModeActive', dark);
+    darkModeCache = dark;
+    return dark;
   }
 
   function parseCssColorToRgb(value) {
-    if (!value || typeof value !== 'string') {
-      log('parseCssColorToRgb', {input: value, result: null});
-      return null;
-    }
-    const trimmed = value.trim().toLowerCase();
-    if (trimmed.startsWith('rgba') || trimmed.startsWith('rgb')) {
-      const match = trimmed.match(/rgba?\(([^)]+)\)/);
-      if (!match) {
-        log('parseCssColorToRgb', {input: value, result: null});
-        return null;
-      }
-      const parts = match[1].split(',').map(function (part) {
-        return parseFloat(part.trim());
-      });
-      if (parts.length < 3 || Number.isNaN(parts[0]) || Number.isNaN(parts[1]) || Number.isNaN(parts[2])) {
-        log('parseCssColorToRgb', {input: value, result: null});
-        return null;
-      }
-      const rgbResult = {
-        r: parts[0],
-        g: parts[1],
-        b: parts[2]
-      };
-      log('parseCssColorToRgb', {input: value, result: rgbResult});
-      return rgbResult;
-    }
-    if (trimmed.startsWith('#')) {
-      const hex = trimmed.slice(1);
-      if (hex.length === 3) {
-        const rgbResult = {
-          r: parseInt(hex[0] + hex[0], 16),
-          g: parseInt(hex[1] + hex[1], 16),
-          b: parseInt(hex[2] + hex[2], 16)
-        };
-        log('parseCssColorToRgb', {input: value, result: rgbResult});
-        return rgbResult;
-      }
-      if (hex.length === 6 || hex.length === 8) {
-        const rgbResult = {
-          r: parseInt(hex.slice(0, 2), 16),
-          g: parseInt(hex.slice(2, 4), 16),
-          b: parseInt(hex.slice(4, 6), 16)
-        };
-        log('parseCssColorToRgb', {input: value, result: rgbResult});
-        return rgbResult;
-      }
-    }
-    log('parseCssColorToRgb', {input: value, result: null});
-    return null;
+    if (!value || typeof value !== 'string') return null;
+    const v = value.trim().toLowerCase();
+    const rgb = v.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/);
+    if (rgb) return {r: parseFloat(rgb[1]), g: parseFloat(rgb[2]), b: parseFloat(rgb[3])};
+    let hex = v.charAt(0) === '#' ? v.slice(1) : '';
+    if (hex.length === 3) hex = hex.replace(/./g, '$&$&');
+    if (!/^[0-9a-f]{6}([0-9a-f]{2})?$/.test(hex)) return null;
+    return {r: parseInt(hex.slice(0, 2), 16), g: parseInt(hex.slice(2, 4), 16), b: parseInt(hex.slice(4, 6), 16)};
   }
 
   function getContrastTextColor(bgColor, darkColor, lightColor) {
     const rgb = parseCssColorToRgb(bgColor);
-
-    const fallbackDark = darkColor || '#0f172a';
-    const fallbackLight = lightColor || '#f8fafc';
-
-    if (!rgb) {
-      log('getContrastTextColor', {
-        bgColor,
-        choice: 'fallback',
-        result: fallbackLight
-      });
-      return fallbackLight;
-    }
-
-    const luminance = relativeLuminance(rgb);
-    const chosen = luminance > 0.55 ? fallbackDark : fallbackLight;
-
-    log('getContrastTextColor', {
-      bgColor,
-      luminance: luminance.toFixed(3),
-      choice: chosen === fallbackDark ? 'dark' : 'light',
-      result: chosen
-    });
-
-    return chosen;
+    return rgb && relativeLuminance(rgb) > 0.55 ? darkColor || '#0f172a' : lightColor || '#f8fafc';
   }
 
   function getBoardListHeaderElement(boardListElem) {
@@ -2544,7 +2230,7 @@
     function makePlaceholder(styles) {
       const el = document.createElement('div');
       el.className = 'ambient-skeleton';
-      applyStyles(el, mergeStyles(placeholderStyle, styles));
+      applyStyles(el, Object.assign({}, placeholderStyle, styles));
       return el;
     }
     const withButtons = isFeatureOn('portalButtons');
@@ -2589,7 +2275,6 @@
     });
     container.style.color = theme.textColor;
     theme.styles.animate = animateFill;
-    theme.styles.warnPct = WARN_PCT;
     const loadedAt = Number(cardElem.getAttribute('data-ambient-loaded-at'));
 
     if (progressData && progressData2) {
@@ -3352,10 +3037,9 @@
       gap: '2px',
       height: '20px',
       color: badgeColor,
-      opacity: allMerged ? '0.6' : '1',
       textDecoration: 'none'
     });
-    attachHoverEffect(el, {opacity: allMerged ? '0.8' : '1'});
+    if (allMerged) el.classList.add('ambient-mr-badge-merged');
 
     const icon = document.createElement('span');
     icon.innerHTML = mergeRequestIconSvg();
@@ -4497,6 +4181,7 @@
   function attachDropdownMenu(toggle, buildItems, title) {
     toggle.classList.add('js-no-trigger');
     toggle.setAttribute('aria-haspopup', 'menu');
+    toggle.setAttribute('data-ambient-menu-toggle', '');
     toggle.setAttribute('aria-expanded', 'false');
     let menu = null;
 
@@ -4533,51 +4218,22 @@
       menu = document.createElement('div');
       menu.className = 'ambient-dropdown-menu';
       menu.setAttribute('role', 'menu');
-      // Optik wie GitLabs Dropdowns (z. B. Assignee-Auswahl): Panel mit Kopfzeile, Trennlinie und großzügigen Zeilen
-      applyStyles(menu, {
-        position: 'fixed',
-        zIndex: '10000',
-        minWidth: '220px',
-        maxWidth: '360px',
-        maxHeight: '60vh',
-        overflowY: 'auto',
-        padding: '0 0 4px',
-        borderRadius: '8px',
-        border: '1px solid var(--gl-border-color-default, #dcdcde)',
-        background: 'var(--gl-dropdown-background-color, var(--gl-background-color-overlap, var(--gl-background-color-default, #fff)))',
-        color: 'var(--gl-text-color-default, #333238)',
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-        fontSize: '14px'
-      });
       if (title) {
-        const header = createTextSpan(title, {display: 'block', padding: '10px 12px', fontWeight: '700',
-          borderBottom: '1px solid var(--gl-border-color-default, #dcdcde)', marginBottom: '4px'});
+        const header = createTextSpan(title);
+        header.className = 'ambient-dropdown-title';
         menu.appendChild(header);
       }
       const list = document.createElement('div');
-      applyStyles(list, {padding: '0 4px'});
+      list.className = 'ambient-dropdown-list';
       menu.appendChild(list);
       buildItems().forEach(function (entry) {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'ambient-dropdown-item js-no-trigger';
         item.setAttribute('role', 'menuitem');
-        item.appendChild(createTextSpan(entry.label, {display: 'block', fontWeight: entry.sub ? '600' : '400'}));
-        if (entry.sub) item.appendChild(createTextSpan(entry.sub, {display: 'block', fontSize: '12px', opacity: '0.7'}));
+        item.appendChild(createTextSpan(entry.label, {fontWeight: entry.sub ? '600' : '400'}));
+        if (entry.sub) item.appendChild(createTextSpan(entry.sub, {fontSize: '12px', opacity: '0.7'}));
         if (entry.title) item.title = entry.title;
-        applyStyles(item, {
-          display: 'block',
-          width: '100%',
-          padding: '8px 12px',
-          border: 'none',
-          borderRadius: '4px',
-          background: 'transparent',
-          color: 'inherit',
-          fontSize: '14px',
-          lineHeight: '1.4',
-          textAlign: 'left',
-          cursor: 'pointer'
-        });
         item.addEventListener('click', function (ev) {
           ev.stopPropagation();
           ev.preventDefault();
@@ -4598,9 +4254,7 @@
       if (first) first.focus();
     }
 
-    ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach(function (type) {
-      toggle.addEventListener(type, function (ev) { ev.stopPropagation(); });
-    });
+    // mousedown & Co. fängt installNoTriggerGuard ab (sonst startet GitLab Drag oder öffnet die Karte)
     toggle.addEventListener('click', function (ev) {
       ev.stopPropagation();
       ev.preventDefault();
@@ -4659,7 +4313,7 @@
     ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'dragstart'].forEach(function (type) {
       document.addEventListener(type, function (ev) {
         const target = ev.target;
-        if (target && target.closest && target.closest('.ambient-card-actions, .ambient-dropdown-menu')) {
+        if (target && target.closest && target.closest('.ambient-card-actions, .ambient-dropdown-menu, [data-ambient-menu-toggle]')) {
           ev.stopPropagation();
         }
       }, true);
@@ -4676,7 +4330,6 @@
   function injectProgressIntoMRDetail(assigneeBlock, progressData, portalUrl, timesheetUrl, projectSettings, issueIid) {
     if (!assigneeBlock || !progressData) return;
 
-    const windowBackground = getGitLabWindowBackgroundColor(true);
     const theme = getThemeAwareBarStyles({
       barOverrides: {flex: '1 1 auto', minWidth: '0'}
     });
@@ -4694,7 +4347,7 @@
         borderBottomStyle: "solid",
         borderBottomWidth: "1px",
         borderColor: "var(--gl-border-color-subtle)",
-        background: windowBackground
+        background: THEME_BG
       });
       parent.insertBefore(container, assigneeBlock);
     }
@@ -4870,7 +4523,7 @@
       borderBottomStyle: 'solid',
       borderBottomWidth: '1px',
       borderColor: 'var(--gl-border-color-subtle)',
-      background: getGitLabWindowBackgroundColor(true),
+      background: THEME_BG,
       fontSize: '12px',
       display: 'flex',
       alignItems: 'center',
@@ -5150,11 +4803,9 @@
   function injectProgressIntoIssueDetail(detailWrapperElem, progressData, portalUrl, timesheetUrl, issueIid, settingsOverride) {
     if (!detailWrapperElem || !progressData) return;
 
-    const windowBackground = getGitLabWindowBackgroundColor(true);
     const theme = getThemeAwareBarStyles({
       barOverrides: {flex: '1 1 auto', minWidth: '0'}
     });
-    theme.styles.warnPct = WARN_PCT;
     const textColor = theme.textColor;
     let container = detailWrapperElem.querySelector('.ambient-progress-detail-badge');
     if (!container) {
@@ -5164,7 +4815,7 @@
         marginBottom: '0.6rem',
         padding: '0.45rem 0',
         borderRadius: '10px',
-        background: windowBackground
+        background: THEME_BG
       });
       const assigneesSection = detailWrapperElem.querySelector(SEL.detailAssignees);
       if (assigneesSection) {
@@ -5348,28 +4999,14 @@
     switchIdCounter += 1;
     const labelId = 'ambient-switch-label-' + switchIdCounter;
     const wrapper = document.createElement('label');
-    wrapper.className = 'ambient-switch-row';
-    applyStyles(wrapper, {
-      display: 'flex',
-      alignItems: 'center',
-      gap: opts.compact ? '0.6rem' : '0.75rem',
-      cursor: 'pointer',
-      margin: '0',
-      padding: opts.compact ? '0.3rem 0.5rem 0.3rem 0.8rem' : '0.6rem 1rem',
-      minHeight: opts.compact ? '36px' : '52px',
-      boxSizing: 'border-box',
-      fontWeight: '400'
-    });
-    if (opts.compact) {
-      applyStyles(wrapper, {borderRadius: '999px', border: SETTINGS_BORDER});
-    }
+    wrapper.className = 'ambient-setting-row ambient-switch-row' + (opts.compact ? ' ambient-switch-compact' : '');
 
     if (opts.child) {
       const elbow = document.createElement('span');
+      elbow.className = 'ambient-switch-elbow';
       elbow.setAttribute('aria-hidden', 'true');
       // ↳-Pfeil; fill per style, weil GitLabs CSS SVGs sonst flächig füllt
       elbow.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" style="fill:none;stroke:currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path style="fill:none" d="M3 2v5a3 3 0 0 0 3 3h7M10 7l3 3-3 3"/></svg>';
-      applyStyles(elbow, {display: 'flex', flex: '0 0 auto', opacity: '0.6', marginTop: '-0.9rem'});
       wrapper.appendChild(elbow);
     }
 
@@ -5378,40 +5015,7 @@
     labelSpan.id = labelId;
     wrapper.ambientLabel = labelSpan;
 
-    const switchWrapper = document.createElement('div');
-    applyStyles(switchWrapper, {
-      position: 'relative',
-      width: '36px',
-      height: '20px',
-      flex: '0 0 auto'
-    });
-
-    const slider = document.createElement('span');
-    slider.className = 'ambient-switch-slider';
-    applyStyles(slider, {
-      position: 'absolute',
-      top: '0',
-      left: '0',
-      right: '0',
-      bottom: '0',
-      borderRadius: '999px',
-      transition: 'background 0.2s ease'
-    });
-
-    const knob = document.createElement('span');
-    applyStyles(knob, {
-      position: 'absolute',
-      top: '2px',
-      width: '16px',
-      height: '16px',
-      borderRadius: '50%',
-      background: '#ffffff',
-      boxShadow: '0 1px 2px rgba(0,0,0,0.35)',
-      transition: 'left 0.2s ease'
-    });
-
-    slider.appendChild(knob);
-
+    // natives Checkbox-Element, als Schalter gezeichnet (.ambient-switch-input im Stylesheet)
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.className = 'ambient-switch-input';
@@ -5422,34 +5026,24 @@
       checkbox.setAttribute('aria-describedby', text.lastChild.id);
     }
     checkbox.checked = checked;
-    applyStyles(checkbox, {
-      position: 'absolute',
-      opacity: '0',
-      width: '100%',
-      height: '100%',
-      margin: '0',
-      cursor: 'pointer',
-      zIndex: '2'
-    });
-
-    function updateAppearance(val) {
-      slider.style.background = val ? SETTINGS_ACCENT : '#89888d';
-      knob.style.left = val ? 'calc(100% - 18px)' : '2px';
-    }
-
-    updateAppearance(checked);
     checkbox.addEventListener('change', function () {
-      updateAppearance(checkbox.checked);
       onChange(checkbox.checked);
     });
 
-    // Checkbox vor dem Slider, damit `.ambient-switch-input:focus-visible + .ambient-switch-slider` greift
-    switchWrapper.appendChild(checkbox);
-    switchWrapper.appendChild(slider);
-
     wrapper.appendChild(text);
-    wrapper.appendChild(switchWrapper);
+    wrapper.appendChild(checkbox);
     return wrapper;
+  }
+
+  // 20px-Icon für die Buttons in der Breadcrumb-Zeile (Zahnrad, MR-Links)
+  function createHeaderIcon(svgHtml) {
+    const icon = document.createElement('span');
+    icon.className = 'ambient-header-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = svgHtml;
+    const svg = icon.querySelector('svg');
+    if (svg) svg.setAttribute('focusable', 'false');
+    return icon;
   }
 
   let toolbarCleanup = null;
@@ -5460,7 +5054,6 @@
     if (toolbarCleanup) toolbarCleanup();
     toolbarCleanup = null;
 
-    const windowBackground = getGitLabWindowBackgroundColor(true);
 
     const targetSelectors = TOOLBAR_TARGET_SELECTORS;
     let insertParent = null;
@@ -5479,7 +5072,6 @@
       log('[createToolbar] Toolbar wird eingefügt in: ' + insertParent.tagName + '#' + insertParent.id + '.' + insertParent.className);
     }
 
-    const toolbarTextColor = getToolbarForegroundColor();
     const bar = document.createElement('div');
     bar.id = 'ambient-progress-toolbar';
     applyStyles(bar, {
@@ -5490,7 +5082,7 @@
       height: '42px',
       marginLeft: 'auto',
       fontSize: '13px',
-      color: toolbarTextColor
+      color: THEME_FG
     });
 
     let refreshAgeHighlightSection = null;
@@ -5536,14 +5128,6 @@
       }
     }
 
-    const gearWrapper = document.createElement('div');
-    gearWrapper.classList.add('gl-disclosure-dropdown', 'super-sidebar-new-menu-dropdown', 'gl-new-dropdown');
-    applyStyles(gearWrapper, {
-      position: 'relative',
-      display: 'inline-flex',
-      alignItems: 'center'
-    });
-
     const gearButton = document.createElement('button');
     gearButton.type = 'button';
     gearButton.setAttribute('aria-label', 'Progress-Einstellungen');
@@ -5552,84 +5136,20 @@
     gearButton.setAttribute('aria-controls', 'ambient-progress-settings');
     gearButtonElement = gearButton;
     gearButton.setAttribute('title', 'Einstellungen');
-    gearButton.setAttribute('data-testid', 'base-dropdown-toggle');
-    const gearIcon = document.createElement('span');
-    gearIcon.innerHTML = TOOLBAR_ICON_SVG;
-    gearIcon.setAttribute('aria-hidden', 'true');
-    gearIcon.classList.add('gl-button-icon', 'gl-icon', 's16', 'gl-fill-current');
-    applyStyles(gearIcon, {
-      width: '20px',
-      height: '20px',
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: toolbarTextColor
-    });
-    const gearIconSvg = gearIcon.querySelector('svg');
-    if (gearIconSvg) {
-      gearIconSvg.setAttribute('width', '20');
-      gearIconSvg.setAttribute('height', '20');
-      gearIconSvg.setAttribute('focusable', 'false');
-      applyStyles(gearIconSvg, {
-        width: '20px',
-        height: '20px',
-        display: 'block'
-      });
-    }
-    gearButton.classList.add(
-      'btn',
-      'gl-button',
-      'btn-default',
-      'btn-md',
-      'btn-default-tertiary',
-      'gl-new-dropdown-toggle',
-      'gl-new-dropdown-icon-only',
-      'btn-icon',
-      'gl-new-dropdown-toggle-no-caret'
-    );
-    applyStyles(gearButton, {
-      padding: '0.35rem',
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minWidth: '38px',
-      minHeight: '38px',
-      cursor: 'pointer',
-      position: 'relative',
-      overflow: 'visible'
-    });
-    gearButton.appendChild(gearIcon);
-    const releaseBadge = document.createElement('span');
+    gearButton.className = 'btn gl-button btn-default btn-md btn-default-tertiary btn-icon ambient-header-btn';
+    gearButton.appendChild(createHeaderIcon(TOOLBAR_ICON_SVG));
+    // roter Punkt: rechts oben = Update verfügbar, links oben = Rate-Limit
+    const releaseBadge = createTextSpan('');
+    releaseBadge.className = 'ambient-header-dot';
     releaseBadge.setAttribute('aria-hidden', 'true');
-    applyStyles(releaseBadge, {
-      position: 'absolute',
-      top: '4px',
-      right: '4px',
-      width: '10px',
-      height: '10px',
-      borderRadius: '50%',
-      background: '#ef4444',
-      boxShadow: '0 0 0 2px ' + windowBackground,
-      display: 'none',
-      pointerEvents: 'none'
-    });
+    applyStyles(releaseBadge, {right: '4px', display: 'none'});
     gearButton.appendChild(releaseBadge);
     releaseNotificationElements.badge = releaseBadge;
 
-    const rateLimitBadge = document.createElement('span');
+    const rateLimitBadge = createTextSpan('');
+    rateLimitBadge.className = 'ambient-header-dot';
     rateLimitBadge.setAttribute('aria-hidden', 'true');
-    applyStyles(rateLimitBadge, {
-      position: 'absolute',
-      top: '4px',
-      left: '4px',
-      width: '10px',
-      height: '10px',
-      borderRadius: '50%',
-      background: '#ef4444',
-      boxShadow: '0 0 0 2px ' + windowBackground,
-      display: 'none',
-      pointerEvents: 'none'
-    });
+    applyStyles(rateLimitBadge, {left: '4px', display: 'none'});
     gearButton.appendChild(rateLimitBadge);
     rateLimitNotificationElements.badge = rateLimitBadge;
 
@@ -5637,37 +5157,7 @@
     dropdown.id = 'ambient-progress-settings';
     dropdown.setAttribute('role', 'dialog');
     dropdown.setAttribute('aria-label', 'Progress-Einstellungen');
-    // Seitenpanel wie GitLabs Ticket-Vorschau (Drawer): rechts angedockt, unter der Top-Bar. `top` wird beim Öffnen aus
-    // der Höhe der Top-Bar berechnet. Das Panel hängt am body, damit kein transformierter Vorfahre das position: fixed bricht.
-    applyStyles(dropdown, {
-      position: 'fixed',
-      top: '49px',
-      right: '0',
-      bottom: '0',
-      background: windowBackground,
-      color: toolbarTextColor,
-      borderLeft: SETTINGS_BORDER,
-      borderRadius: '12px 0 0 0',
-      boxShadow: '-8px 0 24px rgba(15, 23, 42, 0.35)',
-      display: 'flex',
-      flexDirection: 'column',
-      zIndex: '260',
-      gap: '0',
-      padding: '0',
-      fontSize: '14px',
-      width: 'clamp(480px, 42vw, 720px)',
-      maxWidth: '100vw',
-      overflowY: 'auto',
-      // Platz für den Scrollbalken immer reservieren (sonst springt die Breite zwischen kurzen und langen Reitern);
-      // horizontal abschneiden, damit das Einschieben der Reiter keinen zweiten Scrollbalken erzeugt
-      scrollbarGutter: 'stable',
-      overflowX: 'hidden',
-      transform: SETTINGS_PANEL_HIDDEN_TRANSFORM,
-      pointerEvents: 'none',
-      visibility: 'hidden', // geschlossen auch aus Tab-Reihenfolge und Screenreader-Baum
-      transition: 'transform 0.25s ease, visibility 0s linear 0.25s'
-    });
-
+    // Seitenpanel wie GitLabs Ticket-Vorschau (Drawer), Stil in #ambient-progress-settings im Stylesheet
     // Kopf (Titel, Hauptschalter, Schließen, Tabs) und Fuß (Datenstand, Neu laden) bleiben beim Scrollen stehen
     const panelHeader = document.createElement('div');
     applyStyles(panelHeader, {
@@ -5678,7 +5168,7 @@
       position: 'sticky',
       top: '0',
       zIndex: '2',
-      background: windowBackground,
+      background: THEME_BG,
       borderBottom: SETTINGS_BORDER
     });
     const titleRow = document.createElement('div');
@@ -5718,7 +5208,7 @@
       gap: '0.3rem',
       padding: '0.6rem 0.75rem',
       borderRadius: '6px',
-      border: '1px solid ' + TOAST_VARIANTS.warning.background,
+      border: '1px solid #fbbf24',
       background: 'rgba(251, 191, 36, 0.12)',
       fontSize: '0.8rem',
       lineHeight: '1.35'
@@ -5747,7 +5237,7 @@
       fontSize: '0.78rem',
       lineHeight: '1.35',
       opacity: '0.9',
-      color: toolbarTextColor
+      color: THEME_FG
     });
 
     rateLimitNotificationRow.appendChild(rateLimitNotificationText);
@@ -5774,33 +5264,9 @@
       button.id = 'ambient-tab-' + def[0];
       button.setAttribute('role', 'tab');
       button.setAttribute('aria-controls', 'ambient-tabpanel-' + def[0]);
-      applyStyles(button, {
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '0.4rem',
-        minHeight: '44px',
-        padding: '0 0.75rem',
-        border: '0',
-        borderRadius: '6px 6px 0 0',
-        background: 'transparent',
-        color: 'inherit',
-        fontSize: '0.9rem',
-        whiteSpace: 'nowrap',
-        cursor: 'pointer'
-      });
       button.appendChild(createTextSpan(def[1]));
-      const badge = createTextSpan('', {
-        display: 'none',
-        minWidth: '18px',
-        height: '18px',
-        padding: '0 5px',
-        boxSizing: 'border-box',
-        borderRadius: '999px',
-        fontSize: '0.7rem',
-        fontWeight: '600',
-        alignItems: 'center',
-        justifyContent: 'center'
-      });
+      const badge = createTextSpan('');
+      badge.className = 'ambient-tab-badge';
       button.appendChild(badge);
       button.addEventListener('click', function () {
         selectTab(def[0]);
@@ -5824,11 +5290,7 @@
       const badge = tabBadges[key];
       if (!badge) return;
       badge.textContent = text;
-      applyStyles(badge, {
-        display: text ? 'inline-flex' : 'none',
-        background: warning ? '#e9be74' : 'var(--gl-background-color-strong, rgba(128, 128, 128, 0.25))',
-        color: warning ? '#1f1e24' : 'inherit'
-      });
+      badge.classList.toggle('ambient-tab-badge-warning', Boolean(warning));
     }
 
     // Das Board erst nach dem nächsten Paint neu aufbauen: der Schalter springt sofort um, schnelle Klicks werden
@@ -5883,14 +5345,9 @@
         const selected = k === key;
         tabButtons[k].setAttribute('aria-selected', String(selected));
         tabButtons[k].tabIndex = selected ? 0 : -1;
-        applyStyles(tabButtons[k], {
-          fontWeight: selected ? '600' : '400',
-          opacity: selected ? '1' : '0.75',
-          boxShadow: 'inset 0 -2px 0 ' + (selected ? SETTINGS_ACCENT : 'transparent')
-        });
         tabPanels[k].style.display = selected ? 'flex' : 'none';
-        pinnedPreview.style.display = key === 'anzeige' ? 'block' : 'none';
       });
+      pinnedPreview.style.display = key === 'anzeige' ? 'block' : 'none';
       if (previous && previous !== key) {
         const direction = keys.indexOf(key) > keys.indexOf(previous) ? 1 : -1;
         animateTabIn(tabPanels[key], direction);
@@ -5911,7 +5368,7 @@
       position: 'sticky',
       bottom: '0',
       zIndex: '2',
-      background: windowBackground,
+      background: THEME_BG,
       borderTop: SETTINGS_BORDER
     });
     const timestampLabel = document.createElement('div');
@@ -6040,22 +5497,14 @@
       autosaveTimer = setTimeout(commitProjectConfig, 700);
     }
 
-    gearWrapper.appendChild(gearButton);
     document.body.appendChild(dropdown);
-    bar.appendChild(gearWrapper);
+    bar.appendChild(gearButton);
 
     let dropdownLocked = false;
 
     function updateDropdownVisibility() {
-      const isOpen = dropdownLocked;
-      // fährt von rechts herein und nach rechts hinaus, ohne Ausblenden
-      dropdown.style.transform = isOpen ? 'translateX(0)' : SETTINGS_PANEL_HIDDEN_TRANSFORM;
-      dropdown.style.pointerEvents = isOpen ? 'auto' : 'none';
-      dropdown.style.visibility = isOpen ? 'visible' : 'hidden';
-      dropdown.style.transition = isOpen
-        ? 'transform 0.25s ease-out, visibility 0s'
-        : 'transform 0.25s ease-in, visibility 0s linear 0.25s';
-      gearButton.setAttribute('aria-expanded', String(isOpen));
+      dropdown.classList.toggle('ambient-open', dropdownLocked);
+      gearButton.setAttribute('aria-expanded', String(dropdownLocked));
     }
 
     function setDropdownOpen(open, restoreFocus) {
@@ -6084,7 +5533,7 @@
     });
 
     const onDocumentClick = function (event) {
-      if (!dropdownLocked || gearWrapper.contains(event.target) || dropdown.contains(event.target)) {
+      if (!dropdownLocked || gearButton.contains(event.target) || dropdown.contains(event.target)) {
         return;
       }
       setDropdownOpen(false, false);
@@ -6135,8 +5584,6 @@
   }
 
   function buildMrLinksBar(projectPath) {
-    const toolbarTextColor = getToolbarForegroundColor();
-    const windowBackground = getGitLabWindowBackgroundColor(true);
     const linksBar = document.createElement('div');
     linksBar.id = 'js-my-mr-links';
     applyStyles(linksBar, {
@@ -6157,67 +5604,14 @@
       });
       link.title = tooltip;
       link.setAttribute('aria-label', tooltip);
-      link.classList.add(
-        'btn',
-        'gl-button',
-        'btn-default',
-        'btn-md',
-        'btn-default-tertiary',
-        'btn-icon'
-      );
-      applyStyles(link, {
-        padding: '0.35rem',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minWidth: '38px',
-        minHeight: '38px',
-        position: 'relative',
-        overflow: 'visible',
-        color: toolbarTextColor,
-        opacity: '0.85'
-      });
-      attachHoverEffect(link, {opacity: '1'});
-
-      const icon = document.createElement('span');
-      icon.innerHTML = mergeRequestIconSvg();
-      icon.setAttribute('aria-hidden', 'true');
-      applyStyles(icon, {
-        width: '20px',
-        height: '20px',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: toolbarTextColor
-      });
-      const iconSvg = icon.querySelector('svg');
-      if (iconSvg) {
-        iconSvg.setAttribute('width', '20');
-        iconSvg.setAttribute('height', '20');
-        applyStyles(iconSvg, {width: '20px', height: '20px', display: 'block'});
-      }
-      link.appendChild(icon);
+      link.className = 'btn gl-button btn-default btn-md btn-default-tertiary btn-icon ambient-header-btn ambient-mr-link';
+      link.appendChild(createHeaderIcon(mergeRequestIconSvg()));
 
       const badge = document.createElement('span');
       badge.textContent = badgeLabel;
       badge.setAttribute('aria-hidden', 'true');
-      applyStyles(badge, {
-        position: 'absolute',
-        bottom: '2px',
-        right: '2px',
-        minWidth: '12px',
-        height: '12px',
-        padding: '0 2px',
-        borderRadius: '6px',
-        background: badgeColor,
-        color: '#fff',
-        fontSize: '9px',
-        fontWeight: '700',
-        lineHeight: '12px',
-        textAlign: 'center',
-        boxShadow: '0 0 0 2px ' + windowBackground,
-        pointerEvents: 'none'
-      });
+      badge.className = 'ambient-mr-link-badge';
+      badge.style.background = badgeColor;
       link.appendChild(badge);
 
       return link;
@@ -6314,7 +5708,6 @@
   };
   const TAB_PANEL_STYLES = {display: 'flex', flexDirection: 'column', gap: '1.25rem'};
   // Geschlossenes Panel: ganz rechts aus dem Bild, samt Schatten
-  const SETTINGS_PANEL_HIDDEN_TRANSFORM = 'translateX(calc(100% + 32px))';
 
   // Neuer Reiter gleitet kurz aus der Richtung ein, in die gewechselt wurde (1 = nach rechts, -1 = nach links)
   function animateTabIn(el, direction) {
@@ -6386,14 +5779,7 @@
   // Zeile mit Text links und Button rechts (Diagnose, Gefahrenzone)
   function createActionRow(label, desc, buttonText, onClick, danger) {
     const row = document.createElement('div');
-    applyStyles(row, {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.75rem',
-      padding: '0.6rem 1rem',
-      minHeight: '52px',
-      boxSizing: 'border-box'
-    });
+    row.className = 'ambient-setting-row';
     row.appendChild(createRowText(label, desc));
     const button = document.createElement('button');
     button.type = 'button';
@@ -7029,7 +6415,7 @@
       padding: '0.6rem 0.9rem',
       borderRadius: '8px',
       border: SETTINGS_BORDER,
-      background: getGitLabWindowBackgroundColor(true)
+      background: THEME_BG
     };
     const sidebar = document.createElement('div');
     applyStyles(sidebar, Object.assign({width: '320px', maxWidth: '100%', display: 'flex', flexDirection: 'column'}, sidebarFrame));
@@ -7187,7 +6573,7 @@
     const subnav = document.createElement('div');
     subnav.setAttribute('role', 'group');
     subnav.setAttribute('aria-label', 'Ansicht');
-    applyStyles(subnav, {display: 'flex', gap: '2px', padding: '3px', borderRadius: '8px', border: SETTINGS_BORDER});
+    subnav.className = 'ambient-seg ambient-seg-fill';
     pinned.appendChild(subnav);
 
     const subtabs = {};
@@ -7195,18 +6581,6 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = t(def[1]);
-      applyStyles(button, {
-        flex: '1 1 0',
-        minHeight: '32px',
-        padding: '0.2rem 0.5rem',
-        border: '0',
-        borderRadius: '6px',
-        color: 'inherit',
-        fontSize: '0.85rem',
-        fontWeight: '500',
-        cursor: 'pointer',
-        whiteSpace: 'nowrap'
-      });
       button.addEventListener('click', function () {
         selectSubtab(def[0]);
       });
@@ -7265,7 +6639,6 @@
       Object.keys(subtabs).forEach(function (k) {
         const selected = k === key;
         subtabs[k].button.setAttribute('aria-pressed', String(selected));
-        applyStyles(subtabs[k].button, {background: selected ? SETTINGS_STRONG_BACKGROUND : 'transparent', opacity: selected ? '1' : '0.7'});
         subtabs[k].preview.element.style.display = selected ? 'flex' : 'none';
         subtabs[k].section.style.display = selected ? 'flex' : 'none';
       });
@@ -7345,26 +6718,16 @@
 
     const general = createSettingsGroup('Allgemein');
     const languageRow = document.createElement('div');
-    applyStyles(languageRow, {display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 1rem', minHeight: '52px', boxSizing: 'border-box'});
+    languageRow.className = 'ambient-setting-row';
     languageRow.appendChild(createRowText('Sprache', 'Teilweise übersetzt · wirkt nach dem Neuladen'));
     const languageSwitch = document.createElement('div');
     languageSwitch.setAttribute('role', 'group');
     languageSwitch.setAttribute('aria-label', 'Sprache');
-    applyStyles(languageSwitch, {display: 'flex', gap: '2px', padding: '3px', borderRadius: '8px', border: SETTINGS_BORDER, flex: '0 0 auto'});
+    languageSwitch.className = 'ambient-seg';
     const languageButtons = [['de', 'Deutsch'], ['en', 'English']].map(function (def) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = def[1];
-      applyStyles(button, {
-        minHeight: '30px',
-        padding: '0.2rem 0.75rem',
-        border: '0',
-        borderRadius: '6px',
-        color: 'inherit',
-        fontSize: '0.85rem',
-        fontWeight: '500',
-        cursor: 'pointer'
-      });
       button.addEventListener('click', function () {
         const english = def[0] === 'en';
         if ((experiments.english === true) === english) return;
@@ -7378,9 +6741,7 @@
 
     function paintLanguage() {
       languageButtons.forEach(function (entry) {
-        const on = entry.english === (experiments.english === true);
-        entry.button.setAttribute('aria-pressed', String(on));
-        applyStyles(entry.button, {background: on ? SETTINGS_STRONG_BACKGROUND : 'transparent', opacity: on ? '1' : '0.7'});
+        entry.button.setAttribute('aria-pressed', String(entry.english === (experiments.english === true)));
       });
     }
 
@@ -7825,9 +7186,9 @@
     }
 
     currentScanContext = {hostConfig: hostConfig, projectSettings: projectSettings};
+    ensureStylesheet(); // vor allem, was einen Toast zeigen kann
     installNoTriggerGuard();
     importConfigFromLocationHash(projectSettings);
-    ensureStylesheet();
     window.addEventListener('pagehide', flushProgressCache);
     createToolbar(hostConfig, projectSettings);
     createMrLinksBar();
@@ -7898,20 +7259,9 @@
       }
     }).observe(document.body, {childList: true, subtree: true});
 
-    // GitLab-Theme-Wechsel zur Laufzeit: Farb-Caches verwerfen und Toolbar neu aufbauen
-    let lastDark = isGitLabDarkModeActive();
+    // GitLab-Theme-Wechsel zur Laufzeit: Farben der Toolbar folgen per CSS-Variable, nur den Dark-Mode-Cache verwerfen
     new MutationObserver(function () {
-      const dark = isGitLabDarkModeActive();
-      if (dark === lastDark) return;
-      lastDark = dark;
-      gitlabWindowBackgroundCache.light = null;
-      gitlabWindowBackgroundCache.default = null;
-      const oldBar = document.getElementById('ambient-progress-toolbar');
-      if (oldBar) oldBar.remove();
-      const oldLinks = document.getElementById('js-my-mr-links');
-      if (oldLinks) oldLinks.remove();
-      createToolbar(hostConfig, projectSettings);
-      createMrLinksBar();
+      darkModeCache = null;
     }).observe(document.documentElement, {attributes: true, attributeFilter: ['class', 'data-theme']});
   }
 
