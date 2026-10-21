@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026.10.42
+
+- „Zweites Portal-Projekt“ und „Weitere Projekt-IDs“ zusammengelegt: ein Feld **Weitere Projekt-IDs** pro Board
+  (Tab „Dieses Board“, bis zu 3, je ein eigener Balken). Eine bisher eingetragene zweite Projekt-ID und die bisherige
+  globale ID-Liste werden automatisch übernommen. Der orange Balken und der Hinweis „In beiden Portal-Projekten
+  gefunden“ entfallen.
+- Konfigurations-Export und Konfigurations-Link enthalten jetzt `extraProjectIds`; Importe im alten Format
+  (zweite Projekt-ID) werden weiter angenommen.
+- Anzeigen, Debug-Logs und MR-Buttons lesen nur noch die globalen Feature-Schalter; die alten Werte von vor den
+  Feature-Schaltern werden nicht mehr berücksichtigt.
+- Aufgeräumt: ungenutzte Host-Konfiguration, wirkungslose Versions-Bereinigung, doppelte localStorage-Helfer und
+  Prüfungen, die nie greifen konnten, entfernt.
+
 ## 2026.10.41
 
 - Aufgeräumt, ohne sichtbare Funktionsänderung: Ticket-Detail und MR-Seite laden über einen gemeinsamen Weg, die

@@ -1,23 +1,18 @@
 # Konfiguration & Erweiterung
 
-- Die Projekte (Projektpfad, Projekt-ID, voreingestellte Listen) können initial im `HOST_CONFIG` stehen. Das
-  Script liest diesen Sockel und überschreibt ihn mit den lokal gespeicherten Einträgen aus
-  `ambientProgressProjectConfigs`
-  bzw. `ambientProgressListSelections`, sobald du die Projekt-ID/Portal-Base-URL oder die Listenauswahl änderst.
+- Die Konfiguration pro Board (Projekt-ID, Portal-Base-URL, weitere Projekt-IDs, Ticket-Aktionen) liegt lokal in
+  `ambientProgressProjectConfigs`, die Spaltenauswahl in `ambientProgressListSelections`, jeweils unter dem
+  Projektschlüssel (Host + Projektpfad).
 - Das Einstellungs-Panel (Zahnrad) bietet ein Formular für Projekt-ID und Portal-Base-URL; Werte werden normalisiert
   (`https://`-Prefix, Trailing-Slash entfernt) und entprellt automatisch in LocalStorage gespeichert (Autosave); das
   Board lädt danach ohne Seiten-Reload neu.
-- Ein optionaler Schalter **„Zweite ID aktivieren"** aktiviert die Multi-Board-Abfrage. Ist es aktiv,
-  wird
-  zusätzlich ein Eingabefeld für `projectId2` angezeigt. Beide Projekt-IDs nutzen die gleiche Portal-Base-URL.
+- **Weitere Projekt-IDs** (pro Board, höchstens 3): je ein zusätzlicher Balken auf der Karte, gleiche Portal-Base-URL.
+  Das frühere „zweite Portal-Projekt“ und die frühere globale ID-Liste werden beim ersten Laden übernommen.
 - Die Portal-URLs bestehen aus der Base + `/management/project/{projectId}/booking-label/#` + IID; ohne gültige
   Projekt-ID
   oder Base wird kein Request abgesendet und es erscheint ein gelber Toast.
-- Werden beide Projekt-IDs konfiguriert, versendet das Script zwei parallel laufende Portal-Requests und aggregiert die
-  Ergebnisse:
-  - Verbrachte Stunden (`spent`) und verbleibende Stunden (`remaining`) werden addiert
-  - Die kombinierte Summe wird in der Progressbar angezeigt
-  - Cache-Einträge werden separat mit Präfix `pid2:` gespeichert
+- Für weitere Projekt-IDs fragt das Script das Portal pro ID separat an; die Cache-Einträge tragen das Präfix
+  `pidx:<ID>`. Ein Balken erscheint nur, wenn das Ticket in diesem Projekt gefunden wurde.
 - Das Parsing der Portal-Seite schaut zuerst nach `div.progress`-Elementen mit `progress-bar`, dann nach Inline- oder
   Tabellenwerten zu „Booked Hours", um `spent`/`remaining`/`over` sinnvoll abzuleiten.
 - Die MR-Badge- und Ticket-Assignee-Features benötigen **keine zusätzliche Konfiguration**: sie nutzen die bereits

@@ -18,10 +18,11 @@ function extract(name) {
   throw new Error('Klammern unausgewogen: ' + name);
 }
 
-const names = ['parseVersionSegments', 'normalizeVersionValue', 'isRemoteVersionGreater', 'formatDuration', 'median',
+const names = ['parseVersionSegments', 'isRemoteVersionGreater', 'formatDuration', 'median',
   'normalizeListNameForMatching', 'normalizeLabelNameForMatching', 'parseTicketActions', 'assigneeSortKey', 'planReorder',
   'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate', 'relativeLuminance',
-  'parseCssColorToRgb', 'getContrastTextColor', 'formatBookedHoursDisplay'];
+  'parseCssColorToRgb', 'getContrastTextColor', 'formatBookedHoursDisplay', 'isNumericId',
+  'parseExtraProjectIds', 'extraProjectIdsFromConfig'];
 const isExp = function () { return false; };
 const patternsStart = source.indexOf('  const DEFAULT_ESTIMATE_PATTERNS');
 const defaultPatterns = source.slice(patternsStart, source.indexOf(';\n', patternsStart) + 1);
@@ -125,3 +126,23 @@ console.log('colors ok');
   assert.strictEqual(f.formatBookedHoursDisplay('—'), null);
 }
 console.log('formatBookedHoursDisplay ok');
+
+// Spaltennamen: angehängte Klammer-Zusätze weg, klein geschrieben
+{
+  assert.strictEqual(f.normalizeListNameForMatching('Review (3)'), 'review');
+  assert.strictEqual(f.normalizeListNameForMatching('In Arbeit (WIP) (2) '), 'in arbeit');
+  assert.strictEqual(f.normalizeListNameForMatching('(Backlog) Ideen'), '(backlog) ideen');
+  assert.strictEqual(f.normalizeListNameForMatching(null), '');
+}
+console.log('normalizeListNameForMatching ok');
+
+// Weitere Projekt-IDs pro Board: gespeicherter Wert gewinnt, sonst Migration aus dem alten „zweiten Portal-Projekt"
+{
+  assert.strictEqual(f.extraProjectIdsFromConfig({extraProjectIds: '1, 2'}), '1, 2');
+  assert.strictEqual(f.extraProjectIdsFromConfig({extraProjectIds: ''}), '');
+  assert.strictEqual(f.extraProjectIdsFromConfig({portalProjectId2: '4712', useSecondPortalProjectId: true}), '4712');
+  assert.strictEqual(f.extraProjectIdsFromConfig({portalProjectId2: '4712', useSecondPortalProjectId: false}), '');
+  assert.strictEqual(f.extraProjectIdsFromConfig(null), '');
+  assert.deepStrictEqual(f.parseExtraProjectIds(' 1,2;3  4 '), ['1', '2', '3', '4']);
+}
+console.log('extraProjectIdsFromConfig ok');

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.41
+// @version      2026.10.42
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.41';
+  const SCRIPT_VERSION = '2026.10.42';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -59,7 +59,6 @@
 
   const EXTERNAL_LINK_ICON_SVG = '<svg class="gl-button-icon gl-icon s16" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 2.5h4v4"/><path d="M13.5 2.5L7 9"/><path d="M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/></svg>';
 
-  const HOST_CONFIG = {};
   const NOT_FOUND_SENTINEL = { notFound: true };
   const NOT_FOUND_TTL_MS = 10 * 60 * 1000; // „keine Buchungen" nur kurz cachen, damit neue Buchungen bald auftauchen
 
@@ -108,10 +107,6 @@
       console.warn(LOG_PREFIX, 'Selektor ohne Treffer (GitLab-UI geändert?):', key, SEL[key]);
     }
     return el;
-  }
-
-  function qsa(root, key) {
-    return (root || document).querySelectorAll(SEL[key]);
   }
 
   // Einmalig injiziertes Stylesheet für Dinge, die Inline-Styles nicht können (:focus-visible, Media Queries)
@@ -218,7 +213,6 @@
       '.ambient-progress-row{display:flex;align-items:center;gap:6px}' +
       '.ambient-extra-row{margin-top:4px}' +
       '.ambient-progress-row-detail{gap:.35rem;font-size:12px;flex-wrap:wrap;width:100%}' +
-      '.ambient-both-projects-warning{display:flex;align-items:center;gap:4px;margin-bottom:6px;padding:4px 8px;border-radius:4px;background:#f97316;color:#fff;font-size:11px;font-weight:600}' +
       '.ambient-progress-detail-badge{margin-bottom:.6rem;padding:.45rem 0;border-radius:10px;background:' + THEME_BG + '}' +
       '.ambient-progress-mr-badge{padding:1rem 0;border-bottom:1px solid var(--gl-border-color-subtle);background:' + THEME_BG + '}' +
       '.ambient-mr-badge-merged{opacity:.6}.ambient-mr-badge-merged:hover{opacity:.8}' +
@@ -331,12 +325,14 @@
   }
 
   // JSON-Storage: ein Ort für try/catch, Fehler (z. B. Quota) werden geloggt statt verschluckt
+  // JSON aus localStorage; fehlt der Wert, ist er kaputt oder hat er nicht den Typ des Fallbacks (Objekt) → fallback
   function storageRead(key, fallback) {
     try {
       const raw = window.localStorage.getItem(key);
-      if (raw === null || raw === undefined) return fallback;
-      const parsed = JSON.parse(raw);
-      return parsed === null || parsed === undefined ? fallback : parsed;
+      const parsed = raw === null ? null : JSON.parse(raw);
+      if (parsed === null || parsed === undefined) return fallback;
+      if (fallback && typeof fallback === 'object' && typeof parsed !== 'object') return fallback;
+      return parsed;
     } catch (e) {
       return fallback;
     }
@@ -374,9 +370,8 @@
   let portalUrlInputElement = null;
   let projectStatusElement = null;
   let portalStatusElement = null;
-  let projectId2InputElement = null;
-  let projectId2StatusElement = null;
-  let useSecondProjectIdToggleCheckbox = null;
+  let extraIdsInputElement = null;
+  let extraIdsStatusElement = null;
   let lastRefreshLabelElement = null;
   let manualRefreshButtonElement = null;
   let ticketActionsInputElement = null;
@@ -402,16 +397,13 @@
     };
   }
   const detailRetry = createRetry('Detail-Teilnehmerbereich', function () {
-    if (currentScanContext) scanIssueDetail(currentScanContext.hostConfig, currentScanContext.projectSettings);
+    if (currentScanContext) scanIssueDetail(currentScanContext.projectSettings);
   });
   const mrRetry = createRetry('MR-Progress-Block', function () {
-    if (currentScanContext) scanMergeRequestPage(currentScanContext.hostConfig, currentScanContext.projectSettings);
+    if (currentScanContext) scanMergeRequestPage(currentScanContext.projectSettings);
   });
 
   // Debug / Anzeige – gesteuert über Toolbar, persistiert in localStorage
-  const LS_KEY_DEBUG = 'portalProgressDebug';
-  const LS_KEY_SHOW = 'portalProgressShow';
-  const LS_KEY_MR_LINKS = 'portalProgressMrLinks';
   const LS_KEY_LIST_SELECTIONS = 'ambientProgressListSelections';
   const LS_KEY_PROJECT_CONFIG = 'ambientProgressProjectConfigs';
   const LS_KEY_LAST_REFRESH = 'ambientProgressLastRefresh';
@@ -421,12 +413,7 @@
   const LS_KEY_RATE_LIMIT_WARNING = 'ambientProgressRateLimitWarning';
   const LS_KEY_AGE_HIGHLIGHT_LISTS = 'ambientProgressAgeHighlightLists';
 
-  let debugEnabled = readBoolFromLocalStorage(LS_KEY_DEBUG, false);  // Default: Debug aus
-  let showEnabled = readBoolFromLocalStorage(LS_KEY_SHOW, true);    // Default: Anzeigen an
-  let mrLinksEnabled = readBoolFromLocalStorage(LS_KEY_MR_LINKS, true); // Default: MR-Buttons an
-
-  // Globale Feature-Schalter (gelten für alle Boards). show/debug/mrLinks liegen ebenfalls hier,
-  // fehlen sie, gilt der alte projektbezogene Wert (Migration in init).
+  // Globale Feature-Schalter (gelten für alle Boards), auch Anzeigen (show), Debug-Logs (debug) und MR-Buttons (mrLinks)
   const LS_KEY_FEATURES = 'ambientProgressFeatures';
   const FEATURE_PARENTS = {
     portalButtons: 'progress',
@@ -439,10 +426,12 @@
     mrActions: 'mrPageProgress'
   };
   let features = readFeatures();
+  let debugEnabled = features.debug === true; // Default: aus
+  let showEnabled = features.show !== false; // Default: an
+  let mrLinksEnabled = features.mrLinks !== false; // Default: an
 
   function readFeatures() {
-    const parsed = storageRead(LS_KEY_FEATURES, {});
-    return typeof parsed === 'object' ? parsed : {};
+    return storageRead(LS_KEY_FEATURES, {});
   }
 
   function saveFeature(key, value) {
@@ -475,8 +464,7 @@
   let experiments = readExperiments();
 
   function readExperiments() {
-    const parsed = storageRead(LS_KEY_EXPERIMENTS, {});
-    const result = parsed && typeof parsed === 'object' ? parsed : {};
+    const result = storageRead(LS_KEY_EXPERIMENTS, {});
     if (result.expEnglish !== undefined && result.english === undefined) result.english = result.expEnglish === true; // Migration
     return result;
   }
@@ -494,7 +482,7 @@
     return experiments[key] !== undefined && experiments[key] !== '' ? experiments[key] : fallback;
   }
 
-  // Teil-Übersetzung (expEnglish): nur Texte, die hier stehen; alles andere bleibt Deutsch
+  // Teil-Übersetzung (Einstellung „Sprache"): nur Texte, die hier stehen; alles andere bleibt Deutsch
   const EN_TEXTS = {
     'Board-Karten': 'Board cards',
     'Verweildauer': 'Time in column',
@@ -654,29 +642,15 @@
   }
 
   function clearProjectRequestBlock(projectKey) {
-    if (!projectKey) return;
-    if (blockedProjectRequests[projectKey]) {
-      delete blockedProjectRequests[projectKey];
-    }
+    if (projectKey) delete blockedProjectRequests[projectKey];
   }
 
   /******************************************************************
    * Utils
    ******************************************************************/
 
-  function readBoolFromLocalStorage(key, defaultValue) {
-    try {
-      const val = window.localStorage.getItem(key);
-      if (val === null || val === undefined) return defaultValue;
-      return val === '1';
-    } catch (e) {
-      return defaultValue;
-    }
-  }
-
   function readListSelectionsState() {
-    const parsed = storageRead(LS_KEY_LIST_SELECTIONS, {});
-    return typeof parsed === 'object' ? parsed : {};
+    return storageRead(LS_KEY_LIST_SELECTIONS, {});
   }
 
   function writeListSelectionsState(state) {
@@ -743,8 +717,7 @@
       return null;
     }
     return {
-      version: normalizeVersionValue(parsed.version),
-      htmlUrl: parsed.htmlUrl || RAW_SCRIPT_URL,
+      version: String(parsed.version || ''),
       checkedAt: timestamp,
       notes: typeof parsed.notes === 'string' ? parsed.notes : undefined
     };
@@ -766,40 +739,11 @@
     return latestReleaseInfo;
   }
 
+  // CalVer „2026.10.3" → [2026, 10, 3]; nicht-numerische Segmente zählen als 0
   function parseVersionSegments(value) {
-    if (!value) {
-      return [];
-    }
-    const normalized = String(value).trim().replace(/^v/i, '');
-    if (!normalized) {
-      return [];
-    }
-    return normalized.split('.').map(function (segment) {
-      const numeric = parseInt(segment, 10);
-      return isNaN(numeric) ? 0 : numeric;
+    return String(value || '').split('.').map(function (segment) {
+      return parseInt(segment, 10) || 0;
     });
-  }
-
-  function normalizeVersionValue(value) {
-    if (!value) {
-      return '';
-    }
-    let text = String(value);
-    const commentIndex = text.indexOf('//');
-    if (commentIndex >= 0) {
-      text = text.slice(0, commentIndex);
-    }
-    text = text.trim();
-    const firstToken = text.split(/\s+/)[0];
-    return firstToken ? firstToken.trim() : '';
-  }
-
-  function formatVersionLabel(value) {
-    const normalized = normalizeVersionValue(value);
-    if (!normalized) {
-      return '';
-    }
-    return normalized.replace(/^v/i, '');
   }
 
   function isRemoteVersionGreater(remoteVersion, currentVersion) {
@@ -851,10 +795,7 @@
     if (hasRemoteUpdate) {
       elements.badge.style.display = 'block';
       elements.messageRow.style.display = 'flex';
-      const displayVersion =
-        (info && info.version ? formatVersionLabel(info.version) : formatVersionLabel(SCRIPT_VERSION)) ||
-        formatVersionLabel(SCRIPT_VERSION);
-      elements.messageText.textContent = '⚠️ Update verfügbar: ' + displayVersion;
+      elements.messageText.textContent = '⚠️ Update verfügbar: ' + info.version;
       elements.messageNotes.textContent = info.notes || '';
       elements.messageNotes.style.display = info.notes ? 'block' : 'none';
     } else {
@@ -935,16 +876,7 @@
             warn('Release-Check konnte Version nicht finden');
             return;
           }
-          const parsedVersion = normalizeVersionValue(versionMatch[1]);
-          if (!parsedVersion) {
-            warn('Release-Check konnte die Versionsnummer nicht bereinigen');
-            return;
-          }
-          latestReleaseInfo = {
-            version: String(parsedVersion),
-            htmlUrl: RAW_SCRIPT_URL,
-            checkedAt: Date.now()
-          };
+          latestReleaseInfo = {version: versionMatch[1], checkedAt: Date.now()};
           log('Release-Check: remote version', latestReleaseInfo.version);
           writeReleaseInfoToStorage(latestReleaseInfo);
           updateReleaseNotificationUI(latestReleaseInfo);
@@ -961,7 +893,7 @@
     }
   }
 
-  // Experiment expChangelog: oberster Abschnitt aus CHANGELOG.md (gleiche Raw-Domain wie das Script)
+  // Update-Hinweis: oberster Abschnitt aus CHANGELOG.md (gleiche Raw-Domain wie das Script)
   function fetchChangelogNotes(info) {
     GM_xmlhttpRequest({
       method: 'GET',
@@ -1002,30 +934,15 @@
   }
 
   function readLastRefreshTimestamp() {
-    try {
-      const val = window.localStorage.getItem(getLastRefreshStorageKey());
-      if (!val) {
-        return null;
-      }
-      const parsed = parseInt(val, 10);
-      if (isNaN(parsed)) {
-        return null;
-      }
-      return parsed;
-    } catch (e) {
-      return null;
-    }
+    const value = storageRead(getLastRefreshStorageKey(), null);
+    return typeof value === 'number' ? value : null;
   }
 
   function writeLastRefreshTimestamp(value) {
-    try {
-      if (value === null || value === undefined) {
-        window.localStorage.removeItem(getLastRefreshStorageKey());
-      } else {
-        window.localStorage.setItem(getLastRefreshStorageKey(), String(value));
-      }
-    } catch (e) {
-      // ignore
+    if (value === null || value === undefined) {
+      storageRemove(getLastRefreshStorageKey());
+    } else {
+      storageWrite(getLastRefreshStorageKey(), value);
     }
     updateLastRefreshLabel();
   }
@@ -1065,8 +982,7 @@
   }
 
   function readProjectConfigsState() {
-    const parsed = storageRead(LS_KEY_PROJECT_CONFIG, {});
-    return typeof parsed === 'object' ? parsed : {};
+    return storageRead(LS_KEY_PROJECT_CONFIG, {});
   }
 
   function writeProjectConfigsState(state) {
@@ -1091,8 +1007,7 @@
   }
 
   function readProgressCacheState() {
-    const parsed = storageRead(LS_KEY_PROGRESS_CACHE, null);
-    return parsed && typeof parsed === 'object' ? parsed : null;
+    return storageRead(LS_KEY_PROGRESS_CACHE, null);
   }
 
   function isCacheEntryFresh(entry) {
@@ -1149,23 +1064,12 @@
   }
 
   function readLastBoardIdentifierFromStorage() {
-    try {
-      return window.localStorage.getItem(LS_KEY_LAST_BOARD_ID);
-    } catch (e) {
-      return null;
-    }
+    const value = storageRead(LS_KEY_LAST_BOARD_ID, null);
+    return value === null ? null : String(value);
   }
 
   function writeLastBoardIdentifierToStorage(value) {
-    try {
-      if (value) {
-        window.localStorage.setItem(LS_KEY_LAST_BOARD_ID, value);
-      } else {
-        window.localStorage.removeItem(LS_KEY_LAST_BOARD_ID);
-      }
-    } catch (e) {
-      // ignore
-    }
+    storageWrite(LS_KEY_LAST_BOARD_ID, value);
   }
 
   function getBoardIdentifierFromPath() {
@@ -1272,7 +1176,6 @@
     bookedFallback: '#2563eb',
     over: '#dc3545'
   };
-  // Zweites Portal-Projekt: gleiche Palette, nur das „gebucht"-Segment in Orange
   const WARN_PCT = 80; // Balken wird gelb, sobald so viel Prozent der Stunden verbraucht sind
   const WARN_COLORS = {spent: '#eab308', spentHover: '#ca8a04'};
   const EXTRA_BAR_COLORS = [
@@ -1280,8 +1183,7 @@
     {spent: '#14b8a6', spentHover: '#0d9488'},
     {spent: '#ec4899', spentHover: '#db2777'}
   ];
-  const BAR_COLORS_SECOND = Object.assign({}, BAR_COLORS, {spent: '#f97316', spentHover: '#ea580c'});
-
+  
   // Text-Alternative für Screenreader und Tooltip (Farben allein tragen keine Information)
   function describeBar(barOuter, label) {
     barOuter.classList.add('ambient-progress-bar');
@@ -1456,20 +1358,6 @@
     return row;
   }
 
-  function createAllowedListLookup(listNames) {
-    const lookup = {};
-    if (!listNames || !listNames.length) {
-      return lookup;
-    }
-    for (let i = 0; i < listNames.length; i++) {
-      const normalized = normalizeListNameForMatching(listNames[i]);
-      if (normalized) {
-        lookup[normalized] = true;
-      }
-    }
-    return lookup;
-  }
-
   function getProgressCacheEntry(cacheKey) {
     const entry = progressCache[cacheKey];
     if (!entry) return null;
@@ -1482,7 +1370,7 @@
     return entry.data;
   }
 
-  // Abgelaufener, aber noch behaltener Wert (nur mit expStaleWhileRevalidate); „keine Buchungen" zählt nicht
+  // Abgelaufener, aber noch behaltener Wert (bis STALE_MAX_MS); „keine Buchungen" zählt nicht
   function getStaleProgressEntry(cacheKey) {
     const entry = progressCache[cacheKey];
     if (!entry || !entry.data || entry.data.notFound || isCacheEntryFresh(entry) || !isCacheEntryAlive(entry)) return null;
@@ -1542,15 +1430,6 @@
     writeLastRefreshTimestamp(null);
   }
 
-  function getCurrentHostConfig() {
-    const host = window.location.hostname;
-    const cfg = HOST_CONFIG[host];
-    if (!cfg && debugEnabled) {
-      log('Keine HOST_CONFIG für Host gefunden – benutze leeres Projekt-Setup:', host);
-    }
-    return cfg || {projects: {}};
-  }
-
   // /company/some-project/-/boards → "company/some-project"
   function getGitLabProjectPathFromLocation() {
     const path = window.location.pathname;
@@ -1568,71 +1447,33 @@
     return /\/merge_requests\//.test(window.location.pathname);
   }
 
-  function getProjectSettings(hostConfig) {
+  function getProjectSettings() {
     const projectPath = getGitLabProjectPathFromLocation();
     log('Ermittelter projectPath aus URL:', projectPath);
     if (!projectPath) {
       warn('Konnte GitLab-Projektpfad nicht bestimmen.');
       return null;
     }
-    const settings = hostConfig.projects[projectPath] || null;
     const projectKey = window.location.hostname + '|' + projectPath;
     const storedSelection = readListSelectionEntry(projectKey);
     const storedProjectConfig = readProjectConfigEntry(projectKey);
-
-    if (!settings && !storedProjectConfig) {
-      warn('Keine projectSettings in HOST_CONFIG und keine gespeicherte Konfiguration für Projektpfad:', projectPath);
-    }
-
-    const base = settings ? Object.assign({}, settings) : {
-      projectId: null,
-      listNamesToInclude: [],
-      portalBaseUrl: null
-    };
-    const configLookup = createAllowedListLookup(base.listNamesToInclude || []);
-    const initialLookup = storedSelection ? storedSelection.include : configLookup;
+    if (!storedProjectConfig) log('Noch keine gespeicherte Konfiguration für Projektpfad:', projectPath);
+    const initialLookup = storedSelection ? storedSelection.include : {};
     const listFilterMode = storedSelection && storedSelection.explicit ? 'explicit' : 'auto';
-    const projectId =
-      (storedProjectConfig && storedProjectConfig.projectId) || base.projectId || null;
-    const portalBaseUrl =
-      (storedProjectConfig && storedProjectConfig.portalBaseUrl) || base.portalBaseUrl || null;
-    const fallbackShow = readBoolFromLocalStorage(LS_KEY_SHOW, true);
-    const fallbackDebug = readBoolFromLocalStorage(LS_KEY_DEBUG, false);
-    const fallbackMrLinks = readBoolFromLocalStorage(LS_KEY_MR_LINKS, true);
-    const showEnabled =
-      storedProjectConfig && typeof storedProjectConfig.showEnabled === 'boolean'
-        ? storedProjectConfig.showEnabled
-        : fallbackShow;
-    const debugEnabled =
-      storedProjectConfig && typeof storedProjectConfig.debugEnabled === 'boolean'
-        ? storedProjectConfig.debugEnabled
-        : fallbackDebug;
-    const mrLinksEnabled =
-      storedProjectConfig && typeof storedProjectConfig.mrLinksEnabled === 'boolean'
-        ? storedProjectConfig.mrLinksEnabled
-        : fallbackMrLinks;
-    const projectId2 =
-      (storedProjectConfig && storedProjectConfig.portalProjectId2) || null;
-    const useSecondPortalProjectId =
-      storedProjectConfig && typeof storedProjectConfig.useSecondPortalProjectId === 'boolean'
-        ? storedProjectConfig.useSecondPortalProjectId
-        : false;
+    const projectId = (storedProjectConfig && storedProjectConfig.projectId) || null;
+    const portalBaseUrl = (storedProjectConfig && storedProjectConfig.portalBaseUrl) || null;
 
-    return Object.assign({}, base, {
+    return {
       projectPath,
       projectKey,
       projectId,
-      projectId2,
-      useSecondPortalProjectId,
+      extraProjectIds: extraProjectIdsFromConfig(storedProjectConfig),
       allowedListLookup: initialLookup,
       listFilterMode,
       portalBaseUrl,
-      showEnabled: showEnabled,
-      debugEnabled: debugEnabled,
-      mrLinksEnabled: mrLinksEnabled,
       ticketActions: (storedProjectConfig && storedProjectConfig.ticketActions) || '',
       estimateEnabled: !storedProjectConfig || storedProjectConfig.estimateEnabled !== false
-    });
+    };
   }
 
   const GITLAB_BG_SELECTORS = [
@@ -1763,15 +1604,9 @@
     return labelElem ? labelElem.textContent.replace(/\s+/g, ' ').trim() : getListNameFromBoardListElem(boardListElem, header);
   }
 
+  // „Review (3)" → „review": angehängte Klammer-Zusätze (auch mehrere) weg, klein geschrieben
   function normalizeListNameForMatching(name) {
-    if (!name) return '';
-    let normalized = String(name);
-    let previous;
-    do {
-      previous = normalized;
-      normalized = normalized.replace(/\s*\([^()]*\)\s*$/, '');
-    } while (normalized !== previous);
-    return normalized.toLowerCase().trim();
+    return String(name || '').replace(/(\s*\([^()]*\))+\s*$/, '').toLowerCase().trim();
   }
 
   function getIssueIidFromCard(cardElem) {
@@ -1780,16 +1615,9 @@
     const iid = cardElem.getAttribute('data-item-iid');
     if (iid) return iid;
 
-    try {
-      const numberSpan = cardElem.querySelector(SEL.cardNumber + ' span');
-      if (numberSpan && numberSpan.textContent) {
-        const m = numberSpan.textContent.match(/#(\d+)/);
-        if (m) return m[1];
-      }
-    } catch (e) {
-      error('Fehler beim Parsen der Issue-IID aus Footer:', e);
-    }
-    return null;
+    const numberSpan = cardElem.querySelector(SEL.cardNumber + ' span');
+    const m = numberSpan && numberSpan.textContent.match(/#(\d+)/);
+    return m ? m[1] : null;
   }
 
   function findMatchingMrs(mrs, issueIid) {
@@ -2264,8 +2092,8 @@
     if (container) container.remove();
   }
 
-  function injectProgressIntoCard(cardElem, progressData, progressData2) {
-    if (!cardElem || (!progressData && !progressData2)) return;
+  function injectProgressIntoCard(cardElem, progressData) {
+    if (!cardElem || !progressData) return;
     if (!isCardInActiveColumn(cardElem)) return;
 
     const container = getOrCreateBadgeContainer(cardElem);
@@ -2294,21 +2122,10 @@
     theme.styles.animate = animateFill;
     const loadedAt = Number(cardElem.getAttribute('data-ambient-loaded-at'));
 
-    if (progressData && progressData2) {
-      container.appendChild(createTextSpan('⚠ In beiden Portal-Projekten gefunden')).className = 'ambient-both-projects-warning';
-    }
-    if (progressData) {
-      const row = buildProgressRow('ambient-progress-row', progressData, theme.styles,
-        cardElem.getAttribute('data-ambient-progress-url'), cardElem.getAttribute('data-ambient-timesheet-url'));
-      if (loadedAt) row.querySelector('.ambient-progress-bar').title += ' · ' + formatLoadedAgo(loadedAt);
-      container.appendChild(row);
-    }
-    if (progressData2) {
-      container.appendChild(buildProgressRow('ambient-progress-row', progressData2,
-        Object.assign({}, theme.styles, {colors: BAR_COLORS_SECOND}),
-        cardElem.getAttribute('data-ambient-progress-url-2'), cardElem.getAttribute('data-ambient-timesheet-url-2')));
-    }
-
+    const row = buildProgressRow('ambient-progress-row', progressData, theme.styles,
+      cardElem.getAttribute('data-ambient-progress-url'), cardElem.getAttribute('data-ambient-timesheet-url'));
+    if (loadedAt) row.querySelector('.ambient-progress-bar').title += ' · ' + formatLoadedAgo(loadedAt);
+    container.appendChild(row);
     appendExtraProjectRows(cardElem, container, theme);
   }
 
@@ -2316,7 +2133,7 @@
    * Experimente: Karten-Helfer (Summen, Filter, Sortierung, Refresh, Extra-Projekte)
    ******************************************************************/
 
-  let currentScanContext = null; // {hostConfig, projectSettings}, gesetzt in init
+  let currentScanContext = null; // {projectSettings}, gesetzt in init
   let rescanHook = null; // gesetzt in init: stößt einen entprellten Scan an
   const portalErrorLog = []; // letzte Portal-Fehler (nur im Speicher)
   const PORTAL_ERROR_LOG_MAX = 30;
@@ -2353,9 +2170,23 @@
     if (rescanHook) rescanHook();
   }
 
-  // Weitere Portal-Projekt-IDs als zusätzliche Balken unter den ersten beiden
+  // Weitere Portal-Projekte pro Board (höchstens 3), je ein zusätzlicher Balken auf der Karte
+  function parseExtraProjectIds(text) {
+    return String(text || '').split(/[\s,;]+/).filter(Boolean);
+  }
+
+  // Früher gab es pro Board ein „zweites Portal-Projekt" (portalProjectId2) und eine globale ID-Liste: beide fließen ein,
+  // bis das Board eigene IDs speichert
+  function extraProjectIdsFromConfig(config) {
+    if (config && typeof config.extraProjectIds === 'string') return config.extraProjectIds;
+    const ids = config && config.useSecondPortalProjectId && config.portalProjectId2 ? [String(config.portalProjectId2)] : [];
+    parseExtraProjectIds(expSetting('extraProjectIds', '')).forEach(function (id) { ids.push(id); });
+    return ids.filter(function (id, i) { return isNumericId(id) && ids.indexOf(id) === i; }).slice(0, 3).join(', ');
+  }
+
   function getExtraProjectIds() {
-    return String(expSetting('extraProjectIds', '')).split(/[\s,;]+/).filter(isNumericId).slice(0, 3);
+    const ps = currentScanContext && currentScanContext.projectSettings;
+    return ps ? parseExtraProjectIds(ps.extraProjectIds).filter(isNumericId).slice(0, 3) : [];
   }
 
   function appendExtraProjectRows(cardElem, container, theme) {
@@ -3220,7 +3051,7 @@
   const fetchRetryState = {}; // cacheKey → {attempts, retryAt}
 
   // Gibt true zurück, wenn Portal-Requests gestartet wurden (zählt für das Scan-Limit)
-  function fetchAndDisplayProgress(hostConfig, projectSettings, issueIid, cardElem) {
+  function fetchAndDisplayProgress(projectSettings, issueIid, cardElem) {
     if (!issueIid || !cardElem) return false;
 
     const projectKey = projectSettings && projectSettings.projectKey;
@@ -3229,24 +3060,10 @@
       return false;
     }
 
-    const projectId = projectSettings.projectId;
-    if (!projectId) {
-      warn('Kein projectId für', projectSettings.projectPath, '; progress wird nicht geladen.');
-      return false;
-    }
     const cacheKey = buildProgressCacheKey(projectSettings, issueIid);
-    if (!cacheKey) {
-      warn('Konnte Cache-Schlüssel nicht bestimmen für Issue', issueIid);
-      return false;
-    }
-
     const url = buildPortalUrl(projectSettings, issueIid);
-    if (!url) {
-      warn(
-        'Keine (gültige) Portal-Basis konfiguriert für',
-        projectSettings.projectPath,
-        '; Fortschritt wird nicht geladen.'
-      );
+    if (!url || !cacheKey) {
+      warn('Keine Portal-Basis oder Projekt-ID für', projectSettings.projectPath, '; Fortschritt wird nicht geladen.');
       return false;
     }
     cardElem.setAttribute('data-ambient-progress-url', url);
@@ -3255,32 +3072,14 @@
       cardElem.setAttribute('data-ambient-timesheet-url', timesheetUrl);
     }
 
+    // Mit weiteren Portal-Projekten bleibt der Container auch bei „nicht gefunden", damit deren Balken Platz haben
+    const hasExtraProjects = getExtraProjectIds().length > 0;
     const cached = getProgressCacheEntry(cacheKey);
-    let cachedSecondary = null;
-    let url2 = null;
-    const cacheKey2 = projectSettings.useSecondPortalProjectId && projectSettings.projectId2
-      ? buildProgressCacheKey(projectSettings, issueIid, 'pid2:' + projectSettings.projectId2)
-      : null;
-    if (cacheKey2) {
-      cachedSecondary = getProgressCacheEntry(cacheKey2);
-      url2 = buildPortalUrl(projectSettings, issueIid, projectSettings.projectId2);
-      if (url2) {
-        cardElem.setAttribute('data-ambient-progress-url-2', url2);
-      }
-      const timesheetUrl2 = buildTimesheetUrl(projectSettings, issueIid, projectSettings.projectId2);
-      if (timesheetUrl2) {
-        cardElem.setAttribute('data-ambient-timesheet-url-2', timesheetUrl2);
-      }
-    }
-
-    if (cached || cachedSecondary) {
+    if (cached) {
       log('Cache-Hit für Issue', issueIid);
-      const cachedAt = getProgressCacheTimestamp(cacheKey) || getProgressCacheTimestamp(cacheKey2);
+      const cachedAt = getProgressCacheTimestamp(cacheKey);
       if (cachedAt) cardElem.setAttribute('data-ambient-loaded-at', String(cachedAt));
-      const effectiveCached = (cached && cached.notFound && !projectSettings.useSecondPortalProjectId)
-        ? null
-        : cached;
-      injectProgressIntoCard(cardElem, effectiveCached, cachedSecondary);
+      injectProgressIntoCard(cardElem, cached.notFound && !hasExtraProjects ? null : cached);
       return false;
     }
 
@@ -3292,11 +3091,10 @@
     let staleShown = false;
     {
       const stale = getStaleProgressEntry(cacheKey);
-      const stale2 = cacheKey2 ? getStaleProgressEntry(cacheKey2) : null;
-      if (stale || stale2) {
-        const staleAt = getProgressCacheTimestamp(cacheKey) || getProgressCacheTimestamp(cacheKey2);
+      if (stale) {
+        const staleAt = getProgressCacheTimestamp(cacheKey);
         if (staleAt) cardElem.setAttribute('data-ambient-loaded-at', String(staleAt));
-        injectProgressIntoCard(cardElem, stale, stale2);
+        injectProgressIntoCard(cardElem, stale);
         const staleContainer = cardElem.querySelector('.ambient-progress-badge');
         if (staleContainer) {
           staleContainer.setAttribute('data-ambient-stale', '1');
@@ -3317,72 +3115,35 @@
     log('Hole Progress-Daten für Issue', issueIid);
     if (!staleShown) showProgressLoading(cardElem);
 
-    const promises = [loadProgressData(url, issueIid)];
-    if (projectSettings.useSecondPortalProjectId && projectSettings.projectId2) {
-      if (!url2) {
-        url2 = buildPortalUrl(projectSettings, issueIid, projectSettings.projectId2);
-      }
-      if (url2) {
-        log('Hole auch Progress-Daten für zweites Portal-Projekt', issueIid);
-        promises.push(loadProgressData(url2, issueIid));
-      }
-    }
-
-    Promise.allSettled(promises)
-      .then(function (results) {
-        const fulfilled = results.filter(function (r) { return r.status === 'fulfilled'; });
-        const rejected = results.filter(function (r) { return r.status === 'rejected'; });
-        if (fulfilled.length) {
-          clearProjectRequestBlock(projectKey);
-        }
-        rejected.forEach(function (r) {
-          error('Request-Fehler für Issue ' + issueIid + ':', r.reason);
-          logPortalError(issueIid, r.reason);
-          if (r.reason && r.reason.status) {
-            blockProjectRequests(projectKey, r.reason.status);
-          }
-        });
-
-        const progressData = results[0].status === 'fulfilled' ? results[0].value : null;
-        const progressData2 = results[1] && results[1].status === 'fulfilled' ? results[1].value : null;
-
-        if (!progressData && !progressData2) {
-          clearProgressLoading(cardElem);
-          if (staleShown && !rejected.length) {
-            cardElem.querySelectorAll('.ambient-progress-badge[data-ambient-stale]').forEach(function (el) { el.remove(); });
-          }
-          if (rejected.length) {
-            cardElem.querySelectorAll('.ambient-progress-badge[data-ambient-stale]').forEach(function (el) {
-              el.title = 'Veraltet – Aktualisierung fehlgeschlagen';
-            });
-            // vorübergehender Fehler: nicht cachen, später erneut versuchen (begrenzt)
-            retryState.attempts += 1;
-            retryState.retryAt = Date.now() + NEGATIVE_CACHE_MS;
-            if (retryState.attempts < MAX_FETCH_RETRIES) {
-              cardElem.removeAttribute('data-ambient-progress-processed');
-            }
-            return;
-          }
+    loadProgressData(url, issueIid)
+      .then(function (progressData) {
+        clearProjectRequestBlock(projectKey);
+        delete fetchRetryState[cacheKey];
+        if (!progressData) {
           // sauber „keine Buchungen": kurz cachen, damit nicht jeder Reload alle Karten neu abfragt
+          cardElem.querySelectorAll('.ambient-progress-badge[data-ambient-stale]').forEach(function (el) { el.remove(); });
           setProgressCacheEntry(cacheKey, NOT_FOUND_SENTINEL, NOT_FOUND_TTL_MS);
-          if (projectSettings.useSecondPortalProjectId) {
-            injectProgressIntoCard(cardElem, NOT_FOUND_SENTINEL, null);
-          }
+          if (hasExtraProjects) injectProgressIntoCard(cardElem, NOT_FOUND_SENTINEL);
           markPortalRefreshTimestamp();
           return;
         }
-
-        delete fetchRetryState[cacheKey];
-        if (progressData) {
-          setProgressCacheEntry(cacheKey, progressData);
-        }
-        if (progressData2 && cacheKey2) {
-          setProgressCacheEntry(cacheKey2, progressData2);
-        }
-
+        setProgressCacheEntry(cacheKey, progressData);
         cardElem.setAttribute('data-ambient-loaded-at', String(Date.now()));
-        injectProgressIntoCard(cardElem, progressData, progressData2);
+        injectProgressIntoCard(cardElem, progressData);
         markPortalRefreshTimestamp();
+      }, function (reason) {
+        error('Request-Fehler für Issue ' + issueIid + ':', reason);
+        logPortalError(issueIid, reason);
+        if (reason && reason.status) blockProjectRequests(projectKey, reason.status);
+        cardElem.querySelectorAll('.ambient-progress-badge[data-ambient-stale]').forEach(function (el) {
+          el.title = 'Veraltet – Aktualisierung fehlgeschlagen';
+        });
+        // vorübergehender Fehler: nicht cachen, später erneut versuchen (begrenzt)
+        retryState.attempts += 1;
+        retryState.retryAt = Date.now() + NEGATIVE_CACHE_MS;
+        if (retryState.attempts < MAX_FETCH_RETRIES) {
+          cardElem.removeAttribute('data-ambient-progress-processed');
+        }
       })
       .catch(function (err) {
         error('Fehler beim Verarbeiten der Portal-Antwort für Issue ' + issueIid + ':', err);
@@ -3697,7 +3458,7 @@
   let scanRunCounter = 0;
   let totalFetchesSincePageLoad = 0;
 
-  function scanBoard(hostConfig, projectSettings) {
+  function scanBoard(projectSettings) {
     scanRunCounter += 1;
     issueNumberFontStylesCache = null;
 
@@ -3747,8 +3508,7 @@
           header,
           listName,
           listNameLower,
-          projectSettings,
-          hostConfig
+          projectSettings
         );
       }
 
@@ -3774,7 +3534,7 @@
         const titleLink = isFeatureOn('estimateBadge') && cardElem.querySelector(SEL.cardTitleLink);
         if (titleLink) applyEstimateBadge(titleLink, true, true);
 
-        // Experiment: in andere Spalte gezogen → Verweildauer neu bestimmen
+        // in andere Spalte gezogen → Verweildauer neu bestimmen
         const trackedIid = getIssueIidFromCard(cardElem);
         const previousList = trackedIid ? lastListByIid[trackedIid] : undefined;
         if (trackedIid) lastListByIid[trackedIid] = columnLabelText || '';
@@ -3819,7 +3579,7 @@
         }
 
         cardElem.setAttribute('data-ambient-progress-processed', '1');
-        if (fetchAndDisplayProgress(hostConfig, projectSettings, issueIid, cardElem)) {
+        if (fetchAndDisplayProgress(projectSettings, issueIid, cardElem)) {
           newFetchesThisScan++;
           totalFetchesSincePageLoad++;
         }
@@ -3873,12 +3633,12 @@
   let lastDetailHref = null;
   let lastMrHref = null;
 
-  function scanIssueDetail(hostConfig, projectSettings) {
+  function scanIssueDetail(projectSettings) {
     if (window.location.href !== lastDetailHref) {
       lastDetailHref = window.location.href;
       detailRetry.reset(); // SPA-Navigation: neue Ansicht bekommt wieder alle Versuche
     }
-    if (!hostConfig || !projectSettings) {
+    if (!projectSettings) {
       log('scanIssueDetail übersprungen (Host/Project fehlt).');
       return;
     }
@@ -4399,12 +4159,12 @@
       });
   }
 
-  function scanMergeRequestPage(hostConfig, projectSettings) {
+  function scanMergeRequestPage(projectSettings) {
     if (window.location.href !== lastMrHref) {
       lastMrHref = window.location.href;
       mrRetry.reset();
     }
-    if (!hostConfig || !projectSettings) {
+    if (!projectSettings) {
       log('scanMergeRequestPage übersprungen (Host/Project fehlt).');
       return;
     }
@@ -4514,8 +4274,7 @@
     header,
     listName,
     listNameLower,
-    projectSettings,
-    hostConfig
+    projectSettings
   ) {
     if (!header || !listName || !listNameLower) return;
     // Als Icon-Button in GitLabs Button-Gruppe (+ / ⚙); eingeklappte Spalten blenden die Gruppe selbst aus
@@ -4541,7 +4300,7 @@
         projectSettings.allowedListLookup = updatedLookup;
         projectSettings.listFilterMode = 'explicit';
         writeListSelectionEntry(projectSettings.projectKey, updatedLookup, true);
-        scanBoard(hostConfig, projectSettings);
+        scanBoard(projectSettings);
       });
     }
 
@@ -4680,7 +4439,7 @@
   }
 
   let toolbarCleanup = null;
-  function createToolbar(hostConfig, projectSettings) {
+  function createToolbar(projectSettings) {
     const existing = document.getElementById('ambient-progress-toolbar');
     if (existing) return existing;
     // Vue kann die alte Toolbar samt Referenz verwerfen: deren Listener und Panel hier immer abräumen
@@ -4861,9 +4620,7 @@
 
     // Tabs (WAI-ARIA-Tabs: Pfeiltasten wechseln, nur der aktive Tab ist in der Tab-Reihenfolge)
     const tabDefs = [['anzeige', t('Anzeige')], ['board', t('Dieses Board')], ['erweitert', t('Erweitert')],
-      ['labor', t('Experimente')]].filter(function (def) {
-      return def[0] !== 'board' || projectSettings;
-    });
+      ['labor', t('Experimente')]];
     const tabList = document.createElement('div');
     tabList.setAttribute('role', 'tablist');
     tabList.setAttribute('aria-label', 'Bereiche');
@@ -4931,14 +4688,11 @@
     applyStyles(pinnedPreview, {padding: '0.75rem 0 0.9rem'});
     pinnedPreview.appendChild(displayTab.pinned);
     panelHeader.appendChild(pinnedPreview);
-    let boardTab = null;
-    if (projectSettings) {
-      boardTab = createBoardTab(projectSettings, scheduleAutosave, function (configured) {
-        setTabBadge('board', configured ? '' : '!', true);
-      });
-      refreshAgeHighlightSection = boardTab.refreshAgeHighlight;
-      tabPanels.board = boardTab.element;
-    }
+    const boardTab = createBoardTab(projectSettings, scheduleAutosave, function (configured) {
+      setTabBadge('board', configured ? '' : '!', true);
+    });
+    refreshAgeHighlightSection = boardTab.refreshAgeHighlight;
+    tabPanels.board = boardTab.element;
     tabPanels.erweitert = createAdvancedTab(projectSettings);
     tabPanels.labor = createExperimentsTab(projectSettings, function (count) {
       setTabBadge('labor', count ? String(count) : '', false);
@@ -4970,7 +4724,7 @@
     }
 
     // Ein noch nicht eingerichtetes Board öffnet direkt auf „Dieses Board"
-    const boardConfigured = !projectSettings || Boolean(projectSettings.projectId && projectSettings.portalBaseUrl);
+    const boardConfigured = Boolean(projectSettings.projectId && projectSettings.portalBaseUrl);
     selectTab(boardConfigured ? (activeSettingsTab || 'anzeige') : 'board');
 
     const panelFooter = document.createElement('div');
@@ -4990,18 +4744,16 @@
     lastRefreshLabelElement = timestampLabel;
     updateLastRefreshLabel();
     panelFooter.appendChild(timestampLabel);
-    if (projectSettings) {
-      const refreshButton = document.createElement('button');
-      refreshButton.type = 'button';
-      refreshButton.textContent = '↻ ' + t('Daten neu laden');
-      refreshButton.title = 'Cache leeren und Portal-Daten neu laden';
-      refreshButton.className = 'ambient-btn btn gl-button btn-default btn-sm';
-      refreshButton.addEventListener('click', function () {
-        softRefresh(projectSettings);
-      });
-      manualRefreshButtonElement = refreshButton;
-      panelFooter.appendChild(refreshButton);
-    }
+    const refreshButton = document.createElement('button');
+    refreshButton.type = 'button';
+    refreshButton.textContent = '↻ ' + t('Daten neu laden');
+    refreshButton.title = 'Cache leeren und Portal-Daten neu laden';
+    refreshButton.className = 'ambient-btn btn gl-button btn-default btn-sm';
+    refreshButton.addEventListener('click', function () {
+      softRefresh(projectSettings);
+    });
+    manualRefreshButtonElement = refreshButton;
+    panelFooter.appendChild(refreshButton);
     dropdown.appendChild(panelFooter);
 
     // Änderungen werden entprellt sofort übernommen; geänderte Felder leuchten kurz grün
@@ -5010,20 +4762,19 @@
     // Fehler am Feld anzeigen (aria-invalid + Status mit role="alert"); kein Fokusklau beim Tippen
     function fail(input, statusElement, message) {
       if (statusElement) statusElement.textContent = message;
-      [projectIdInputElement, portalUrlInputElement, projectId2InputElement].forEach(function (el) {
+      [projectIdInputElement, portalUrlInputElement, extraIdsInputElement].forEach(function (el) {
         el.removeAttribute('aria-invalid');
       });
       input.setAttribute('aria-invalid', 'true');
     }
 
     function commitProjectConfig() {
-      if (!projectSettings || !projectIdInputElement || !portalUrlInputElement || !projectId2InputElement || !useSecondProjectIdToggleCheckbox) {
+      if (!projectIdInputElement || !portalUrlInputElement || !extraIdsInputElement) {
         return;
       }
       const projectAttempt = projectIdInputElement.value.trim();
       const portalRaw = portalUrlInputElement.value.trim();
-      const projectAttempt2 = projectId2InputElement.value.trim();
-      const useSecond = useSecondProjectIdToggleCheckbox.checked;
+      const extraIds = parseExtraProjectIds(extraIdsInputElement.value);
       const actionsAttempt = ticketActionsInputElement ? ticketActionsInputElement.value.trim() : '';
 
       // Unvollständige/ungültige Eingaben werden nicht gespeichert (Hinweis am Feld, solange man tippt)
@@ -5044,15 +4795,11 @@
           'Ungültige URL: nur https:// ohne Benutzername/Passwort erlaubt.'
         );
       }
-      if (useSecond && !projectAttempt2) {
-        return fail(
-          projectId2InputElement,
-          projectId2StatusElement,
-          'Bitte gib eine zweite Projekt-ID ein (oder deaktiviere das Feature).'
-        );
+      if (!extraIds.every(isNumericId)) {
+        return fail(extraIdsInputElement, extraIdsStatusElement, 'Nur Zahlen, durch Komma getrennt.');
       }
-      if (useSecond && !/^\d+$/.test(projectAttempt2)) {
-        return fail(projectId2InputElement, projectId2StatusElement, 'Zweite Projekt-ID darf nur Zahlen enthalten.');
+      if (extraIds.length > 3) {
+        return fail(extraIdsInputElement, extraIdsStatusElement, 'Höchstens 3 weitere Projekt-IDs.');
       }
 
       const entry = {};
@@ -5065,13 +4812,9 @@
         entry.portalBaseUrl = portalAttempt;
         changedFields.push(portalUrlInputElement);
       }
-      if (projectAttempt2 !== (projectSettings.projectId2 || '')) {
-        entry.portalProjectId2 = projectAttempt2;
-        changedFields.push(projectId2InputElement);
-      }
-      if (useSecond !== (projectSettings.useSecondPortalProjectId || false)) {
-        entry.useSecondPortalProjectId = useSecond;
-        changedFields.push(projectId2InputElement);
+      if (extraIds.join(', ') !== projectSettings.extraProjectIds) {
+        entry.extraProjectIds = extraIds.join(', ');
+        changedFields.push(extraIdsInputElement);
       }
       if (actionsAttempt !== (projectSettings.ticketActions || '').trim()) {
         entry.ticketActions = actionsAttempt;
@@ -5082,24 +4825,20 @@
       writeProjectConfigEntry(projectSettings.projectKey, entry);
       if (entry.projectId) projectSettings.projectId = entry.projectId;
       if (entry.portalBaseUrl) projectSettings.portalBaseUrl = entry.portalBaseUrl;
-      if (entry.portalProjectId2 !== undefined) projectSettings.projectId2 = entry.portalProjectId2;
-      if (entry.useSecondPortalProjectId !== undefined) {
-        projectSettings.useSecondPortalProjectId = entry.useSecondPortalProjectId;
-      }
+      if (entry.extraProjectIds !== undefined) projectSettings.extraProjectIds = entry.extraProjectIds;
       if (entry.ticketActions !== undefined) projectSettings.ticketActions = entry.ticketActions;
-      if (boardTab) boardTab.updateStatus();
-      [projectStatusElement, portalStatusElement, projectId2StatusElement].forEach(function (el) {
+      boardTab.updateStatus();
+      [projectStatusElement, portalStatusElement, extraIdsStatusElement].forEach(function (el) {
         if (el) el.textContent = '';
       });
-      [projectIdInputElement, portalUrlInputElement, projectId2InputElement].forEach(function (el) {
+      [projectIdInputElement, portalUrlInputElement, extraIdsInputElement].forEach(function (el) {
         el.removeAttribute('aria-invalid');
       });
       changedFields.forEach(function (el) {
         if (el) flashSaved(el);
       });
       // Portal-relevante Änderungen: Cache leeren und neu laden (ohne Seiten-Reload)
-      if (entry.projectId || entry.portalBaseUrl || entry.portalProjectId2 !== undefined ||
-        entry.useSecondPortalProjectId !== undefined) {
+      if (entry.projectId || entry.portalBaseUrl || entry.extraProjectIds !== undefined) {
         clearProgressCache();
         clearProjectRequestBlock(projectSettings.projectKey);
         softRefresh(projectSettings);
@@ -5522,8 +5261,7 @@
     const data = {
       projectId: projectSettings.projectId || '',
       portalBaseUrl: projectSettings.portalBaseUrl || '',
-      portalProjectId2: projectSettings.projectId2 || '',
-      useSecondPortalProjectId: Boolean(projectSettings.useSecondPortalProjectId),
+      extraProjectIds: projectSettings.extraProjectIds || '',
       ticketActions: projectSettings.ticketActions || ''
     };
     copyToClipboard(JSON.stringify(data, null, 2), 'Konfiguration in die Zwischenablage kopiert.');
@@ -5545,18 +5283,15 @@
   // Validiert und speichert eine Konfiguration (Import-Dialog und Konfig-Link teilen sich das)
   function applyProjectConfigData(projectSettings, data) {
     const portalBaseUrl = normalizePortalBaseUrl(data && data.portalBaseUrl);
-    const useSecond = Boolean(data && data.useSecondPortalProjectId);
-    const projectId2 = String((data && data.portalProjectId2) || '');
-    if (!data || !isNumericId(data.projectId) || !portalBaseUrl || (projectId2 && !isNumericId(projectId2)) ||
-      (useSecond && !projectId2)) {
+    const extraIds = parseExtraProjectIds(extraProjectIdsFromConfig(data)); // nimmt auch das alte Format (zweites Projekt)
+    if (!data || !isNumericId(data.projectId) || !portalBaseUrl || !extraIds.every(isNumericId)) {
       showToast({text: 'Import fehlgeschlagen: Projekt-ID/Portal-URL ungültig.', variant: 'warning'});
       return false;
     }
     writeProjectConfigEntry(projectSettings.projectKey, {
       projectId: String(data.projectId),
       portalBaseUrl: portalBaseUrl,
-      portalProjectId2: projectId2,
-      useSecondPortalProjectId: useSecond,
+      extraProjectIds: extraIds.slice(0, 3).join(', '),
       ticketActions: String(data.ticketActions || '')
     });
     clearProgressCache();
@@ -5572,8 +5307,7 @@
     const data = {
       projectId: projectSettings.projectId || '',
       portalBaseUrl: projectSettings.portalBaseUrl || '',
-      portalProjectId2: projectSettings.projectId2 || '',
-      useSecondPortalProjectId: Boolean(projectSettings.useSecondPortalProjectId),
+      extraProjectIds: projectSettings.extraProjectIds || '',
       ticketActions: projectSettings.ticketActions || ''
     };
     const encoded = window.btoa(unescape(encodeURIComponent(JSON.stringify(data))));
@@ -5649,28 +5383,6 @@
   };
 
   // options: placeholder, hint (Text unter dem Feld), chip (z. B. „alle Boards" hinter dem Label)
-  function createExperimentSettingField(labelText, key, fallback, options) {
-    const opts = options || {};
-    const wrap = document.createElement('label');
-    applyStyles(wrap, {display: 'flex', flexDirection: 'column', gap: '0.35rem', margin: '0', fontWeight: '400'});
-    const label = createTextSpan(labelText, Object.assign({display: 'flex', alignItems: 'center', gap: '0.5rem'}, FIELD_LABEL_STYLES));
-    if (opts.chip) label.appendChild(createTextSpan(opts.chip, CHIP_STYLES));
-    wrap.appendChild(label);
-    const input = document.createElement('input');
-    input.className = FORM_INPUT_CLASSES;
-    input.value = String(expSetting(key, fallback));
-    input.placeholder = opts.placeholder || '';
-    applyStyles(input, EXPERIMENT_INPUT_STYLES);
-    input.addEventListener('change', function () {
-      saveExperiment(key, input.value.trim());
-      applyExperimentChange();
-      flashSaved(input);
-    });
-    wrap.appendChild(input);
-    if (opts.hint) wrap.appendChild(createTextSpan(opts.hint, FIELD_HINT_STYLES));
-    return wrap;
-  }
-
   function createExperimentButton(text, title, onClick) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -5775,23 +5487,20 @@
 
   // [Label, Beschreibung, Button, Aktion] für „Diagnose & Daten" im Tab Erweitert
   function createDataToolDefs(projectSettings) {
-    const defs = [
+    return [
       ['Selektor-Selbsttest', 'Prüft, ob die GitLab-Elemente gefunden werden, auf die sich das Script verlässt', 'Ausführen',
         runSelectorSelftest],
       ['Portal-Fehler', 'Letzte Portal-Fehler dieser Seitensitzung (Toast + Konsole)', 'Anzeigen', showPortalErrors],
       ['Debug-Info', 'Version, Ansicht und Selektor-Treffer für Fehlerberichte (ohne Portal-URL)', 'Kopieren', function () {
         copyToClipboard(buildDebugInfo(), 'Debug-Info kopiert.');
+      }],
+      ['Konfiguration exportieren', 'Projekt-ID, Portal-URL und Ticket-Aktionen als JSON', 'Kopieren', function () {
+        exportProjectConfig(projectSettings);
+      }],
+      ['Konfiguration importieren', 'Zuvor exportiertes JSON einfügen', 'Einfügen…', function () {
+        importProjectConfig(projectSettings);
       }]
     ];
-    if (projectSettings) {
-      defs.push(['Konfiguration exportieren', 'Projekt-ID, Portal-URL und Ticket-Aktionen als JSON', 'Kopieren', function () {
-        exportProjectConfig(projectSettings);
-      }]);
-      defs.push(['Konfiguration importieren', 'Zuvor exportiertes JSON einfügen', 'Einfügen…', function () {
-        importProjectConfig(projectSettings);
-      }]);
-    }
-    return defs;
   }
 
   /******************************************************************
@@ -6683,36 +6392,20 @@
     projectStatusElement = projectField.status;
     portal.element.appendChild(projectField.element);
 
-    // Zweites Projekt und weitere IDs unter einer Trennlinie, erst nach der Einrichtung sichtbar
+    // Weitere Projekt-IDs unter einer Trennlinie, erst nach der Einrichtung sichtbar
     const extras = document.createElement('div');
-    applyStyles(extras, {flexDirection: 'column', margin: '0.25rem -1.1rem -1rem', borderTop: SETTINGS_BORDER});
-    const input2 = document.createElement('input');
-    input2.type = 'text';
-    input2.id = 'ambient-project-id2';
-    input2.inputMode = 'numeric';
-    input2.placeholder = 'z. B. 4712';
-    input2.value = projectSettings.projectId2 || '';
-    input2.disabled = !projectSettings.useSecondPortalProjectId;
-    projectId2InputElement = input2;
-    const secondField = createInputField('Zweite Projekt-ID', input2, '', 'ambient-project2-status');
-    projectId2StatusElement = secondField.status;
-    applyStyles(secondField.element, {padding: '0 1.1rem 0.9rem', display: input2.disabled ? 'none' : 'flex'});
-    const secondToggle = makeSwitch('Zweites Portal-Projekt', Boolean(projectSettings.useSecondPortalProjectId), function (value) {
-      input2.disabled = !value;
-      secondField.element.style.display = value ? 'flex' : 'none';
-      onValuesChanged();
-    }, {desc: 'Für Tickets, die in zwei Projekten gebucht werden – eigener Balken mit orangem „gebucht“-Anteil'});
-    secondToggle.style.padding = '0.6rem 1.1rem';
-    useSecondProjectIdToggleCheckbox = secondToggle.querySelector('input[type="checkbox"]');
-    extras.appendChild(secondToggle);
-    extras.appendChild(secondField.element);
-    const extraIdsField = createExperimentSettingField('Weitere Projekt-IDs', 'extraProjectIds', '', {
-      placeholder: '1234, 5678',
-      hint: 'Kommagetrennt, höchstens 3 – je ein zusätzlicher Balken unter den ersten beiden.',
-      chip: 'alle Boards'
-    });
-    applyStyles(extraIdsField, {padding: '0.9rem 1.1rem 1rem', borderTop: SETTINGS_BORDER});
-    extras.appendChild(extraIdsField);
+    applyStyles(extras, {flexDirection: 'column', margin: '0.25rem -1.1rem -1rem', padding: '0.9rem 1.1rem 0.2rem', borderTop: SETTINGS_BORDER});
+    const extraInput = document.createElement('input');
+    extraInput.type = 'text';
+    extraInput.id = 'ambient-extra-project-ids';
+    extraInput.placeholder = 'z. B. 4712, 4713';
+    extraInput.value = projectSettings.extraProjectIds || '';
+    extraIdsInputElement = extraInput;
+    const extraField = createInputField('Weitere Projekt-IDs', extraInput,
+      'Für Tickets, die auch in anderen Portal-Projekten gebucht werden: kommagetrennt, höchstens 3, je ein eigener Balken.',
+      'ambient-extra-ids-status');
+    extraIdsStatusElement = extraField.status;
+    extras.appendChild(extraField.element);
     portal.element.appendChild(extras);
 
     const actions = createPanelCard('Ticket-Aktionen im Merge Request',
@@ -6805,31 +6498,20 @@
       log('Merge-Request-Seite erkannt; starte MR-Progress-Injection.');
     }
 
-    const hostConfig = getCurrentHostConfig();
-    if (!hostConfig) {
-      warn('Kein hostConfig – Script beendet sich.');
-      return;
-    }
-
-    const projectSettings = getProjectSettings(hostConfig);
+    const projectSettings = getProjectSettings();
     if (!projectSettings) {
       warn('Keine projectSettings – Script beendet sich.');
       return;
     }
 
-    showEnabled = typeof features.show === 'boolean' ? features.show : projectSettings.showEnabled;
-    debugEnabled = typeof features.debug === 'boolean' ? features.debug : projectSettings.debugEnabled;
-    mrLinksEnabled = typeof features.mrLinks === 'boolean' ? features.mrLinks : projectSettings.mrLinksEnabled;
-
-    log('hostConfig:', hostConfig);
     log('projectKey:', projectSettings.projectKey, 'projectPath:', projectSettings.projectPath);
 
-    currentScanContext = {hostConfig: hostConfig, projectSettings: projectSettings};
+    currentScanContext = {projectSettings: projectSettings};
     ensureStylesheet(); // vor allem, was einen Toast zeigen kann
     installNoTriggerGuard();
     importConfigFromLocationHash(projectSettings);
     window.addEventListener('pagehide', flushProgressCache);
-    createToolbar(hostConfig, projectSettings);
+    createToolbar(projectSettings);
     createMrLinksBar();
 
     scheduleReleaseCheck();
@@ -6840,7 +6522,7 @@
     function runScans() {
       // GitLab (Vue) kann den Toolbar-Container neu rendern und die Toolbar mitnehmen → neu aufbauen
       if (!document.getElementById('ambient-progress-toolbar')) {
-        createToolbar(hostConfig, projectSettings);
+        createToolbar(projectSettings);
       }
       repositionToolbarIfNeeded();
       repositionMrLinksIfNeeded();
@@ -6851,10 +6533,10 @@
         applyEstimateBadges(); // Issue-Detail/-Drawer, MR-Seite (Karten in scanBoard)
       }
       if (isMergeRequestPage()) {
-        scanMergeRequestPage(hostConfig, projectSettings);
+        scanMergeRequestPage(projectSettings);
       } else {
-        scanBoard(hostConfig, projectSettings);
-        scanIssueDetail(hostConfig, projectSettings);
+        scanBoard(projectSettings);
+        scanIssueDetail(projectSettings);
       }
     }
 
