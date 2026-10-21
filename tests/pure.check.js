@@ -22,11 +22,13 @@ const names = ['parseVersionSegments', 'isRemoteVersionGreater', 'formatDuration
   'normalizeListNameForMatching', 'normalizeLabelNameForMatching', 'parseTicketActions', 'assigneeSortKey', 'planReorder',
   'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate', 'relativeLuminance',
   'parseCssColorToRgb', 'getContrastTextColor', 'formatBookedHoursDisplay', 'isNumericId',
-  'parseExtraProjectIds', 'extraProjectIdsFromConfig'];
+  'parseExtraProjectIds', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery'];
 const isExp = function () { return false; };
 const patternsStart = source.indexOf('  const DEFAULT_ESTIMATE_PATTERNS');
 const defaultPatterns = source.slice(patternsStart, source.indexOf(';\n', patternsStart) + 1);
-const code = 'const MAX_HOURS_VALUE = 100000; const COLUMN_BLIP_MS = 15 * 60 * 1000;\n' + defaultPatterns + '\n' + names.map(extract).join('\n') + '\nreturn {DEFAULT_ESTIMATE_PATTERNS,' + names.join(',') + '};';
+const filterStart = source.indexOf('  const BOARD_FILTER_TO_API');
+const boardFilterMap = source.slice(filterStart, source.indexOf('};\n', filterStart) + 2);
+const code = 'const MAX_HOURS_VALUE = 100000; const COLUMN_BLIP_MS = 15 * 60 * 1000;\n' + defaultPatterns + '\n' + boardFilterMap + '\n' + names.map(extract).join('\n') + '\nreturn {DEFAULT_ESTIMATE_PATTERNS,' + names.join(',') + '};';
 const fn = new Function('isExp', 'expSetting', 'log', 'warn', 'error', code);
 const noop = function () {};
 const f = fn(isExp, function (key, fallback) { return fallback; }, noop, noop, noop);
@@ -103,6 +105,16 @@ console.log('computeEnteredAt ok');
   assert.deepStrictEqual(f.parseEstimate('Ticket {5}', custom.patterns), {kind: 'sp', label: '5 SP', cleanTitle: 'Ticket'});
 }
 console.log('parseEstimate ok');
+
+// SP-Summe: Spalten-Label + Board-Filter aus der URL → Issues-API; Closed ohne Label, unbekannte Filter fallen weg
+{
+  assert.strictEqual(f.buildColumnIssueQuery('', 'workflow::Review'), 'labels=workflow%3A%3AReview&state=opened');
+  assert.strictEqual(
+    f.buildColumnIssueQuery('?label_name[]=RAG-Suche%20-%20MVP&assignee_username=chris&foo=1', 'Doing'),
+    'assignee_username=chris&labels=Doing%2CRAG-Suche%20-%20MVP&state=opened');
+  assert.strictEqual(f.buildColumnIssueQuery('?not[label_name][]=Bug', null), 'not%5Blabels%5D=Bug&state=closed');
+}
+console.log('buildColumnIssueQuery ok');
 
 // Farben: rgb()/rgba() (auch Leerzeichen-Syntax) und #rgb/#rrggbb(aa); Unbekanntes → null
 {
