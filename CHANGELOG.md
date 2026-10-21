@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.46
+
+- Neu: Klick auf einen Schätzungs-Badge einer Board-Karte zeigt nur noch Karten mit derselben Schätzung, erneuter
+  Klick zeigt wieder alle. Gilt bis zum Neuladen.
+
 ## 2026.10.45
 
 - Neu: **SP-Summe im Spalten-Header** (`Σ 13 SP`) für Label-Spalten und Closed. Zählt alle Tickets der Spalte per
