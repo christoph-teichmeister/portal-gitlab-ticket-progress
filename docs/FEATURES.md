@@ -7,8 +7,8 @@ nützlich, wenn Tickets über mehrere Abteilungen oder Kostenplätze gebuchte St
 
 ### Einrichtung der zweiten Projekt-ID
 
-1. Öffne das Zahnrad-Menü in der GitLab-Topbar und navigiere zur „Projekt-Konfiguration"
-2. Aktiviere den Schalter **„Zweite ID aktivieren"**
+1. Öffne das Zahnrad-Menü in der GitLab-Topbar, Tab **„Dieses Board“** → Karte „Portal-Verbindung“
+2. Aktiviere den Schalter **„Zweites Portal-Projekt“**
 3. Gib deine **zweite Portal-Projekt-ID** in das Eingabefeld ein (z. B. `5678`); die Änderung wird automatisch
    gespeichert (Feld leuchtet kurz grün)
 
@@ -24,9 +24,9 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
 ## Toolbar & Bedienelemente
 
 - Platziert eine Toolbar rechts in der Breadcrumb-Zeile mit einem Gear-Button (bei schmalem Fenster kürzen sich die
-  Breadcrumbs, Toolbar und MR-Buttons bleiben in derselben Zeile; rendert GitLab die Zeile neu, wird sie wieder aufgebaut). Das Menü öffnet als Seitenpanel rechts (wie GitLabs Ticket-Vorschau) und zeigt Version, `Anzeigen`-Schalter
-  und letzte Aktualisierung, darunter jedes Feature einzeln schaltbar als „Globale Einstellungen" sowie die
-  „Board-Einstellungen" (roter Rahmen, Projekt-Konfiguration). Details siehe [Lokale Controls](CONTROLS.md).
+  Breadcrumbs, Toolbar und MR-Buttons bleiben in derselben Zeile; rendert GitLab die Zeile neu, wird sie wieder aufgebaut). Das Menü öffnet als Seitenpanel rechts (wie GitLabs Ticket-Vorschau) mit Hauptschalter
+  „Aktiv“ und den Tabs Anzeige (jedes Feature einzeln, mit Vorschau), Dieses Board (Portal-Verbindung, roter Rahmen,
+  Ticket-Aktionen), Erweitert und Experimente. Details siehe [Lokale Controls](CONTROLS.md).
 - Fügt pro Board-Spalte einen Augen-Button in GitLabs Button-Gruppe (neben `+` und `⚙`) ein, mit dem du das Script
   für die Spalte ein- oder ausschaltest (Auge = an, durchgestrichenes Auge = aus). In eingeklappten Spalten blendet
   GitLab die Button-Gruppe samt Augen-Button aus. Die Auswahl wird lokal gespeichert (haftet an den Projekt-Keys) und aktiviert den
@@ -96,8 +96,8 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
   (z. B. Events noch nicht aktuell), beginnt die Dauer bei 0 statt mit einem alten Eintritt.
 - Pro aktivierter Spalte wird der Median über alle geladenen Karten berechnet und bei jeder neu
   geladenen Karte aktualisiert. Tickets, die länger als der Median in der Spalte liegen, bekommen einen
-  roten Rahmen – aber nur in Spalten, die in den Einstellungen (Zahnrad) unter „Roter Rahmen bei
-  Median-Überschreitung" ausgewählt sind. Die Auswahl wird pro Board im localStorage gespeichert.
+  roten Rahmen – aber nur in Spalten, die in den Einstellungen (Zahnrad → Dieses Board) unter
+  „Liegezeit hervorheben“ ausgewählt sind. Die Auswahl wird pro Board im localStorage gespeichert.
 - Der Spalten-Median steht im Spalten-Header mit Uhr-Icon direkt vor GitLabs Issue-Zähler (`🕓 4d  ▢ 12`, ab der ersten
   geladenen Karte) und nutzt dessen Schrift und Farbe. Beim Hovern erklärt ein Hilfetext, was der Wert bedeutet.
 - Spalten ohne Label (`Open`, `Closed`) sowie Tickets, deren Label-Event nicht (mehr) auffindbar ist, zeigen keine
@@ -124,7 +124,7 @@ z. B. nützlich, um ein Ticket nach dem Merge in die nächste Board-Spalte zu sc
 
 ### Einrichtung
 
-1. Zahnrad → Board-Einstellungen → Projekt-Konfiguration aufklappen.
+1. Zahnrad → Tab „Dieses Board“.
 2. Im Feld **„Ticket-Aktionen im MR“** die Aktionen eintragen (Format siehe unten).
 3. Die Eingabe wird automatisch gespeichert (Feld leuchtet kurz grün); die Buttons erscheinen nach dem nächsten
    Laden der MR-Seite unter der Progressbar.
@@ -216,11 +216,11 @@ Titel bricht davor um; sonst direkt hinter dem Titel): `(3 SP)` → grünes `3 S
 weil das zugehörige Ticket trotzdem geschätzt sein kann. Der echte GitLab-Titel bleibt unverändert (das Portal liest
 die Schätzung daraus).
 
-- Schalter: Zahnrad → Globale Einstellungen → Karten → „Schätzung als Badge am Titel“ (Standard an).
-- Muster: Zahnrad → Erweitert → „Schätzungs-Muster“. Eine Zeile pro Muster, `sp: <Regex>` oder `timebox: <Regex>`,
+- Schalter: Zahnrad → Anzeige → Board-Karten → „Schätzung als Badge“ (Standard an).
+- Muster: Zahnrad → Erweitert → „Schätzungs-Muster“ (mit Gültigkeitsanzeige). Eine Zeile pro Muster, `sp: <Regex>` oder `timebox: <Regex>`,
   Gruppe 1 ist die Zahl, Groß-/Kleinschreibung egal, das erste passende Muster gewinnt. Leeres Feld = Standard-Muster
   (wie der Issue-Syncer des Portals: `(n SP)`, `(Timebox: nh)`, `(Spike: nh)`, auch mit `[]`, ohne Doppelpunkt und
-  mit `,5` / `.5`). Ungültige Zeilen werden ignoriert und per Hinweis gemeldet.
+  mit `,5` / `.5`). Ungültige Zeilen werden ignoriert und unter dem Feld gemeldet.
 
 ## Split-Labels
 
@@ -230,7 +230,7 @@ die Schätzung daraus).
 - Gilt auf Karten, in Spalten-Headern, im Issue-Detail, Board-Drawer und in der MR-Sidebar (auch bei eingeklappter
   linker Navigation), nicht in Dropdowns und der Filterleiste.
 - Entfernbare Labels (Ticket-Detail) behalten ihr `×`, es klickt GitLabs ausgeblendeten Entfernen-Button.
-- Schalter: Zahnrad → Globale Einstellungen → Karten → „Scoped Labels (::) als Split-Label“.
+- Schalter: Zahnrad → Anzeige → Board-Karten → „Geteilte Scoped Labels“.
 
 ## Neu in 2026.10.6 (aus den Experimenten übernommen)
 
@@ -263,7 +263,7 @@ die Schätzung daraus).
 
 ## Experimente (zum Testen)
 
-Zahnrad → Globale Einstellungen → Erweitert → **Experimente (zum Testen)**. Standardmäßig aus.
+Zahnrad → Tab **Experimente**. Standardmäßig aus.
 
 | Experiment | Hinweis |
 |---|---|
