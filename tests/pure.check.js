@@ -21,7 +21,7 @@ function extract(name) {
 const names = ['parseVersionSegments', 'normalizeVersionValue', 'isRemoteVersionGreater', 'formatDuration', 'median',
   'normalizeListNameForMatching', 'normalizeLabelNameForMatching', 'parseTicketActions', 'assigneeSortKey', 'planReorder',
   'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate', 'relativeLuminance',
-  'parseCssColorToRgb', 'getContrastTextColor'];
+  'parseCssColorToRgb', 'getContrastTextColor', 'formatBookedHoursDisplay'];
 const isExp = function () { return false; };
 const patternsStart = source.indexOf('  const DEFAULT_ESTIMATE_PATTERNS');
 const defaultPatterns = source.slice(patternsStart, source.indexOf(';\n', patternsStart) + 1);
@@ -114,3 +114,14 @@ console.log('parseEstimate ok');
   assert.strictEqual(f.getContrastTextColor('#000'), '#f8fafc');
 }
 console.log('colors ok');
+
+// Stunden-Anzeige: Zahl oder Text, gerundet auf zwei Stellen, nie „-0h"
+{
+  assert.strictEqual(f.formatBookedHoursDisplay(6.5), '6.5h');
+  assert.strictEqual(f.formatBookedHoursDisplay(6.4999999), '6.5h');
+  assert.strictEqual(f.formatBookedHoursDisplay('11,75h'), '11.75h');
+  assert.strictEqual(f.formatBookedHoursDisplay(-0), '0h');
+  assert.strictEqual(f.formatBookedHoursDisplay(null), null);
+  assert.strictEqual(f.formatBookedHoursDisplay('—'), null);
+}
+console.log('formatBookedHoursDisplay ok');

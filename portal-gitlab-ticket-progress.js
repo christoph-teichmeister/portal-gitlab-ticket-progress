@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.40
+// @version      2026.10.41
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.40';
+  const SCRIPT_VERSION = '2026.10.41';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -214,6 +214,13 @@
       '.ambient-bar-animate{animation:ambient-fade-in .4s ease .3s backwards}' +
       '@keyframes ambient-grow{from{width:0}}' +
       '@keyframes ambient-shrink{from{width:100%}}' +
+      '.ambient-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;min-width:24px;height:24px;padding:0;flex:0 0 auto;position:relative;z-index:25}' +
+      '.ambient-progress-row{display:flex;align-items:center;gap:6px}' +
+      '.ambient-extra-row{margin-top:4px}' +
+      '.ambient-progress-row-detail{gap:.35rem;font-size:12px;flex-wrap:wrap;width:100%}' +
+      '.ambient-both-projects-warning{display:flex;align-items:center;gap:4px;margin-bottom:6px;padding:4px 8px;border-radius:4px;background:#f97316;color:#fff;font-size:11px;font-weight:600}' +
+      '.ambient-progress-detail-badge{margin-bottom:.6rem;padding:.45rem 0;border-radius:10px;background:' + THEME_BG + '}' +
+      '.ambient-progress-mr-badge{padding:1rem 0;border-bottom:1px solid var(--gl-border-color-subtle);background:' + THEME_BG + '}' +
       '.ambient-mr-badge-merged{opacity:.6}.ambient-mr-badge-merged:hover{opacity:.8}' +
       // Buttons in der Breadcrumb-Zeile (Zahnrad, MR-Links) mit 20px-Icon und Punkt/Badge in der Ecke
       '.ambient-header-btn{padding:.35rem;display:inline-flex;align-items:center;justify-content:center;min-width:38px;min-height:38px;position:relative;overflow:visible;cursor:pointer;color:' + THEME_FG + '}' +
@@ -288,6 +295,30 @@
     return fetch(path, opts);
   }
 
+  // GitLab-REST unter /api/v4/projects/<Pfad>, durch den Limiter; prüft den Status, liefert JSON (leere Antwort → null)
+  function glApi(projectPath, subPath, label, options) {
+    return gitlabLimiter(function () {
+      return glFetch('/api/v4/projects/' + encodeURIComponent(projectPath) + subPath, options);
+    }).then(function (res) {
+      if (!res.ok) throw new Error(label + ': HTTP ' + res.status);
+      return res.text();
+    }).then(function (text) {
+      return text ? JSON.parse(text) : null;
+    });
+  }
+
+  // Promise pro Schlüssel merken (ttlMs: wie lange; ohne = bis zum Neuladen). Fehlschläge werden vergessen.
+  function memoPromise(cache, key, ttlMs, load) {
+    const hit = cache[key];
+    if (hit && (!ttlMs || Date.now() - hit.timestamp <= ttlMs)) return hit.promise;
+    const promise = load().catch(function (err) {
+      if (cache[key] && cache[key].promise === promise) delete cache[key];
+      throw err;
+    });
+    cache[key] = {promise: promise, timestamp: Date.now()};
+    return promise;
+  }
+
   // Externe Links nur über https (Portal) oder same-origin (GitLab) öffnen
   function openExternal(url) {
     try {
@@ -349,19 +380,33 @@
   let lastRefreshLabelElement = null;
   let manualRefreshButtonElement = null;
   let ticketActionsInputElement = null;
-  const DETAIL_RETRY_INTERVAL_MS = 700;
-  const DETAIL_RETRY_MAX_ATTEMPTS = 3;
-  const detailRetryState = {
-    timer: null,
-    attempts: 0
-  };
-
-  const MR_RETRY_INTERVAL_MS = 700;
-  const MR_RETRY_MAX_ATTEMPTS = 3;
-  const mrRetryState = {
-    timer: null,
-    attempts: 0
-  };
+  // GitLab rendert Seitenleisten verzögert: bis zu 3 erneute Scans im Abstand von 700 ms, bis das Ziel-Element da ist
+  function createRetry(label, rescan) {
+    let attempts = 0;
+    let timer = null;
+    return {
+      reset: function () {
+        attempts = 0;
+        clearTimeout(timer);
+        timer = null;
+      },
+      schedule: function () {
+        if (timer || attempts >= 3) return;
+        attempts += 1;
+        timer = setTimeout(function () {
+          timer = null;
+          log(label + ' noch nicht vorhanden – erneuter Versuch #' + attempts);
+          rescan();
+        }, 700);
+      }
+    };
+  }
+  const detailRetry = createRetry('Detail-Teilnehmerbereich', function () {
+    if (currentScanContext) scanIssueDetail(currentScanContext.hostConfig, currentScanContext.projectSettings);
+  });
+  const mrRetry = createRetry('MR-Progress-Block', function () {
+    if (currentScanContext) scanMergeRequestPage(currentScanContext.hostConfig, currentScanContext.projectSettings);
+  });
 
   // Debug / Anzeige – gesteuert über Toolbar, persistiert in localStorage
   const LS_KEY_DEBUG = 'portalProgressDebug';
@@ -581,30 +626,6 @@
         ' eintragen.',
       variant: 'warning'
     });
-  }
-
-  function resetDetailRetryState() {
-    detailRetryState.attempts = 0;
-    if (detailRetryState.timer) {
-      clearTimeout(detailRetryState.timer);
-      detailRetryState.timer = null;
-    }
-  }
-
-  function scheduleDetailRetry(hostConfig, projectSettings) {
-    if (!hostConfig || !projectSettings) return;
-    if (detailRetryState.attempts >= DETAIL_RETRY_MAX_ATTEMPTS) {
-      return;
-    }
-    if (detailRetryState.timer) {
-      return;
-    }
-    detailRetryState.attempts += 1;
-    detailRetryState.timer = setTimeout(function () {
-      detailRetryState.timer = null;
-      log('Detail-Teilnehmerbereich noch nicht vorhanden – erneuter Versuch #' + detailRetryState.attempts);
-      scanIssueDetail(hostConfig, projectSettings);
-    }, DETAIL_RETRY_INTERVAL_MS);
   }
 
   function isProjectRequestBlocked(projectKey) {
@@ -1396,19 +1417,8 @@
     button.innerHTML = html;
     button.title = title;
     button.setAttribute('aria-label', ariaLabel);
-    button.className = 'ambient-btn btn gl-button btn-default btn-icon btn-sm js-no-trigger';
-    applyStyles(button, Object.assign({
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      width: '24px',
-      minWidth: '24px',
-      height: '24px',
-      padding: '0',
-      flex: '0 0 auto',
-      position: 'relative',
-      zIndex: '25'
-    }, overrides));
+    button.className = 'ambient-btn btn gl-button btn-default btn-icon btn-sm js-no-trigger ambient-icon-btn';
+    applyStyles(button, overrides);
     button.addEventListener(
       'click',
       function (ev) {
@@ -1430,6 +1440,20 @@
   function createTimesheetButton(url, overrides, featureKey) {
     if (!url || !isFeatureOn(featureKey || 'portalButtons')) return null;
     return createProgressIconButton(TIMESHEET_ICON_SVG, t('Timesheet erstellen'), 'Timesheet im Portal erstellen', url, overrides);
+  }
+
+  // Zeile „Timesheet-Button | Balken | Portal-Button" (Karte, Ticket, MR); Optik je Ort über className
+  function buildProgressRow(className, progressData, barStyles, portalUrl, timesheetUrl, buttonsFeature) {
+    const row = document.createElement('div');
+    row.className = className;
+    [
+      createTimesheetButton(timesheetUrl, null, buttonsFeature),
+      createProgressBarElements(progressData, barStyles),
+      createPortalLinkButton(portalUrl, null, buttonsFeature)
+    ].forEach(function (el) {
+      if (el) row.appendChild(el);
+    });
+    return row;
   }
 
   function createAllowedListLookup(listNames) {
@@ -1862,24 +1886,11 @@
     return v;
   }
 
+  // Zahl oder Text → „6.5h"; auf zwei Nachkommastellen gerundet (keine Float-Reste wie 6.4999999h)
   function formatBookedHoursDisplay(value) {
-    if (value === null || value === undefined) return null;
-    let hours;
-    if (typeof value === 'number' && !isNaN(value)) {
-      hours = value;
-    } else {
-      hours = extractHourNumber(value);
-    }
-    if (hours === null) return null;
-    const normalized = Number(hours);
-    let normalizedStr = normalized.toString();
-    if (normalizedStr.indexOf('.') !== -1) {
-      normalizedStr = normalizedStr.replace(/\.?0+$/, '');
-    }
-    if (normalizedStr === '-0') {
-      normalizedStr = '0';
-    }
-    return normalizedStr + 'h';
+    const hours = typeof value === 'number' ? value : extractHourNumber(value);
+    if (hours === null || isNaN(hours)) return null;
+    return (Math.round(hours * 100) / 100 || 0) + 'h';
   }
 
   function normalizeWhitespace(text) {
@@ -2016,7 +2027,7 @@
       const progressDiv = doc.querySelector('[title*="Booked hours" i]')
         || doc.querySelector('[title*="Gebuchte Stunden" i]');
       if (!progressDiv) {
-        if (debugEnabled) log('parseProgressHtml: Kein Progress-Container gefunden → Fallback Booked Hours.');
+        log('parseProgressHtml: Kein Progress-Container gefunden → Fallback Booked Hours.');
         return fallbackBooked();
       }
 
@@ -2025,11 +2036,13 @@
       const titleAttr = progressDiv.getAttribute('title');
       const fromTitle = parseProgressFromTitleAttr(titleAttr);
       if (fromTitle) {
-        if (debugEnabled) log('parseProgressHtml: Werte aus title-Attribut geparst:', fromTitle);
+        log('parseProgressHtml: Werte aus title-Attribut geparst:', fromTitle);
+        // „Booked hours" im title sind die gebuchten Stunden: kein zweiter Durchlauf über das ganze Dokument
+        if (fromTitle.spent) return Object.assign(fromTitle, {booked: fromTitle.spent, bookedLabel: 'Booked Hours'});
         return attachBookedInfo(fromTitle);
       }
 
-      if (debugEnabled) log('parseProgressHtml: title-Attribut nicht auswertbar → Fallback Booked Hours.');
+      log('parseProgressHtml: title-Attribut nicht auswertbar → Fallback Booked Hours.');
       return fallbackBooked();
     } catch (e) {
       error('Fehler beim Parsen des Progress-HTML:', e);
@@ -2069,10 +2082,10 @@
         if (inlineVal) {
           const formattedInline = formatBookedHoursDisplay(inlineVal);
           if (formattedInline) {
-            if (debugEnabled) log('parseBookedHours: Wert inline gefunden für "' + (label || 'Booked Hours') + '":', formattedInline);
+            log('parseBookedHours: Wert inline gefunden für "' + (label || 'Booked Hours') + '":', formattedInline);
             return {value: formattedInline, label: label || 'Booked Hours'};
           }
-          if (debugEnabled) log('parseBookedHours: inline Wert enthält keine Stundenangabe, überspringe:', inlineVal);
+          log('parseBookedHours: inline Wert enthält keine Stundenangabe, überspringe:', inlineVal);
         }
       }
     }
@@ -2099,7 +2112,7 @@
           if (value !== null) {
             const formatted = formatBookedHoursDisplay(value);
             if (formatted) {
-              if (debugEnabled) log('parseBookedHours: Wert aus Tabellenzeile gefunden für "' + label + '":', formatted);
+              log('parseBookedHours: Wert aus Tabellenzeile gefunden für "' + label + '":', formatted);
               return {value: formatted, label: label};
             }
           }
@@ -2155,17 +2168,17 @@
         if (summed !== null) {
           const formattedSum = formatBookedHoursDisplay(summed);
           if (formattedSum) {
-            if (debugEnabled) log('parseBookedHours: Summe der Werte neben "' + label + '" gefunden:', formattedSum);
+            log('parseBookedHours: Summe der Werte neben "' + label + '" gefunden:', formattedSum);
             return {value: formattedSum, label: label};
           }
         }
         candidateVal = normalizeWhitespace(candidateEl.textContent);
         const formattedAdjacent = formatBookedHoursDisplay(candidateVal);
         if (formattedAdjacent) {
-          if (debugEnabled) log('parseBookedHours: Wert neben "' + label + '" gefunden:', formattedAdjacent);
+          log('parseBookedHours: Wert neben "' + label + '" gefunden:', formattedAdjacent);
           return {value: formattedAdjacent, label: label};
         }
-        if (debugEnabled) log('parseBookedHours: Nebenwert enthält keine Stundenangabe, überspringe:', candidateVal);
+        log('parseBookedHours: Nebenwert enthält keine Stundenangabe, überspringe:', candidateVal);
       }
     }
     return null;
@@ -2282,75 +2295,18 @@
     const loadedAt = Number(cardElem.getAttribute('data-ambient-loaded-at'));
 
     if (progressData && progressData2) {
-      const warningBanner = document.createElement('div');
-      applyStyles(warningBanner, {
-        backgroundColor: '#f97316',
-        color: '#fff',
-        padding: '4px 8px',
-        borderRadius: '4px',
-        marginBottom: '6px',
-        fontSize: '11px',
-        fontWeight: '600',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '4px'
-      });
-      warningBanner.textContent = '⚠ In beiden Portal-Projekten gefunden';
-      container.appendChild(warningBanner);
+      container.appendChild(createTextSpan('⚠ In beiden Portal-Projekten gefunden')).className = 'ambient-both-projects-warning';
     }
-
     if (progressData) {
-      const row = document.createElement('div');
-      applyStyles(row, {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px'
-      });
-
-      const barOuter = createProgressBarElements(progressData, theme.styles);
-
-      const url = cardElem.getAttribute('data-ambient-progress-url');
-      const timesheetUrl = cardElem.getAttribute('data-ambient-timesheet-url');
-      const timesheetButton = createTimesheetButton(timesheetUrl);
-      if (timesheetButton) {
-        row.appendChild(timesheetButton);
-      }
-      if (loadedAt) {
-        barOuter.title += ' · ' + formatLoadedAgo(loadedAt);
-      }
-      row.appendChild(barOuter);
-      const portalButton = createPortalLinkButton(url);
-      if (portalButton) {
-        row.appendChild(portalButton);
-      }
+      const row = buildProgressRow('ambient-progress-row', progressData, theme.styles,
+        cardElem.getAttribute('data-ambient-progress-url'), cardElem.getAttribute('data-ambient-timesheet-url'));
+      if (loadedAt) row.querySelector('.ambient-progress-bar').title += ' · ' + formatLoadedAgo(loadedAt);
       container.appendChild(row);
     }
-
     if (progressData2) {
-      const row2 = document.createElement('div');
-      applyStyles(row2, {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px'
-      });
-
-      const theme2Styles = Object.assign({}, theme.styles, {colors: BAR_COLORS_SECOND});
-
-      const barOuter2 = createProgressBarElements(progressData2, theme2Styles);
-
-      const timesheetUrl2 = cardElem.getAttribute('data-ambient-timesheet-url-2');
-      const timesheetButton2 = createTimesheetButton(timesheetUrl2);
-      if (timesheetButton2) {
-        row2.appendChild(timesheetButton2);
-      }
-      row2.appendChild(barOuter2);
-
-      const url2 = cardElem.getAttribute('data-ambient-progress-url-2');
-      const portalButton2 = createPortalLinkButton(url2);
-      if (portalButton2) {
-        row2.appendChild(portalButton2);
-      }
-      container.appendChild(row2);
+      container.appendChild(buildProgressRow('ambient-progress-row', progressData2,
+        Object.assign({}, theme.styles, {colors: BAR_COLORS_SECOND}),
+        cardElem.getAttribute('data-ambient-progress-url-2'), cardElem.getAttribute('data-ambient-timesheet-url-2')));
     }
 
     appendExtraProjectRows(cardElem, container, theme);
@@ -2414,23 +2370,15 @@
         if (!container.isConnected || !data || data.notFound) return;
         const old = container.querySelector('.ambient-extra-row[data-pid="' + pid + '"]');
         if (old) old.remove();
-        const row = document.createElement('div');
-        row.className = 'ambient-extra-row';
-        row.setAttribute('data-pid', pid);
-        applyStyles(row, {display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px'});
         const styles = Object.assign({}, theme.styles, {
           colors: Object.assign({}, BAR_COLORS, EXTRA_BAR_COLORS[idx % EXTRA_BAR_COLORS.length]),
           animate: false
         });
-        const tsButton = createTimesheetButton(buildTimesheetUrl(ps, issueIid, pid));
-        if (tsButton) row.appendChild(tsButton);
-        const bar = createProgressBarElements(data, styles);
-        if (bar) {
-          bar.title = 'Portal-Projekt ' + pid + ': ' + bar.title;
-          row.appendChild(bar);
-        }
-        const portalButton = createPortalLinkButton(buildPortalUrl(ps, issueIid, pid));
-        if (portalButton) row.appendChild(portalButton);
+        const row = buildProgressRow('ambient-progress-row ambient-extra-row', data, styles,
+          buildPortalUrl(ps, issueIid, pid), buildTimesheetUrl(ps, issueIid, pid));
+        row.setAttribute('data-pid', pid);
+        const bar = row.querySelector('.ambient-progress-bar');
+        bar.title = 'Portal-Projekt ' + pid + ': ' + bar.title;
         container.appendChild(row);
       };
       const cached = key ? getProgressCacheEntry(key) : null;
@@ -2465,21 +2413,15 @@
 
   const mrListCache = {}; // key: projectPath → {mrs: [{iid, title, web_url}], timestamp}
 
-  let currentUserPromise = null;
+  const currentUserCache = {};
 
   function getCurrentUser() {
-    if (!currentUserPromise) {
-      currentUserPromise = glFetch('/api/v4/user')
-        .then(function (res) {
-          if (!res.ok) throw new Error('Aktueller User Status ' + res.status);
-          return res.json();
-        })
-        .catch(function (err) {
-          currentUserPromise = null; // nächster Versuch darf erneut laden
-          throw err;
-        });
-    }
-    return currentUserPromise;
+    return memoPromise(currentUserCache, 'me', 0, function () {
+      return glFetch('/api/v4/user').then(function (res) {
+        if (!res.ok) throw new Error('Aktueller User: HTTP ' + res.status);
+        return res.json();
+      });
+    });
   }
 
   function getCsrfToken() {
@@ -2490,15 +2432,8 @@
   function assignCurrentUserAsReviewer(projectPath, mrIid) {
     if (!isNumericId(mrIid)) return Promise.reject(new Error('Ungültige MR-IID'));
     return getCurrentUser().then(function (user) {
-      const url = '/api/v4/projects/' + encodeURIComponent(projectPath) +
-        '/merge_requests/' + mrIid;
-      return glFetch(url, {
-        method: 'PUT',
-        body: JSON.stringify({reviewer_ids: [user.id]})
-      }).then(function (res) {
-        if (!res.ok) throw new Error('Reviewer zuweisen Status ' + res.status);
-        return user;
-      });
+      return glApi(projectPath, '/merge_requests/' + mrIid, 'Reviewer zuweisen',
+        {method: 'PUT', body: JSON.stringify({reviewer_ids: [user.id]})}).then(function () { return user; });
     });
   }
 
@@ -2507,41 +2442,30 @@
 
   // Cache hält die Promise: viele Karten gleichzeitig lösen genau einen Request aus
   function loadMergeRequestsForProject(projectPath) {
-    const cached = mrListCache[projectPath];
-    if (cached && Date.now() - cached.timestamp <= MR_LIST_CACHE_TTL_MS) {
-      return cached.promise;
-    }
     if (mrListFailedAt[projectPath] && Date.now() - mrListFailedAt[projectPath] < MR_LIST_FAILURE_BACKOFF_MS) {
       return Promise.reject(new Error('MR-Liste: letzter Versuch fehlgeschlagen, warte kurz'));
     }
-    const url = '/api/v4/projects/' + encodeURIComponent(projectPath) +
-      '/merge_requests?per_page=100&order_by=updated_at';
-    const promise = gitlabLimiter(function () { return glFetch(url); })
-      .then(function (res) {
-        if (!res.ok) throw new Error('MR-Liste Status ' + res.status);
-        return res.json();
-      })
-      .then(function (list) {
-        // ponytail: per_page=100, keine Paginierung – bei >100 offenen MRs fehlen ältere
-        return list.map(function (mr) {
-          return {
-            iid: mr.iid,
-            title: mr.title,
-            web_url: mr.web_url,
-            state: mr.state,
-            assignee: (mr.assignees && mr.assignees[0]) || mr.assignee || null,
-            reviewers: mr.reviewers || [],
-            pipelineStatus: (mr.head_pipeline && mr.head_pipeline.status) || null
-          };
+    return memoPromise(mrListCache, projectPath, MR_LIST_CACHE_TTL_MS, function () {
+      return glApi(projectPath, '/merge_requests?per_page=100&order_by=updated_at', 'MR-Liste')
+        .then(function (list) {
+          // ponytail: per_page=100, keine Paginierung – bei >100 offenen MRs fehlen ältere
+          return list.map(function (mr) {
+            return {
+              iid: mr.iid,
+              title: mr.title,
+              web_url: mr.web_url,
+              state: mr.state,
+              assignee: (mr.assignees && mr.assignees[0]) || mr.assignee || null,
+              reviewers: mr.reviewers || [],
+              pipelineStatus: (mr.head_pipeline && mr.head_pipeline.status) || null
+            };
+          });
+        })
+        .catch(function (err) {
+          mrListFailedAt[projectPath] = Date.now();
+          throw err;
         });
-      })
-      .catch(function (err) {
-        delete mrListCache[projectPath];
-        mrListFailedAt[projectPath] = Date.now();
-        throw err;
-      });
-    mrListCache[projectPath] = {promise: promise, timestamp: Date.now()};
-    return promise;
+    });
   }
 
   /******************************************************************
@@ -2559,25 +2483,10 @@
 
   function loadLabelEvents(projectPath, issueIid) {
     if (!isNumericId(issueIid)) return Promise.reject(new Error('Ungültige Issue-IID'));
-    const key = projectPath + '#' + issueIid;
-    const cached = labelEventsCache[key];
-    if (cached && Date.now() - cached.timestamp <= COLUMN_AGE_CACHE_TTL_MS) {
-      return cached.promise;
-    }
-    const url = '/api/v4/projects/' + encodeURIComponent(projectPath) +
-      '/issues/' + issueIid + '/resource_label_events?per_page=100';
     // ponytail: per_page=100, keine Paginierung – bei >100 Label-Events fehlen neuere
-    const promise = gitlabLimiter(function () { return glFetch(url); })
-      .then(function (res) {
-        if (!res.ok) throw new Error('Label-Events Status ' + res.status);
-        return res.json();
-      })
-      .catch(function (err) {
-        delete labelEventsCache[key];
-        throw err;
-      });
-    labelEventsCache[key] = {promise: promise, timestamp: Date.now()};
-    return promise;
+    return memoPromise(labelEventsCache, projectPath + '#' + issueIid, COLUMN_AGE_CACHE_TTL_MS, function () {
+      return glApi(projectPath, '/issues/' + issueIid + '/resource_label_events?per_page=100', 'Label-Events');
+    });
   }
 
   // Eintrittszeit pro Ticket+Spalte 30 min in localStorage halten
@@ -2652,34 +2561,19 @@
   function loadColumnEnteredAt(projectPath, issueIid, listName) {
     if (!isNumericId(issueIid)) return Promise.reject(new Error('Ungültige Issue-IID'));
     const key = projectPath + '#' + issueIid + '#' + listName;
-    const cached = columnEnteredAtCache[key];
-    if (cached && Date.now() - cached.timestamp <= COLUMN_AGE_CACHE_TTL_MS) {
-      return cached.promise;
+    // localStorage-Wert überbrückt den Kaltstart, damit die Uhr ohne Request erscheint
+    const stored = getEnteredAtStore()[key];
+    if (!columnEnteredAtCache[key] && stored && Date.now() - Number(stored.ts) <= ENTERED_AT_STORE_TTL_MS) {
+      columnEnteredAtCache[key] = {promise: Promise.resolve(stored.t ? new Date(stored.t) : null), timestamp: Number(stored.ts)};
     }
-    {
-      const stored = getEnteredAtStore()[key];
-      if (stored && Date.now() - Number(stored.ts) <= ENTERED_AT_STORE_TTL_MS) {
-        const storedPromise = Promise.resolve(stored.t ? new Date(stored.t) : null);
-        columnEnteredAtCache[key] = {promise: storedPromise, timestamp: Number(stored.ts)};
-        return storedPromise;
-      }
-    }
-    const target = normalizeLabelNameForMatching(listName);
-    const promise = loadLabelEvents(projectPath, issueIid)
-      .then(function (events) {
-        const latest = computeEnteredAt(events, target);
-        {
-          getEnteredAtStore()[key] = {t: latest ? latest.getTime() : null, ts: Date.now()};
-          persistEnteredAtStore();
-        }
+    return memoPromise(columnEnteredAtCache, key, COLUMN_AGE_CACHE_TTL_MS, function () {
+      return loadLabelEvents(projectPath, issueIid).then(function (events) {
+        const latest = computeEnteredAt(events, normalizeLabelNameForMatching(listName));
+        getEnteredAtStore()[key] = {t: latest ? latest.getTime() : null, ts: Date.now()};
+        persistEnteredAtStore();
         return latest;
-      })
-      .catch(function (err) {
-        delete columnEnteredAtCache[key];
-        throw err;
       });
-    columnEnteredAtCache[key] = {promise: promise, timestamp: Date.now()};
-    return promise;
+    });
   }
 
   // Verlauf: Zeit pro Spalten-Label aus den Label-Events (nur Labels, die Board-Spalten sind)
@@ -3197,22 +3091,10 @@
   const mrPipelineRequests = {}; // projectPath#mrIid → Promise<string|null>
 
   function loadMrPipelineStatus(projectPath, mrIid) {
-    const key = projectPath + '#' + mrIid;
-    if (!mrPipelineRequests[key]) {
-      const url = '/api/v4/projects/' + encodeURIComponent(projectPath) + '/merge_requests/' + mrIid +
-        '/pipelines?per_page=1';
-      mrPipelineRequests[key] = gitlabLimiter(function () { return glFetch(url); })
-        .then(function (res) {
-          if (!res.ok) throw new Error('MR-Pipelines Status ' + res.status);
-          return res.json();
-        })
-        .then(function (list) { return (list && list[0] && list[0].status) || null; })
-        .catch(function (err) {
-          delete mrPipelineRequests[key];
-          throw err;
-        });
-    }
-    return mrPipelineRequests[key];
+    return memoPromise(mrPipelineRequests, projectPath + '#' + mrIid, 0, function () {
+      return glApi(projectPath, '/merge_requests/' + mrIid + '/pipelines?per_page=1', 'MR-Pipelines')
+        .then(function (list) { return (list && list[0] && list[0].status) || null; });
+    });
   }
 
   function createPipelineDot(status) {
@@ -3290,9 +3172,7 @@
           withCredentials: true,
           timeout: PORTAL_REQUEST_TIMEOUT_MS,
           onload: function (response) {
-            if (debugEnabled) {
-              log('Response-Status für Issue', issueIid, ':', response.status);
-            }
+            log('Response-Status für Issue', issueIid, ':', response.status);
             if (response.status !== 200) {
               warn('Antwort != 200 für Issue', issueIid, 'Status:', response.status);
               reject({status: response.status});
@@ -3512,10 +3392,6 @@
       });
     return true;
   }
-
-  /******************************************************************
-   * Board-Scan
-   ******************************************************************/
 
   /******************************************************************
    * Split-Labels: "scope::Name" als [Scope | Name] in Label-Farbe
@@ -3865,9 +3741,6 @@
       const listNameLower = listName ? normalizeListNameForMatching(listName) : '';
       const columnLabelText = getColumnLabelText(boardListElem, header);
       if (columnLabelText) boardColumnLabelSet[normalizeLabelNameForMatching(columnLabelText)] = true;
-      if (header && isFeatureOn('splitLabels')) {
-        applySplitLabels(header); // das Original bleibt im DOM, Listen-/Label-Namen werden weiter daraus gelesen
-      }
 
       if (listName && header) {
         ensureListSelectionCheckbox(
@@ -3889,15 +3762,10 @@
       }
 
       const cards = boardListElem.querySelectorAll(SEL.boardCard);
-      if (debugEnabled) {
-        log('Liste #' + li + ' "' + displayListName + '" allowed: ' + isAllowed + ', Karten: ' + cards.length);
-      }
+      log('Liste #' + li + ' "' + displayListName + '" allowed: ' + isAllowed + ', Karten: ' + cards.length);
 
       for (let k = 0; k < cards.length; k++) {
         const cardElem = cards[k];
-        if (isFeatureOn('splitLabels')) {
-          applySplitLabels(cardElem);
-        }
         if (!isAllowed) {
           markCardSkipped(cardElem);
           continue;
@@ -3958,7 +3826,7 @@
       }
     }
 
-    if (debugEnabled) {
+    if (debugEnabled) { // Guard bleibt: die Zählung kostet zwei querySelectorAll pro Scan
       log(
         'scanBoard run #' + scanRunCounter + ': Listen ' + boardLists.length +
         ', Karten ' + rootBoardsApp.querySelectorAll(SEL.boardCard).length +
@@ -4008,7 +3876,7 @@
   function scanIssueDetail(hostConfig, projectSettings) {
     if (window.location.href !== lastDetailHref) {
       lastDetailHref = window.location.href;
-      resetDetailRetryState(); // SPA-Navigation: neue Ansicht bekommt wieder alle Versuche
+      detailRetry.reset(); // SPA-Navigation: neue Ansicht bekommt wieder alle Versuche
     }
     if (!hostConfig || !projectSettings) {
       log('scanIssueDetail übersprungen (Host/Project fehlt).');
@@ -4028,10 +3896,10 @@
     const wrapperList = document.querySelectorAll(SEL.detailWrapper);
     if (!wrapperList || !wrapperList.length) {
       log('scanIssueDetail: Attribute-Wrapper nicht gefunden.');
-      scheduleDetailRetry(hostConfig, projectSettings);
+      detailRetry.schedule();
       return;
     }
-    resetDetailRetryState();
+    detailRetry.reset();
 
     for (let i = 0; i < wrapperList.length; i++) {
       const wrapper = wrapperList[i];
@@ -4046,32 +3914,10 @@
         continue;
       }
 
-      fetchAndDisplayProgressForIssueDetail(hostConfig, projectSettings, issueIid, wrapper);
+      loadDetailProgress(projectSettings, issueIid, wrapper, 'ambientProgressIssueIid', function (data, url, tsUrl) {
+        injectProgressIntoIssueDetail(wrapper, data, url, tsUrl, issueIid);
+      });
     }
-  }
-
-  function resetMRRetryState() {
-    mrRetryState.attempts = 0;
-    if (mrRetryState.timer) {
-      clearTimeout(mrRetryState.timer);
-      mrRetryState.timer = null;
-    }
-  }
-
-  function scheduleMRRetry(hostConfig, projectSettings) {
-    if (!hostConfig || !projectSettings) return;
-    if (mrRetryState.attempts >= MR_RETRY_MAX_ATTEMPTS) {
-      return;
-    }
-    if (mrRetryState.timer) {
-      return;
-    }
-    mrRetryState.attempts += 1;
-    mrRetryState.timer = setTimeout(function () {
-      mrRetryState.timer = null;
-      log('MR-Progress-Block noch nicht vorhanden – erneuter Versuch #' + mrRetryState.attempts);
-      scanMergeRequestPage(hostConfig, projectSettings);
-    }, MR_RETRY_INTERVAL_MS);
   }
 
   function getIssueIidFromMRTitle() {
@@ -4116,14 +3962,8 @@
   // Postet Quick Actions als Kommentar aufs Ticket – nutzt die GitLab-Session, kein Token.
   function runTicketAction(projectPath, issueIid, body) {
     if (!isNumericId(issueIid)) return Promise.reject(new Error('Ungültige Issue-IID'));
-    return glFetch(
-      '/api/v4/projects/' + encodeURIComponent(projectPath) + '/issues/' + issueIid + '/notes',
-      {method: 'POST', body: JSON.stringify({body: body})}
-    ).then(function (res) {
-      if (!res.ok) {
-        throw new Error('HTTP ' + res.status);
-      }
-    });
+    return glApi(projectPath, '/issues/' + issueIid + '/notes', 'Ticket-Aktion',
+      {method: 'POST', body: JSON.stringify({body: body})});
   }
 
   // Quick Actions, die Tickets schließen/umhängen, vor dem Absenden bestätigen lassen
@@ -4333,141 +4173,62 @@
     if (dropdown) footer.appendChild(dropdown);
   }
 
+  // Ticket- und MR-Seitenleiste: Balken-Zeile in den (schon platzierten) Container zeichnen
+  function fillDetailBadge(container, progressData, portalUrl, timesheetUrl, buttonsFeature) {
+    const theme = getThemeAwareBarStyles({barOverrides: {flex: '1 1 auto', minWidth: '0'}});
+    container.style.display = showEnabled ? '' : 'none';
+    container.style.color = theme.textColor;
+    container.innerHTML = '';
+    container.appendChild(buildProgressRow('ambient-progress-row ambient-progress-row-detail', progressData, theme.styles,
+      portalUrl, timesheetUrl, buttonsFeature));
+  }
+
   function injectProgressIntoMRDetail(assigneeBlock, progressData, portalUrl, timesheetUrl, projectSettings, issueIid) {
-    if (!assigneeBlock || !progressData) return;
-
-    const theme = getThemeAwareBarStyles({
-      barOverrides: {flex: '1 1 auto', minWidth: '0'}
-    });
-    const textColor = theme.textColor;
-
-    const parent = assigneeBlock.parentElement;
-    if (!parent) return;
-
+    const parent = assigneeBlock && assigneeBlock.parentElement;
+    if (!parent || !progressData) return;
     let container = parent.querySelector('.ambient-progress-mr-badge');
     if (!container) {
       container = document.createElement('div');
       container.className = 'ambient-progress-mr-badge';
-      applyStyles(container, {
-        padding: '1rem 0',
-        borderBottomStyle: "solid",
-        borderBottomWidth: "1px",
-        borderColor: "var(--gl-border-color-subtle)",
-        background: THEME_BG
-      });
       parent.insertBefore(container, assigneeBlock);
     }
-
-    container.style.display = showEnabled ? '' : 'none';
-    container.style.color = textColor;
-    container.innerHTML = '';
-
-    const row = document.createElement('div');
-    applyStyles(row, {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.35rem',
-      fontSize: '12px',
-      flexWrap: 'wrap',
-      width: '100%'
-    });
-
-    const tsButton = createTimesheetButton(timesheetUrl, null, 'mrPortalButtons');
-    if (tsButton) {
-      row.appendChild(tsButton);
-    }
-
-    const barOuter = createProgressBarElements(progressData, theme.styles);
-    if (barOuter) {
-      row.appendChild(barOuter);
-    }
-
-    const portalButton = createPortalLinkButton(portalUrl, null, 'mrPortalButtons');
-    if (portalButton) {
-      row.appendChild(portalButton);
-    }
-
-    if (row.children.length) {
-      container.appendChild(row);
-    }
-
+    fillDetailBadge(container, progressData, portalUrl, timesheetUrl, 'mrPortalButtons');
     const actionsRow = isFeatureOn('mrActions') && createTicketActionsRow(projectSettings, issueIid);
-    if (actionsRow) {
-      container.appendChild(actionsRow);
-    }
+    if (actionsRow) container.appendChild(actionsRow);
   }
 
-  function fetchAndDisplayProgressForMRDetail(hostConfig, projectSettings, issueIid, assigneeBlock) {
-    if (!issueIid || !assigneeBlock) return;
-
-    const projectId = projectSettings.projectId;
-    if (!projectId) {
-      warn('Kein projectId für', projectSettings.projectPath, '; MR-Detail-Progress wird nicht geladen.');
-      return;
-    }
-
-    const cacheKey = buildProgressCacheKey(projectSettings, issueIid);
-    if (!cacheKey) {
-      log('MR-Detail-Cache: Kein Cache-Key möglich für Issue', issueIid);
-      return;
-    }
-
-    const cached = findProgressCacheEntryForIssue(projectSettings, issueIid);
-    if (!cached) {
-      log(
-        'Kein Cache-Eintrag für MR-Detail gefunden (Projekt',
-        projectSettings.projectPath + ',',
-        'Issue',
-        issueIid + ').'
-      );
-      const url = buildPortalUrl(projectSettings, issueIid);
-      if (!url) {
-        warn(
-          'Keine Portal-Basis konfiguriert für',
-          projectSettings.projectPath,
-          '; MR-Detail-Fortschritt wird nicht geladen.'
-        );
-        return;
-      }
-      if (isProjectRequestBlocked(projectSettings.projectKey)) return;
-      assigneeBlock.setAttribute('data-ambient-progress-url', url);
-      // vor dem Request markieren: sonst fragt jeder Scan nach Fehler oder leerer Antwort erneut an
-      if (assigneeBlock.parentElement) assigneeBlock.parentElement.dataset.ambientProgressMrIssueIid = issueIid;
-      log('MR-Detail lädt Progress-Daten (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ')');
-      totalFetchesSincePageLoad++;
-      loadProgressData(url, issueIid)
-        .then(function (progressData) {
-          clearProjectRequestBlock(projectSettings.projectKey);
-          if (!progressData) return;
-          setProgressCacheEntry(cacheKey, progressData);
-          injectProgressIntoMRDetail(assigneeBlock, progressData, url, buildTimesheetUrl(projectSettings, issueIid), projectSettings, issueIid);
-        })
-        .catch(function (err) {
-          error('Request-Fehler für MR-Issue ' + issueIid + ':', err);
-          if (err && err.status) {
-            blockProjectRequests(projectSettings.projectKey, err.status);
-          }
-        });
-      return;
-    }
-
-    log(
-      'MR-Detail liest Cache (Projekt',
-      projectSettings.projectPath + ',',
-      'Issue',
-      issueIid + ').'
-    );
-
+  // Ticket- und MR-Seitenleiste: aus dem Cache zeichnen oder einmal laden. markElem.dataset[markKey] bekommt die IID,
+  // damit der Scan die Ansicht überspringt – schon vor dem Request, sonst fragt jeder Scan nach Fehler erneut an.
+  function loadDetailProgress(projectSettings, issueIid, markElem, markKey, render) {
+    if (!issueIid || !markElem) return;
     const url = buildPortalUrl(projectSettings, issueIid);
-    if (url) {
-      assigneeBlock.setAttribute('data-ambient-progress-url', url);
+    const cacheKey = buildProgressCacheKey(projectSettings, issueIid);
+    if (!url || !cacheKey) {
+      warn('Keine Portal-Basis oder Projekt-ID für', projectSettings.projectPath, '; Detail-Fortschritt wird nicht geladen.');
+      return;
     }
-
-    injectProgressIntoMRDetail(assigneeBlock, cached, url, buildTimesheetUrl(projectSettings, issueIid), projectSettings, issueIid);
-    const parent = assigneeBlock.parentElement;
-    if (parent) {
-      parent.dataset.ambientProgressMrIssueIid = issueIid;
+    const timesheetUrl = buildTimesheetUrl(projectSettings, issueIid);
+    const cached = findProgressCacheEntryForIssue(projectSettings, issueIid);
+    if (!cached && isProjectRequestBlocked(projectSettings.projectKey)) return;
+    markElem.dataset[markKey] = issueIid;
+    if (cached) {
+      log('Detail liest Cache (Projekt', projectSettings.projectPath + ', Issue', issueIid + ')');
+      render(cached, url, timesheetUrl);
+      return;
     }
+    log('Detail lädt Progress-Daten (Projekt', projectSettings.projectPath + ', Issue', issueIid + ')');
+    totalFetchesSincePageLoad++;
+    loadProgressData(url, issueIid)
+      .then(function (progressData) {
+        clearProjectRequestBlock(projectSettings.projectKey);
+        if (!progressData) return;
+        setProgressCacheEntry(cacheKey, progressData);
+        render(progressData, url, timesheetUrl);
+      })
+      .catch(function (err) {
+        error('Request-Fehler für Issue ' + issueIid + ' (Detailansicht):', err);
+        if (err && err.status) blockProjectRequests(projectSettings.projectKey, err.status);
+      });
   }
 
   /******************************************************************
@@ -4476,12 +4237,7 @@
 
   function loadMergeRequestDetails(projectPath, mrIid) {
     if (!isNumericId(mrIid)) return Promise.reject(new Error('Ungültige MR-IID'));
-    const url = '/api/v4/projects/' + encodeURIComponent(projectPath) + '/merge_requests/' + mrIid;
-    return glFetch(url)
-      .then(function (res) {
-        if (!res.ok) throw new Error('MR-Status ' + res.status);
-        return res.json();
-      })
+    return glApi(projectPath, '/merge_requests/' + mrIid, 'MR')
       .then(function (mr) {
         return {
           author: mr.author || null,
@@ -4498,27 +4254,15 @@
 
   function loadIssueAssignees(projectPath, issueIid) {
     if (!isNumericId(issueIid)) return Promise.reject(new Error('Ungültige Issue-IID'));
-    const url = '/api/v4/projects/' + encodeURIComponent(projectPath) + '/issues/' + issueIid;
-    return glFetch(url)
-      .then(function (res) {
-        if (!res.ok) throw new Error('Issue-Status ' + res.status);
-        return res.json();
-      })
-      .then(function (issue) {
-        return issue.assignees || [];
-      });
+    return glApi(projectPath, '/issues/' + issueIid, 'Ticket').then(function (issue) {
+      return issue.assignees || [];
+    });
   }
 
   function updateIssueAssignee(projectPath, issueIid, userId) {
     if (!isNumericId(issueIid)) return Promise.reject(new Error('Ungültige Issue-IID'));
-    const url = '/api/v4/projects/' + encodeURIComponent(projectPath) + '/issues/' + issueIid;
-    return glFetch(url, {
-      method: 'PUT',
-      body: JSON.stringify({assignee_ids: [userId]})
-    }).then(function (res) {
-      if (!res.ok) throw new Error('Assignee-Update-Status ' + res.status);
-      return res.json();
-    });
+    return glApi(projectPath, '/issues/' + issueIid, 'Assignee setzen',
+      {method: 'PUT', body: JSON.stringify({assignee_ids: [userId]})});
   }
 
   function createTicketAssigneeContainer() {
@@ -4658,7 +4402,7 @@
   function scanMergeRequestPage(hostConfig, projectSettings) {
     if (window.location.href !== lastMrHref) {
       lastMrHref = window.location.href;
-      resetMRRetryState();
+      mrRetry.reset();
     }
     if (!hostConfig || !projectSettings) {
       log('scanMergeRequestPage übersprungen (Host/Project fehlt).');
@@ -4678,15 +4422,17 @@
     const assigneeBlock = document.querySelector(SEL.mrAssigneeBlock);
     if (!assigneeBlock) {
       log('scanMergeRequestPage: Assignee-Block nicht gefunden, retry...');
-      scheduleMRRetry(hostConfig, projectSettings);
+      mrRetry.schedule();
       return;
     }
 
-    resetMRRetryState();
+    mrRetry.reset();
 
     const parent = assigneeBlock.parentElement;
     if (isFeatureOn('mrPageProgress') && (!parent || parent.dataset.ambientProgressMrIssueIid !== issueIid)) {
-      fetchAndDisplayProgressForMRDetail(hostConfig, projectSettings, issueIid, assigneeBlock);
+      loadDetailProgress(projectSettings, issueIid, parent, 'ambientProgressMrIssueIid', function (data, url, tsUrl) {
+        injectProgressIntoMRDetail(assigneeBlock, data, url, tsUrl, projectSettings, issueIid);
+      });
     }
     if (isFeatureOn('mrAssigneeButtons') && (!parent || parent.dataset.ambientTicketAssigneeIid !== issueIid)) {
       injectIssueAssigneeBlock(assigneeBlock, projectSettings.projectPath, issueIid);
@@ -4729,142 +4475,23 @@
         return String(parsed.iid);
       }
     } catch (e) {
-      if (debugEnabled) {
-        log('Konnte show-Parameter nicht parsen:', e);
-      }
+      log('Konnte show-Parameter nicht parsen:', e);
     }
     return null;
-  }
-
-  function fetchAndDisplayProgressForIssueDetail(hostConfig, projectSettings, issueIid, detailWrapperElem) {
-    if (!issueIid || !detailWrapperElem) return;
-
-    const projectId = projectSettings.projectId;
-    if (!projectId) {
-      warn('Kein projectId für', projectSettings.projectPath, '; Detail-Progress wird nicht geladen.');
-      return;
-    }
-
-    const cacheKey = buildProgressCacheKey(projectSettings, issueIid);
-    if (!cacheKey) {
-      log('Detail-Cache: Kein Cache-Key möglich für Issue', issueIid);
-      return;
-    }
-    const cached = findProgressCacheEntryForIssue(projectSettings, issueIid);
-    if (!cached) {
-      log(
-        'Kein Cache-Eintrag für Issue-Detail gefunden (Projekt',
-        projectSettings.projectPath + ',',
-        'Issue',
-        issueIid + ').'
-      );
-      const url = buildPortalUrl(projectSettings, issueIid);
-      if (!url) {
-        warn(
-          'Keine Portal-Basis konfiguriert für',
-          projectSettings.projectPath,
-          '; Detail-Fortschritt wird nicht geladen.'
-        );
-        return;
-      }
-      if (isProjectRequestBlocked(projectSettings.projectKey)) return;
-      detailWrapperElem.setAttribute('data-ambient-progress-url', url);
-      // vor dem Request markieren: sonst fragt jeder Scan nach Fehler oder leerer Antwort erneut an
-      detailWrapperElem.dataset.ambientProgressIssueIid = issueIid;
-      log('Ticket-Detail lädt Progress-Daten (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ')');
-      totalFetchesSincePageLoad++;
-      loadProgressData(url, issueIid)
-        .then(function (progressData) {
-          clearProjectRequestBlock(projectSettings.projectKey);
-          if (!progressData) return;
-          setProgressCacheEntry(cacheKey, progressData);
-          injectProgressIntoIssueDetail(detailWrapperElem, progressData, url, buildTimesheetUrl(projectSettings, issueIid), issueIid);
-        })
-        .catch(function (err) {
-          error('Request-Fehler für Issue ' + issueIid + ' (Detailansicht):', err);
-          if (err && err.status) {
-            blockProjectRequests(projectSettings.projectKey, err.status);
-          }
-        });
-      return;
-    }
-
-    log(
-      'Ticket-Detail liest Cache (Projekt',
-      projectSettings.projectPath + ',',
-      'Issue',
-      issueIid + ').'
-    );
-
-    const url = buildPortalUrl(projectSettings, issueIid);
-    if (url) {
-      detailWrapperElem.setAttribute('data-ambient-progress-url', url);
-    }
-
-    injectProgressIntoIssueDetail(detailWrapperElem, cached, url, buildTimesheetUrl(projectSettings, issueIid), issueIid);
-    detailWrapperElem.dataset.ambientProgressIssueIid = issueIid;
   }
 
   // settingsOverride: nur die Einstellungs-Vorschau (Beispiel-Ticket-Aktionen)
   function injectProgressIntoIssueDetail(detailWrapperElem, progressData, portalUrl, timesheetUrl, issueIid, settingsOverride) {
     if (!detailWrapperElem || !progressData) return;
 
-    const theme = getThemeAwareBarStyles({
-      barOverrides: {flex: '1 1 auto', minWidth: '0'}
-    });
-    const textColor = theme.textColor;
     let container = detailWrapperElem.querySelector('.ambient-progress-detail-badge');
     if (!container) {
       container = document.createElement('div');
       container.className = 'ambient-progress-detail-badge';
-      applyStyles(container, {
-        marginBottom: '0.6rem',
-        padding: '0.45rem 0',
-        borderRadius: '10px',
-        background: THEME_BG
-      });
       const assigneesSection = detailWrapperElem.querySelector(SEL.detailAssignees);
-      if (assigneesSection) {
-        detailWrapperElem.insertBefore(container, assigneesSection);
-      } else if (detailWrapperElem.firstChild) {
-        detailWrapperElem.insertBefore(container, detailWrapperElem.firstChild);
-      } else {
-        detailWrapperElem.appendChild(container);
-      }
+      detailWrapperElem.insertBefore(container, assigneesSection || detailWrapperElem.firstChild);
     }
-
-    container.style.display = showEnabled ? '' : 'none';
-    container.style.color = textColor;
-    container.innerHTML = '';
-
-    const row = document.createElement('div');
-    applyStyles(row, {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.35rem',
-      fontSize: '12px',
-      flexWrap: 'wrap',
-      width: '100%'
-    });
-
-    const tsButton = createTimesheetButton(timesheetUrl, null, 'issuePortalButtons');
-    if (tsButton) {
-      row.appendChild(tsButton);
-    }
-
-    const barOuter = createProgressBarElements(progressData, theme.styles);
-    if (barOuter) {
-      row.appendChild(barOuter);
-    }
-
-    const portalButton = createPortalLinkButton(portalUrl, null, 'issuePortalButtons');
-    if (portalButton) {
-      row.appendChild(portalButton);
-    }
-
-    if (row.children.length) {
-      container.appendChild(row);
-    }
+    fillDetailBadge(container, progressData, portalUrl, timesheetUrl, 'issuePortalButtons');
 
     const actionSettings = settingsOverride || (currentScanContext && currentScanContext.projectSettings);
     if (issueIid && actionSettings && isFeatureOn('issueActions')) {
@@ -5061,22 +4688,8 @@
     toolbarCleanup = null;
 
 
-    const targetSelectors = TOOLBAR_TARGET_SELECTORS;
-    let insertParent = null;
-    for (let si = 0; si < targetSelectors.length; si++) {
-      const candidate = document.querySelector(targetSelectors[si]);
-      log('[createToolbar] Selector "' + targetSelectors[si] + '" → ' + (candidate ? 'GEFUNDEN (' + candidate.tagName + '#' + candidate.id + '.' + candidate.className + ')' : 'nicht gefunden'));
-      if (candidate) {
-        insertParent = candidate;
-        break;
-      }
-    }
-    if (!insertParent) {
-      log('[createToolbar] Kein Selector gefunden → Fallback document.body');
-      insertParent = document.body;
-    } else {
-      log('[createToolbar] Toolbar wird eingefügt in: ' + insertParent.tagName + '#' + insertParent.id + '.' + insertParent.className);
-    }
+    const insertParent = findToolbarTarget() || document.body;
+    log('[createToolbar] Toolbar wird eingefügt in: ' + insertParent.tagName + '#' + insertParent.id);
 
     const bar = document.createElement('div');
     bar.id = 'ambient-progress-toolbar';
@@ -5125,13 +4738,7 @@
         delete el.dataset.ambientProgressMrIssueIid;
         delete el.dataset.ambientTicketAssigneeIid;
       });
-      if (!projectSettings) return;
-      if (isMergeRequestPage()) {
-        scanMergeRequestPage(hostConfig, projectSettings);
-      } else {
-        scanBoard(hostConfig, projectSettings);
-        scanIssueDetail(hostConfig, projectSettings);
-      }
+      if (rescanHook) rescanHook(); // derselbe Scan wie bei DOM-Änderungen (inkl. Split-Labels, Schätzungs-Badges)
     }
 
     const gearButton = document.createElement('button');
@@ -5566,18 +5173,21 @@
     return bar;
   }
 
+  // erster vorhandener Platz für die Toolbar (Breadcrumb-Zeile, sonst Top-Bar)
+  function findToolbarTarget() {
+    for (const sel of TOOLBAR_TARGET_SELECTORS) {
+      const el = document.querySelector(sel);
+      if (el) return el;
+    }
+    return null;
+  }
+
   function repositionToolbarIfNeeded() {
     const bar = document.getElementById('ambient-progress-toolbar');
-    if (!bar) return;
-    for (let si = 0; si < TOOLBAR_TARGET_SELECTORS.length; si++) {
-      const candidate = document.querySelector(TOOLBAR_TARGET_SELECTORS[si]);
-      if (candidate) {
-        if (bar.parentNode !== candidate) {
-          log('[reposition] Verschiebe Toolbar → ' + candidate.tagName + '#' + candidate.id);
-          candidate.appendChild(bar);
-        }
-        return;
-      }
+    const target = bar && findToolbarTarget();
+    if (target && bar.parentNode !== target) {
+      log('[reposition] Verschiebe Toolbar → ' + target.tagName + '#' + target.id);
+      target.appendChild(bar);
     }
   }
 
@@ -6135,37 +5745,24 @@
   function sortBoardColumns(projectSettings, mode, columnLabel) {
     const projectPath = projectSettings && projectSettings.projectPath;
     if (!projectPath || !columnLabel) return;
-    const labels = [columnLabel];
     if (!window.confirm('Die Reihenfolge ändert sich für ALLE im Team.\n\n' +
       (mode === 'assignee' ? 'Tickets werden nach Assignee gruppiert (Unassigned zuerst)' : 'Tickets ohne Assignee werden nach oben sortiert') +
       ' in der Spalte „' + columnLabel + '“.\n\nFortfahren?')) {
       return;
     }
-    const base = '/api/v4/projects/' + encodeURIComponent(projectPath) + '/issues';
     let moved = 0;
-    labels.reduce(function (chain, label) {
-      return chain.then(function () {
-        // ponytail: per_page=100, keine Paginierung – ab 100 offenen Tickets pro Spalte fehlen die hinteren
-        return glFetch(base + '?state=opened&labels=' + encodeURIComponent(label) +
-          '&order_by=relative_position&sort=asc&per_page=100')
-          .then(function (res) {
-            if (!res.ok) throw new Error('Tickets laden: HTTP ' + res.status);
-            return res.json();
-          })
-          .then(function (issues) {
-            return planReorder(issues, mode).reduce(function (inner, move) {
-              return inner.then(function () {
-                const body = move.move_after_id ? {move_after_id: move.move_after_id} : {move_before_id: move.move_before_id};
-                return glFetch(base + '/' + move.iid + '/reorder', {method: 'PUT', body: JSON.stringify(body)})
-                  .then(function (res) {
-                    if (!res.ok) throw new Error('Verschieben von #' + move.iid + ': HTTP ' + res.status);
-                    moved++;
-                  });
-              });
-            }, Promise.resolve());
+    // ponytail: per_page=100, keine Paginierung – ab 100 offenen Tickets pro Spalte fehlen die hinteren
+    glApi(projectPath, '/issues?state=opened&labels=' + encodeURIComponent(columnLabel) +
+      '&order_by=relative_position&sort=asc&per_page=100', 'Tickets laden')
+      .then(function (issues) {
+        return planReorder(issues, mode).reduce(function (chain, move) {
+          return chain.then(function () {
+            const body = move.move_after_id ? {move_after_id: move.move_after_id} : {move_before_id: move.move_before_id};
+            return glApi(projectPath, '/issues/' + move.iid + '/reorder', 'Verschieben von #' + move.iid,
+              {method: 'PUT', body: JSON.stringify(body)}).then(function () { moved++; });
           });
-      });
-    }, Promise.resolve())
+        }, Promise.resolve());
+      })
       .then(function () {
         showToast({text: moved + ' Ticket(s) verschoben – lade neu…', variant: 'success'});
         setTimeout(function () { window.location.reload(); }, 800);
@@ -7225,9 +6822,7 @@
     mrLinksEnabled = typeof features.mrLinks === 'boolean' ? features.mrLinks : projectSettings.mrLinksEnabled;
 
     log('hostConfig:', hostConfig);
-    if (debugEnabled) {
-      log('projectKey:', projectSettings.projectKey, 'projectPath:', projectSettings.projectPath);
-    }
+    log('projectKey:', projectSettings.projectKey, 'projectPath:', projectSettings.projectPath);
 
     currentScanContext = {hostConfig: hostConfig, projectSettings: projectSettings};
     ensureStylesheet(); // vor allem, was einen Toast zeigen kann
@@ -7250,7 +6845,7 @@
       repositionToolbarIfNeeded();
       repositionMrLinksIfNeeded();
       if (isFeatureOn('splitLabels')) {
-        applySplitLabels(document.body); // auch Issue-Detail, Board-Drawer und MR-Seite
+        applySplitLabels(document.body); // einziger Durchlauf: Board-Header und -Karten, Issue-Detail, Drawer, MR-Seite
       }
       if (isFeatureOn('estimateBadge')) {
         applyEstimateBadges(); // Issue-Detail/-Drawer, MR-Seite (Karten in scanBoard)
