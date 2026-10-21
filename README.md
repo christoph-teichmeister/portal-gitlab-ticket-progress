@@ -43,7 +43,8 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    leuchtet kurz grün) und ausschließlich lokal im Browser abgelegt (per Projekt). Du musst sie nur einmal hinterlegen.
 8. Wenn die Portal-Base-URL fehlt, blendet das Script einen kleinen Toast von oben rechts ein („Portal-URL fehlt –
    Zahnrad → „Dieses Board“ öffnen und eintragen.”). Nach fünf Sekunden verschwindet der Hinweis wieder; du kannst
-   ihn bei Bedarf erneut triggern, indem du das Zahnrad öffnest.
+   ihn bei Bedarf erneut triggern, indem du das Zahnrad öffnest. Boards ohne Portal: im Tab „Dieses Board“ den
+   Schalter „Warnung bei fehlender Portal-URL“ ausschalten, dann bleibt der Toast dort weg.
 
 ## Ticket-Aktionen im MR
 
