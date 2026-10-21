@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.47
+
+- Timebox-Schätzungen auch ohne „Timebox:“/„Spike:“ und in Tagen: `(4h)`, `(3 Std.)`, `(1 Tag)`, `[2d]` werden als
+  Badge erkannt (`Timebox 1 Tag`). Eigene Muster: Gruppe 2 ist optional die Einheit.
+
 ## 2026.10.46
 
 - Neu: Klick auf einen Schätzungs-Badge einer Board-Karte zeigt nur noch Karten mit derselben Schätzung, erneuter

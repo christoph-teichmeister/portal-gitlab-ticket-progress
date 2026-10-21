@@ -213,7 +213,7 @@ die Schätzung daraus).
   diesem Board“ (Tooltip: welche Boards).
 - Muster: Zahnrad → Erweitert → „Schätzungs-Muster“ (mit Gültigkeitsanzeige). Eine Zeile pro Muster, `sp: <Regex>` oder `timebox: <Regex>`,
   Gruppe 1 ist die Zahl, Groß-/Kleinschreibung egal, das erste passende Muster gewinnt. Leeres Feld = Standard-Muster
-  (wie der Issue-Syncer des Portals: `(n SP)`, `(Timebox: nh)`, `(Spike: nh)`, auch mit `[]`, ohne Doppelpunkt und
+  (wie der Issue-Syncer des Portals: `(n SP)`, `(Timebox: nh)`, `(Spike: nh)`, `(nh)`, `(n Tage)`, auch mit `[]`, ohne Doppelpunkt und
   mit `,5` / `.5`). Ungültige Zeilen werden ignoriert und unter dem Feld gemeldet.
 - SP-Summe im Spalten-Header: `Σ 13 SP` neben GitLabs Zähler, für Label-Spalten und Closed (Open nicht). Zählt alle
   Tickets der Spalte über die GitLab-API, nicht nur die geladenen Karten, und übernimmt die Board-Filter aus der URL
