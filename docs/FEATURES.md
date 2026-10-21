@@ -37,7 +37,7 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
 - Zeigt die gleichen Progressdaten direkt im Issue-Detail unterhalb der Teilnehmer-Liste an, sofern auf dem Ticket
   bereits Daten im Cache liegen. Das Detail-Widget versucht weder einen zusätzlichen Board-Scan noch einen erneuten
   Portal-Request, sondern greift ausschließlich auf die zuletzt geladenen Werte zurück, die durch ein Board-Scan oder
-  eine manuelle Aktualisierung (Cache leeren / Jetzt aktualisieren) gespeichert wurden. Beim Detail greift das Script
+  eine manuelle Aktualisierung (Cache leeren / Daten neu laden) gespeichert wurden. Beim Detail greift das Script
   auf den passenden Board-Cache zu und nutzt zur Not den zuletzt gefundenen Board-Eintrag, damit auch direkte
   Detailseiten (ohne Board-URL) dieselben Daten wiederverwenden können.
 - Passt die Hintergrundfarbe der Toolbar-Dropdowns, Projekt-Konfiguration und Detail-Widgets an das aktuell gesetzte
@@ -237,7 +237,7 @@ die Schätzung daraus).
 - **Warnfarbe im Balken:** gelb ab 80 % verbrauchter Stunden; der Prozentwert steht im Tooltip und Screenreader-Text.
 - **Stale-while-revalidate:** abgelaufene Portal-Werte (bis 24 h) erscheinen sofort gedimmt und werden im Hintergrund
   erneuert; schlägt das fehl, bleibt der alte Wert mit Hinweis stehen.
-- **Cache-Alter** („geladen vor …“) im Balken-Tooltip. **Jetzt aktualisieren** leert den Cache und scannt neu, ohne
+- **Cache-Alter** („geladen vor …“) im Balken-Tooltip. **Daten neu laden** leert den Cache und scannt neu, ohne
   Seiten-Reload.
 - **Weitere Portal-Projekt-IDs** (bis zu 3 zusätzliche Balken): Zahnrad → Erweitert.
 - **Portal-Fehlerprotokoll:** Zahnrad → Erweitert → „Portal-Fehler anzeigen“.

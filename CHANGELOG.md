@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.10.36
+
+- Update-Hinweis deutlicher: gelber Kasten oben im Panel über der Status-Karte mit Schritt-für-Schritt-Anleitung (Tampermonkey-Dashboard),
+  statt einer unauffälligen Zeile unter der Status-Karte; Trennlinie im Update- und Rate-Limit-Hinweis entfernt.
+- ↻-Knopf heißt jetzt „Daten neu laden“, die Zeitangabe „Daten geladen“, damit beides nicht mehr wie ein Script-Update wirkt.
+
 ## 2026.10.35
 
 - Schätzungs-Badge im Ticket-Detail, im Drawer und auf der MR-Seite vertikal mittig zum Titel statt leicht nach unten versetzt.
