@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.43
+// @version      2026.10.44
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.43';
+  const SCRIPT_VERSION = '2026.10.44';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -1472,7 +1472,8 @@
       listFilterMode,
       portalBaseUrl,
       ticketActions: (storedProjectConfig && storedProjectConfig.ticketActions) || '',
-      estimateEnabled: !storedProjectConfig || storedProjectConfig.estimateEnabled !== false
+      estimateEnabled: !storedProjectConfig || storedProjectConfig.estimateEnabled !== false,
+      portalWarning: !storedProjectConfig || storedProjectConfig.portalWarning !== false
     };
   }
 
@@ -4362,7 +4363,7 @@
       return;
     }
     const baseUrl = getPortalBaseUrl(projectSettings);
-    if (!baseUrl) {
+    if (!baseUrl && projectSettings.portalWarning !== false) {
       showPortalWarningToast();
     }
   }
@@ -6394,6 +6395,14 @@
     projectStatusElement = projectField.status;
     portal.element.appendChild(projectField.element);
 
+    // Boards, die bewusst ohne Portal laufen, sollen nicht bei jedem Laden warnen
+    const warningToggle = makeSwitch('Warnung bei fehlender Portal-URL', projectSettings.portalWarning !== false, function (value) {
+      projectSettings.portalWarning = value;
+      writeProjectConfigEntry(projectSettings.projectKey, {portalWarning: value});
+    }, {desc: 'Aus, wenn dieses Board kein Portal nutzt: dann kein gelber Hinweis-Toast mehr.'});
+    warningToggle.style.margin = '0 -1.1rem';
+    portal.element.appendChild(warningToggle);
+
     // Weitere Projekt-IDs unter einer Trennlinie, erst nach der Einrichtung sichtbar
     const extras = document.createElement('div');
     applyStyles(extras, {flexDirection: 'column', margin: '0.25rem -1.1rem -1rem', padding: '0.9rem 1.1rem 0.2rem', borderTop: SETTINGS_BORDER});
@@ -6451,6 +6460,7 @@
       pillText.textContent = configured ? 'Verbunden · Projekt ' + projectSettings.projectId : 'Nicht eingerichtet';
       pill.style.color = configured ? SETTINGS_SUCCESS : 'var(--gl-text-color-warning, #c17d10)';
       intro.style.display = configured ? 'none' : '';
+      warningToggle.style.display = configured ? 'none' : ''; // eingerichtet → Warnung kommt eh nicht
       extras.style.display = configured ? 'flex' : 'none';
       stepNumbers.forEach(function (el) {
         el.style.display = configured ? 'none' : 'inline-flex';
