@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.37
+// @version      2026.10.38
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.37';
+  const SCRIPT_VERSION = '2026.10.38';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -1140,14 +1140,18 @@
     return window.location.pathname.indexOf('/-/issues') !== -1;
   }
 
+  // läuft pro Cache-Key jeder Karte: localStorage nur bei Wechsel anfassen
+  let lastBoardIdentifier;
   function getCurrentBoardIdentifier() {
-    const fromPath = getBoardIdentifierFromPath();
-    if (fromPath) {
-      writeLastBoardIdentifierToStorage(fromPath);
-      return fromPath;
+    if (lastBoardIdentifier === undefined) {
+      lastBoardIdentifier = readLastBoardIdentifierFromStorage();
     }
-    const stored = readLastBoardIdentifierFromStorage();
-    return stored || 'default';
+    const fromPath = getBoardIdentifierFromPath();
+    if (fromPath && fromPath !== lastBoardIdentifier) {
+      lastBoardIdentifier = fromPath;
+      writeLastBoardIdentifierToStorage(fromPath);
+    }
+    return lastBoardIdentifier || 'default';
   }
 
   function buildProgressCacheKey(projectSettings, issueIid, cacheKeySuffix) {
@@ -4766,7 +4770,10 @@
         );
         return;
       }
+      if (isProjectRequestBlocked(projectSettings.projectKey)) return;
       assigneeBlock.setAttribute('data-ambient-progress-url', url);
+      // vor dem Request markieren: sonst fragt jeder Scan nach Fehler oder leerer Antwort erneut an
+      if (assigneeBlock.parentElement) assigneeBlock.parentElement.dataset.ambientProgressMrIssueIid = issueIid;
       log('MR-Detail lädt Progress-Daten (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ')');
       totalFetchesSincePageLoad++;
       loadProgressData(url, issueIid)
@@ -4775,10 +4782,6 @@
           if (!progressData) return;
           setProgressCacheEntry(cacheKey, progressData);
           injectProgressIntoMRDetail(assigneeBlock, progressData, url, buildTimesheetUrl(projectSettings, issueIid), projectSettings, issueIid);
-          const parent = assigneeBlock.parentElement;
-          if (parent) {
-            parent.dataset.ambientProgressMrIssueIid = issueIid;
-          }
         })
         .catch(function (err) {
           error('Request-Fehler für MR-Issue ' + issueIid + ':', err);
@@ -5105,7 +5108,10 @@
         );
         return;
       }
+      if (isProjectRequestBlocked(projectSettings.projectKey)) return;
       detailWrapperElem.setAttribute('data-ambient-progress-url', url);
+      // vor dem Request markieren: sonst fragt jeder Scan nach Fehler oder leerer Antwort erneut an
+      detailWrapperElem.dataset.ambientProgressIssueIid = issueIid;
       log('Ticket-Detail lädt Progress-Daten (Projekt', projectSettings.projectPath + ',', 'Issue', issueIid + ')');
       totalFetchesSincePageLoad++;
       loadProgressData(url, issueIid)
@@ -5114,7 +5120,6 @@
           if (!progressData) return;
           setProgressCacheEntry(cacheKey, progressData);
           injectProgressIntoIssueDetail(detailWrapperElem, progressData, url, buildTimesheetUrl(projectSettings, issueIid), issueIid);
-          detailWrapperElem.dataset.ambientProgressIssueIid = issueIid;
         })
         .catch(function (err) {
           error('Request-Fehler für Issue ' + issueIid + ' (Detailansicht):', err);
@@ -5447,9 +5452,13 @@
     return wrapper;
   }
 
+  let toolbarCleanup = null;
   function createToolbar(hostConfig, projectSettings) {
     const existing = document.getElementById('ambient-progress-toolbar');
     if (existing) return existing;
+    // Vue kann die alte Toolbar samt Referenz verwerfen: deren Listener und Panel hier immer abräumen
+    if (toolbarCleanup) toolbarCleanup();
+    toolbarCleanup = null;
 
     const windowBackground = getGitLabWindowBackgroundColor(true);
 
@@ -6088,7 +6097,7 @@
     document.addEventListener('click', onDocumentClick);
     document.addEventListener('keydown', onDocumentKeydown);
     // beim Neuaufbau (Theme-Wechsel) Listener wieder entfernen
-    bar.ambientCleanup = function () {
+    toolbarCleanup = function () {
       document.removeEventListener('click', onDocumentClick);
       document.removeEventListener('keydown', onDocumentKeydown);
       dropdown.remove();
@@ -7831,8 +7840,6 @@
     function runScans() {
       // GitLab (Vue) kann den Toolbar-Container neu rendern und die Toolbar mitnehmen → neu aufbauen
       if (!document.getElementById('ambient-progress-toolbar')) {
-        const staleSettings = document.getElementById('ambient-progress-settings');
-        if (staleSettings) staleSettings.remove();
         createToolbar(hostConfig, projectSettings);
       }
       repositionToolbarIfNeeded();
@@ -7900,10 +7907,7 @@
       gitlabWindowBackgroundCache.light = null;
       gitlabWindowBackgroundCache.default = null;
       const oldBar = document.getElementById('ambient-progress-toolbar');
-      if (oldBar) {
-        if (oldBar.ambientCleanup) oldBar.ambientCleanup();
-        oldBar.remove();
-      }
+      if (oldBar) oldBar.remove();
       const oldLinks = document.getElementById('js-my-mr-links');
       if (oldLinks) oldLinks.remove();
       createToolbar(hostConfig, projectSettings);
