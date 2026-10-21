@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026.10.41
+
+- Aufgeräumt, ohne sichtbare Funktionsänderung: Ticket-Detail und MR-Seite laden über einen gemeinsamen Weg, die
+  Zeile „Timesheet | Balken | Portal" wird an allen fünf Stellen von einem Helfer gebaut, GitLab-API-Aufrufe und
+  ihr Caching laufen über zwei gemeinsame Helfer.
+- Geteilte Scoped Labels werden einmal pro Scan angewendet statt dreimal (weniger Layout-Arbeit bei jeder DOM-Änderung).
+- Liefert das Portal die Stunden im title-Attribut, wird das Dokument nicht mehr ein zweites Mal nach „Booked Hours"
+  durchsucht.
+- Stunden werden auf zwei Nachkommastellen gerundet angezeigt (keine Float-Reste wie 6.4999999h).
+
 ## 2026.10.40
 
 - Schätzungs-Badge pro Board abschaltbar: Zahnrad → Dieses Board → „Schätzung als Badge auf diesem Board“. Boards ohne
