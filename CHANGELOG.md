@@ -15,6 +15,8 @@
 - Erweitert: Sprache als Umschalter, Schätzungs-Muster mit Gültigkeitsanzeige und „Auf Standard zurücksetzen“,
   Diagnose-Werkzeuge als beschriftete Zeilen, „Alle lokalen Daten löschen“ abgesetzt in einer roten Gefahrenzone.
 - Schalter in GitLab-Blau, ganze Zeile klickbar; Tabs per Pfeiltasten bedienbar.
+- Das Panel fährt von rechts herein und nach rechts hinaus (ohne Ausblenden); Reiter und Unterreiter gleiten beim
+  Wechsel kurz aus der Richtung ein (aus bei `prefers-reduced-motion`).
 
 ## 2026.10.36
 

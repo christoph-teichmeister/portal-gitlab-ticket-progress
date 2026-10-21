@@ -5649,11 +5649,10 @@
       width: 'clamp(480px, 42vw, 720px)',
       maxWidth: '100vw',
       overflowY: 'auto',
-      opacity: '0',
-      transform: 'translateX(32px)',
+      transform: SETTINGS_PANEL_HIDDEN_TRANSFORM,
       pointerEvents: 'none',
       visibility: 'hidden', // geschlossen auch aus Tab-Reihenfolge und Screenreader-Baum
-      transition: 'opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s'
+      transition: 'transform 0.25s ease, visibility 0s linear 0.25s'
     });
 
     // Kopf (Titel, Hauptschalter, Schließen, Tabs) und Fuß (Datenstand, Neu laden) bleiben beim Scrollen stehen
@@ -5864,6 +5863,8 @@
     });
 
     function selectTab(key) {
+      const keys = tabDefs.map(function (def) { return def[0]; });
+      const previous = activeSettingsTab;
       activeSettingsTab = key;
       Object.keys(tabButtons).forEach(function (k) {
         const selected = k === key;
@@ -5877,6 +5878,11 @@
         tabPanels[k].style.display = selected ? 'flex' : 'none';
         pinnedPreview.style.display = key === 'anzeige' ? 'block' : 'none';
       });
+      if (previous && previous !== key) {
+        const direction = keys.indexOf(key) > keys.indexOf(previous) ? 1 : -1;
+        animateTabIn(tabPanels[key], direction);
+        if (key === 'anzeige') animateTabIn(pinnedPreview, direction);
+      }
     }
 
     // Ein noch nicht eingerichtetes Board öffnet direkt auf „Dieses Board"
@@ -6029,13 +6035,13 @@
 
     function updateDropdownVisibility() {
       const isOpen = dropdownLocked;
-      dropdown.style.opacity = isOpen ? '1' : '0';
-      dropdown.style.transform = isOpen ? 'translateX(0)' : 'translateX(32px)';
+      // fährt von rechts herein und nach rechts hinaus, ohne Ausblenden
+      dropdown.style.transform = isOpen ? 'translateX(0)' : SETTINGS_PANEL_HIDDEN_TRANSFORM;
       dropdown.style.pointerEvents = isOpen ? 'auto' : 'none';
       dropdown.style.visibility = isOpen ? 'visible' : 'hidden';
       dropdown.style.transition = isOpen
-        ? 'opacity 0.2s ease, transform 0.2s ease, visibility 0s'
-        : 'opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s';
+        ? 'transform 0.25s ease-out, visibility 0s'
+        : 'transform 0.25s ease-in, visibility 0s linear 0.25s';
       gearButton.setAttribute('aria-expanded', String(isOpen));
     }
 
@@ -6294,6 +6300,17 @@
     whiteSpace: 'nowrap'
   };
   const TAB_PANEL_STYLES = {display: 'flex', flexDirection: 'column', gap: '1.25rem'};
+  // Geschlossenes Panel: ganz rechts aus dem Bild, samt Schatten
+  const SETTINGS_PANEL_HIDDEN_TRANSFORM = 'translateX(calc(100% + 32px))';
+
+  // Neuer Reiter gleitet kurz aus der Richtung ein, in die gewechselt wurde (1 = nach rechts, -1 = nach links)
+  function animateTabIn(el, direction) {
+    if (!el.animate || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+    el.animate([
+      {opacity: 0, transform: 'translateX(' + (direction * 24) + 'px)'},
+      {opacity: 1, transform: 'translateX(0)'}
+    ], {duration: 200, easing: 'ease-out'});
+  }
 
   const CARD_STYLES = {
     display: 'flex',
@@ -7229,6 +7246,8 @@
     });
 
     function selectSubtab(key) {
+      const previous = activeDisplaySubtab;
+      const keys = DISPLAY_SUBTABS.map(function (def) { return def[0]; });
       activeDisplaySubtab = key;
       Object.keys(subtabs).forEach(function (k) {
         const selected = k === key;
@@ -7238,6 +7257,11 @@
         subtabs[k].section.style.display = selected ? 'flex' : 'none';
       });
       subtabs[key].preview.refresh();
+      if (previous !== key) {
+        const direction = keys.indexOf(key) > keys.indexOf(previous) ? 1 : -1;
+        animateTabIn(subtabs[key].preview.element, direction);
+        animateTabIn(subtabs[key].section, direction);
+      }
     }
 
     function refresh() {
