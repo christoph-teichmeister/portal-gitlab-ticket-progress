@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.52
+
+- Schätzungs-Badge sitzt auf allen Board-Karten bündig oben rechts, auch bei langen Titeln (bisher in beweglichen
+  Spalten 24px weiter innen als in Closed). Beim Hover gleitet er nach links und macht GitLabs Verschiebe-Menü Platz.
+
 ## 2026.10.51
 
 - Nach dem Scan-Limit (80 Portal-Abfragen pro Durchlauf) legt das Script nach 2 Sekunden selbst einen weiteren Durchlauf
