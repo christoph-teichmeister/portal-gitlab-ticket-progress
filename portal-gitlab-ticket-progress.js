@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.45
+// @version      2026.10.46
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.45';
+  const SCRIPT_VERSION = '2026.10.46';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -165,6 +165,7 @@
       // Titel füllt die Kartenbreite, damit der Schätzungs-Badge (float) ganz rechts steht – links von GitLabs
       // Verschiebe-Menü, das beim Hover in der reservierten rechten Ecke erscheint
       '.board-card-title:has(.ambient-estimate-badge){flex-grow:1}' +
+      '.board-card .ambient-estimate-badge{cursor:pointer}' +
       // Hover für das MR-Badge: Fläche per box-shadow vergrößert, damit sich das Layout nicht verschiebt
       '.ambient-mr-badge:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.22));box-shadow:0 0 0 3px var(--gl-background-color-strong,rgba(128,128,128,.22));border-radius:4px;text-decoration:underline !important}' +
       // Einstellungs-Panel: rechts angedockt, unter der Top-Bar (`top` setzt das Öffnen); hängt am body, damit kein
@@ -3336,7 +3337,16 @@
         position: 'relative', top: '-0.18em'});
     badge.className = 'ambient-estimate-badge gl-badge badge badge-pill ' +
       ESTIMATE_BADGE_VARIANTS[estimate ? estimate.kind : 'none'];
+    badge.dataset.label = badge.textContent;
     if (!textNode) badge.title = 'Keine Schätzung im Titel';
+    if (pinRight) {
+      badge.title = (badge.title ? badge.title + ' · ' : '') + 'Klick: nur „' + badge.textContent + '" zeigen, erneut: alle';
+      badge.addEventListener('click', function (ev) {
+        ev.preventDefault(); // Badge sitzt im Titel-Link, sonst öffnet sich das Ticket
+        ev.stopPropagation();
+        toggleEstimateFilter(badge.dataset.label);
+      });
+    }
     if (pinRight) container.prepend(badge); // Float muss vor dem Text stehen
     else if (textNode) textNode.after(badge);
     else container.appendChild(badge);
@@ -3344,6 +3354,24 @@
     badge.ambientTextNode = textNode;
     badge.dataset.ambientOriginal = textNode.data;
     if (stripTitle) textNode.data = textNode.data.match(/^\s*/)[0] + estimate.cleanTitle; // führendes Leerzeichen nach einem Link bleibt
+  }
+
+  // Klick auf einen Board-Badge blendet alle Karten mit anderer Schätzung aus; per :has() greift das auch für
+  // Karten, die GitLab später nachlädt. Nur bis zum Neuladen, nicht gespeichert.
+  let estimateFilter = '';
+  function toggleEstimateFilter(label) {
+    estimateFilter = estimateFilter === label ? '' : label;
+    let style = document.getElementById('ambient-estimate-filter');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'ambient-estimate-filter';
+      document.head.appendChild(style);
+    }
+    const match = '.ambient-estimate-badge[data-label="' + CSS.escape(estimateFilter) + '"]';
+    style.textContent = estimateFilter
+      ? SEL.boardCard + ':not(:has(' + match + ')){display:none !important}' +
+        SEL.boardCard + ' ' + match + '{outline:2px solid currentColor;outline-offset:1px}'
+      : '';
   }
 
   // Board-Karten laufen über scanBoard (nur aktive Spalten), hier Issue-Detail/-Drawer und MR-Seite
