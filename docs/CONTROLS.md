@@ -40,6 +40,6 @@ geänderte Feld leuchtet kurz grün. Das Menü ist per Tastatur erreichbar.
 - **Autosave** (Projekt-Konfiguration): Gültige Änderungen werden entprellt gespeichert, das geänderte Feld leuchtet
   kurz grün. Bei Projekt-ID, Portal-URL oder zweiter ID leert das Script den Cache und lädt das Board ohne
   Seiten-Reload neu. Ungültige oder unvollständige Eingaben werden nicht gespeichert, der Hinweis steht am Feld.
-- **Letzte Aktualisierung**: Die Status-Karte zeigt den Zeitpunkt der letzten erfolgreichen Portal-Anfrage; der
+- **Daten geladen**: Die Status-Karte zeigt den Zeitpunkt der letzten erfolgreichen Portal-Anfrage; der
   Button `↻` leert den lokalen Cache, setzt den Zeitstempel zurück und scannt das Board neu (ohne Seiten-Reload),
   damit alle Tickets nochmals vom Portal abgefragt werden.

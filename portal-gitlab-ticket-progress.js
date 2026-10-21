@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.35
+// @version      2026.10.36
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.35';
+  const SCRIPT_VERSION = '2026.10.36';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -417,7 +417,7 @@
     'Portal: nicht gefunden': 'Portal: not found',
     'Im Portal öffnen': 'Open in portal',
     'Timesheet erstellen': 'Create timesheet',
-    'Jetzt aktualisieren': 'Refresh now',
+    'Daten neu laden': 'Reload data',
     'Cache geleert, aktualisiere…': 'Cache cleared, refreshing…',
     'In dieser Spalte seit ': 'In this column since ',
     ' (länger als der Spalten-Median)': ' (longer than the column median)',
@@ -443,16 +443,14 @@
   let releaseNotificationElements = {
     badge: null,
     messageRow: null,
-    messageText: null,
-    divider: null
+    messageText: null
   };
 
   let rateLimitWarningActive = null; // null = noch nicht aus localStorage geladen
   let rateLimitNotificationElements = {
     badge: null,
     messageRow: null,
-    messageText: null,
-    divider: null
+    messageText: null
   };
   let lastRateLimitToastAt = 0;
 
@@ -792,7 +790,7 @@
 
   function updateReleaseNotificationUI(info) {
     const elements = releaseNotificationElements;
-    if (!elements.badge || !elements.messageRow || !elements.messageText || !elements.divider) {
+    if (!elements.badge || !elements.messageRow || !elements.messageText) {
       return;
     }
     const hasRemoteUpdate =
@@ -806,19 +804,12 @@
       const displayVersion =
         (info && info.version ? formatVersionLabel(info.version) : formatVersionLabel(SCRIPT_VERSION)) ||
         formatVersionLabel(SCRIPT_VERSION);
-      elements.messageText.textContent =
-        '⚠️ Neue Version ' +
-        displayVersion +
-        ' verfügbar - öffne das Tampermonkey-Dashboard, um das Script zu aktualisieren.';
-      if (info.notes) {
-        elements.messageText.style.whiteSpace = 'pre-line';
-        elements.messageText.textContent += '\n' + info.notes;
-      }
-      elements.divider.style.display = 'block';
+      elements.messageText.textContent = '⚠️ Update verfügbar: ' + displayVersion;
+      elements.messageNotes.textContent = info.notes || '';
+      elements.messageNotes.style.display = info.notes ? 'block' : 'none';
     } else {
       elements.badge.style.display = 'none';
       elements.messageRow.style.display = 'none';
-      elements.divider.style.display = 'none';
     }
     updateGearLabel();
   }
@@ -860,7 +851,7 @@
 
   function updateRateLimitWarningUI(state) {
     const elements = rateLimitNotificationElements;
-    if (!elements.badge || !elements.messageRow || !elements.messageText || !elements.divider) {
+    if (!elements.badge || !elements.messageRow || !elements.messageText) {
       return;
     }
     const isActive = Boolean(state && state.active);
@@ -871,11 +862,9 @@
         '⚠️ Rate-Limit erreicht (mehr als ' +
         MAX_NEW_FETCHES_PER_SCAN +
         ' Tickets gleichzeitig) – bitte Anzahl ausgewählter Board-Spalten reduzieren, damit alle Tickets zuverlässig geladen werden.';
-      elements.divider.style.display = 'block';
     } else {
       elements.badge.style.display = 'none';
       elements.messageRow.style.display = 'none';
-      elements.divider.style.display = 'none';
     }
     updateGearLabel();
   }
@@ -947,6 +936,10 @@
     if (cached) {
       updateReleaseNotificationUI(cached);
       log('Release check: using cached version', cached.version, 'lastChecked=', cached.checkedAt);
+      // Notizen fehlen, wenn der letzte Check lief, als die installierte Version noch nicht älter war
+      if (!cached.notes && isRemoteVersionGreater(cached.version, SCRIPT_VERSION)) {
+        fetchChangelogNotes(cached);
+      }
     }
     if (cached && Date.now() - cached.checkedAt < RELEASE_CHECK_INTERVAL_MS) {
       return;
@@ -993,8 +986,8 @@
     }
     const timestamp = readLastRefreshTimestamp();
     lastRefreshLabelElement.textContent = timestamp
-      ? 'Letzte Aktualisierung: ' + formatRefreshTimestamp(timestamp)
-      : 'Letzte Aktualisierung: -';
+      ? 'Daten geladen: ' + formatRefreshTimestamp(timestamp)
+      : 'Daten geladen: -';
   }
 
   function formatRefreshTimestamp(value) {
@@ -5708,6 +5701,34 @@
     versionRow.appendChild(showToggle);
     statusCard.appendChild(versionRow);
 
+    // Update-Hinweis über der Status-Karte, damit er vor dem ↻-Knopf (lädt nur Daten neu) ins Auge fällt
+    const releaseNotificationRow = document.createElement('div');
+    applyStyles(releaseNotificationRow, {
+      display: 'none',
+      flexDirection: 'column',
+      gap: '0.3rem',
+      padding: '0.6rem 0.75rem',
+      borderRadius: '6px',
+      border: '1px solid ' + TOAST_VARIANTS.warning.background,
+      background: 'rgba(251, 191, 36, 0.12)',
+      fontSize: '0.8rem',
+      lineHeight: '1.35'
+    });
+    const releaseNotificationText = document.createElement('div');
+    applyStyles(releaseNotificationText, {fontWeight: '700'});
+    const releaseNotificationSteps = document.createElement('div');
+    releaseNotificationSteps.textContent =
+      'So updatest du: Tampermonkey-Icon → Dashboard → Script anhaken → „Aktualisieren“ (oder Tab „Installierte Userscripts“ → Updates suchen), danach diese Seite neu laden.';
+    const releaseNotificationNotes = document.createElement('div');
+    applyStyles(releaseNotificationNotes, {whiteSpace: 'pre-line', opacity: '0.8', fontSize: '0.75rem'});
+    releaseNotificationRow.appendChild(releaseNotificationText);
+    releaseNotificationRow.appendChild(releaseNotificationSteps);
+    releaseNotificationRow.appendChild(releaseNotificationNotes);
+    releaseNotificationElements.messageRow = releaseNotificationRow;
+    releaseNotificationElements.messageText = releaseNotificationText;
+    releaseNotificationElements.messageNotes = releaseNotificationNotes;
+    content.insertBefore(releaseNotificationRow, statusCard);
+
     const timestampRow = document.createElement('div');
     applyStyles(timestampRow, {
       display: 'flex',
@@ -5730,7 +5751,7 @@
       const refreshButton = document.createElement('button');
       refreshButton.type = 'button';
       refreshButton.textContent = '↻';
-      refreshButton.title = t('Jetzt aktualisieren');
+      refreshButton.title = t('Daten neu laden');
       refreshButton.setAttribute('aria-label', 'Cache leeren und neu laden');
       refreshButton.className = 'ambient-btn ambient-btn-primary btn gl-button btn-confirm btn-sm';
       refreshButton.addEventListener('click', function () {
@@ -5741,34 +5762,6 @@
     }
 
     statusCard.appendChild(timestampRow);
-
-    const releaseNotificationRow = document.createElement('div');
-    applyStyles(releaseNotificationRow, CARD_STYLES);
-    applyStyles(releaseNotificationRow, {display: 'none', gap: '0.25rem', padding: '0.7rem 0.9rem'});
-
-    const releaseNotificationText = document.createElement('div');
-    applyStyles(releaseNotificationText, {
-      fontSize: '0.78rem',
-      lineHeight: '1.35',
-      opacity: '0.9',
-      color: toolbarTextColor
-    });
-
-    releaseNotificationRow.appendChild(releaseNotificationText);
-    const releaseNotificationDivider = document.createElement('div');
-    applyStyles(releaseNotificationDivider, {
-      width: '100%',
-      height: '1px',
-      background: 'rgba(255, 255, 255, 0.1)',
-      borderRadius: '2px',
-      margin: '0.35rem 0'
-    });
-    releaseNotificationDivider.style.display = 'none';
-    releaseNotificationRow.appendChild(releaseNotificationDivider);
-    releaseNotificationElements.messageRow = releaseNotificationRow;
-    releaseNotificationElements.messageText = releaseNotificationText;
-    releaseNotificationElements.divider = releaseNotificationDivider;
-    content.appendChild(releaseNotificationRow);
 
     const rateLimitNotificationRow = document.createElement('div');
     applyStyles(rateLimitNotificationRow, CARD_STYLES);
@@ -5783,19 +5776,8 @@
     });
 
     rateLimitNotificationRow.appendChild(rateLimitNotificationText);
-    const rateLimitNotificationDivider = document.createElement('div');
-    applyStyles(rateLimitNotificationDivider, {
-      width: '100%',
-      height: '1px',
-      background: 'rgba(255, 255, 255, 0.1)',
-      borderRadius: '2px',
-      margin: '0.35rem 0'
-    });
-    rateLimitNotificationDivider.style.display = 'none';
-    rateLimitNotificationRow.appendChild(rateLimitNotificationDivider);
     rateLimitNotificationElements.messageRow = rateLimitNotificationRow;
     rateLimitNotificationElements.messageText = rateLimitNotificationText;
-    rateLimitNotificationElements.divider = rateLimitNotificationDivider;
     content.appendChild(rateLimitNotificationRow);
     updateRateLimitWarningUI(getCachedRateLimitWarning());
 
