@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.53
+
+- Lange Spalten-Labels: Reicht der Platz nicht, fällt der Scope-Teil („Workflow“) ganz weg statt als schmaler Balken
+  stehen zu bleiben; der Name endet mit „…“ und hat Abstand zu Median/Σ SP. Der volle Name steht im Tooltip.
+
 ## 2026.10.52
 
 - Schätzungs-Badge sitzt auf allen Board-Karten bündig oben rechts, auch bei langen Titeln (bisher in beweglichen

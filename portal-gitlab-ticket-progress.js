@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.52
+// @version      2026.10.53
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.52';
+  const SCRIPT_VERSION = '2026.10.53';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -160,6 +160,8 @@
       '.ambient-split-label>span:nth-child(2){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
       // GitLabs h2 hat hier Standard-Abstände (20px oben / 10px unten) und sitzt dadurch ~5px unter den Icons
       '[data-testid="board-list-header"] .board-title-text{min-width:0;margin-top:0 !important;margin-bottom:0 !important}' +
+      // Abstand zu Median/Σ SP, sonst stößt ein gekürztes Label direkt an „3d" (Pill setzt margin inline auf 0)
+      '[data-testid="board-list-header"] .ambient-split-label{margin-right:.5rem !important}' +
       // Zähler mit Median/SP-Summe nie stauchen: lange Spalten-Labels kürzen sich (Ellipse) statt dass „Σ 13 SP" umbricht
       '[data-testid="board-list-header"] [data-testid="issue-count-badge"]:has(.ambient-column-sp,.ambient-column-avg){flex-shrink:0}' +
       // Titel füllt die Kartenbreite, damit der Schätzungs-Badge (float) ganz rechts steht – links von GitLabs
@@ -3525,8 +3527,8 @@
       padding: '0 8px'
     });
     const right = createTextSpan(name, {
-      display: 'inline-flex',
-      alignItems: 'center',
+      display: 'block', // Flex-Container können kein text-overflow: ellipsis
+      lineHeight: '18px', // Pill 20px minus Rahmen, zentriert den Text
       background: 'var(--gl-background-color-default, #ffffff)',
       color: readableOnPageBackground(color), // wie bei GitLabs Scoped Labels: Label-Farbe als Schrift, bei Bedarf aufgehellt
       padding: '0 8px'
@@ -3621,15 +3623,14 @@
     cardElem.querySelectorAll(SEL.boardListHeader + ' .ambient-split-label').forEach(fitSplitLabel);
   }
 
-  // Reicht der Platz im Spalten-Header nicht, wird der Scope-Teil („Workflow") zum schmalen Farbbalken, damit
-  // mehr vom Namen sichtbar bleibt (der volle Text steht im Tooltip)
+  // Reicht der Platz im Spalten-Header nicht, fällt der Scope-Teil („Workflow") weg, damit mehr vom Namen
+  // sichtbar bleibt (der volle Text steht im Tooltip)
   function fitSplitLabel(el) {
     const left = el.firstElementChild;
     const right = el.children[1];
     if (!left || !right) return;
-    const compact = {width: '10px', padding: '0', fontSize: '0', overflow: 'hidden'};
-    applyStyles(left, {width: '', padding: '0 8px', fontSize: '', overflow: ''}); // erst volle Breite probieren
-    if (right.scrollWidth > right.clientWidth + 1) applyStyles(left, compact);
+    left.style.display = ''; // erst mit Scope probieren
+    if (right.scrollWidth > right.clientWidth + 1) left.style.display = 'none';
   }
 
   function removeSplitLabels() {
