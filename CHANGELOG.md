@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.44
+
+- Neu: Schalter **Warnung bei fehlender Portal-URL** unter Zahnrad → Dieses Board. Aus = kein gelber Toast auf
+  Boards, die bewusst ohne Portal laufen.
+
 ## 2026.10.42
 
 - „Zweites Portal-Projekt“ und „Weitere Projekt-IDs“ zusammengelegt: ein Feld **Weitere Projekt-IDs** pro Board
