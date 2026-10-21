@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.10.51
+
+- Nach dem Scan-Limit (80 Portal-Abfragen pro Durchlauf) legt das Script nach 2 Sekunden selbst einen weiteren Durchlauf
+  nach. Bisher blieben die übrigen Karten ohne Balken, bis sich auf der Seite zufällig etwas änderte (fiel vor allem
+  in der Closed-Spalte beim Scrollen auf).
+
 ## 2026.10.50
 
 - Closed-Spalte bekommt ihr Auge jetzt auch, wenn GitLab dort keine Button-Gruppe (`+`/`⚙`) zeichnet: das Script

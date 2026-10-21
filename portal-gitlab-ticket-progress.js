@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.50
+// @version      2026.10.51
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.50';
+  const SCRIPT_VERSION = '2026.10.51';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -2141,6 +2141,8 @@
 
   let currentScanContext = null; // {projectSettings}, gesetzt in init
   let rescanHook = null; // gesetzt in init: stößt einen entprellten Scan an
+  const SCAN_LIMIT_RETRY_MS = 2000;
+  let scanLimitRetryTimer = null;
   const portalErrorLog = []; // letzte Portal-Fehler (nur im Speicher)
   const PORTAL_ERROR_LOG_MAX = 30;
 
@@ -3783,6 +3785,13 @@
         'Scan-Limit erreicht (' + MAX_NEW_FETCHES_PER_SCAN +
         '), weitere Karten werden erst im nächsten Scan verarbeitet.'
       );
+      // Ohne DOM-Änderung käme kein nächster Scan → selbst nachlegen, gedrosselt auf einen pro SCAN_LIMIT_RETRY_MS
+      if (!scanLimitRetryTimer) {
+        scanLimitRetryTimer = setTimeout(function () {
+          scanLimitRetryTimer = null;
+          if (rescanHook) rescanHook();
+        }, SCAN_LIMIT_RETRY_MS);
+      }
       setRateLimitWarning(true, boardLists.length);
       const now = Date.now();
       if (now - lastRateLimitToastAt >= RATE_LIMIT_TOAST_COOLDOWN_MS) {
