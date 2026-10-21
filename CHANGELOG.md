@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.48
+
+- Ohne Portal-URL und Projekt-ID zeigen die Spalten kein Auge mehr (es hätte nichts zu schalten); das Gruppieren
+  bleibt.
+
 ## 2026.10.47
 
 - Timebox-Schätzungen auch ohne „Timebox:“/„Spike:“ und in Tagen: `(4h)`, `(3 Std.)`, `(1 Tag)`, `[2d]` werden als
