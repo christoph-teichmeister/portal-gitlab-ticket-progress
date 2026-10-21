@@ -1,25 +1,17 @@
 # Wesentliche Features
 
-## Multi-Board-Unterstützung (zwei Projekt-IDs)
+## Weitere Portal-Projekte
 
-Das Script unterstützt die gleichzeitige Abfrage von **zwei verschiedenen Portal-Projekten** pro GitLab-Board. Dies ist
-nützlich, wenn Tickets über mehrere Abteilungen oder Kostenplätze gebuchte Stunden abbilden sollen.
+Werden Tickets eines Boards auch in anderen Portal-Projekten gebucht (andere Abteilung, anderer Kostenplatz), zeigt
+die Karte pro weiterem Projekt einen eigenen Balken in eigener Farbe.
 
-### Einrichtung der zweiten Projekt-ID
+1. Zahnrad → Tab **„Dieses Board“** → Karte „Portal-Verbindung“
+2. Feld **„Weitere Projekt-IDs“**: bis zu 3 IDs, kommagetrennt (z. B. `5678, 5679`); gespeichert wird automatisch
+   (Feld leuchtet kurz grün)
 
-1. Öffne das Zahnrad-Menü in der GitLab-Topbar, Tab **„Dieses Board“** → Karte „Portal-Verbindung“
-2. Aktiviere den Schalter **„Zweites Portal-Projekt“**
-3. Gib deine **zweite Portal-Projekt-ID** in das Eingabefeld ein (z. B. `5678`); die Änderung wird automatisch
-   gespeichert (Feld leuchtet kurz grün)
-
-Das Script lädt dann beim nächsten Scan Fortschrittsdaten von **beiden Projekt-IDs** und aggregiert sie:
-
-- Verbrachte Stunden beider Projekte addieren sich zur angezeigten Progressbar
-- Verbleibende Stunden werden kombiniert
-- Sollte eines der beiden Portale nicht antwortet, zeigt das Script trotzdem die Daten des anderen an
-
-**Hinweis**: Beide Projekt-IDs müssen mit der gleichen Portal-Base-URL erreichbar sein. Die Einstellung wirkt sich auf
-das **gesamte Projekt** aus und wird lokal gespeichert.
+Ein Balken erscheint nur, wenn das Ticket im jeweiligen Projekt gefunden wurde. Alle Projekte nutzen die Portal-Base-URL
+des Boards; die Einstellung gilt pro Board. Das frühere „zweite Portal-Projekt“ wird automatisch in dieses Feld
+übernommen.
 
 ## Toolbar & Bedienelemente
 
@@ -61,10 +53,7 @@ das **gesamte Projekt** aus und wird lokal gespeichert.
 - Zeigt im Panel eine Zeile mit dem Zeitstempel der letzten Portal-Anfrage und einen Button zum sofortigen
   Neuladen aller Tickets; der Button löscht den lokalen Cache, setzt den Zeitstempel zurück und scannt das Board neu
   (ohne Seiten-Reload), damit alle Tickets erneut vom Portal angefragt werden.
-- Unterstützt die optionale Konfiguration einer **zweiten Projekt-ID**, um Fortschrittsdaten aus zwei verschiedenen
-  Portal-Projekten zu kombinieren. Wenn aktiviert, lädt das Script Daten von beiden Projekt-IDs und aggregiert sie in
-  der angezeigten Progressbar (Summe aller Stunden, kombinierte Auslastung). Jedes Board-Projekt speichert diese
-  Einstellung separat.
+- Zeigt optional Balken für bis zu 3 **weitere Portal-Projekte** pro Board (siehe oben).
 - Zeigt neben dem Zahnrad zwei MR-Buttons „R“ („MRs, bei denen ich Reviewer bin“) und „A“ („Meine MRs“), die direkt
   zur gefilterten Merge-Request-Liste des aktuellen Projekts verlinken. Gefiltert wird nach dem eingeloggten
   GitLab-User.

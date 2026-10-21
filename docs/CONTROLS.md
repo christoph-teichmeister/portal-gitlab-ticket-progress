@@ -30,13 +30,11 @@ Tab, Escape schließt); jede Schalter-Zeile ist als Ganzes klickbar.
 
   Unterpunkte sind eingerückt und ausgegraut, solange das übergeordnete Feature aus ist. Ausgeschaltete Features laden
   auch keine Daten mehr (z. B. keine MR-Liste ohne MR-Badge, keine Label-Historie ohne Verweildauer). Standard: alles an.
-  Anzeigen, Debug und MR-Buttons waren früher pro Projekt gespeichert; der bisherige Wert wird beim ersten Start als
-  Ausgangswert übernommen.
 - **Tab Dieses Board** (gilt nur für das aktuelle Board, Pfad steht oben):
   - *Portal-Verbindung*: Portal-URL und Portal-Projekt-ID mit Status („Verbunden · Projekt …“ / „Nicht eingerichtet“).
     Ist das Board noch nicht eingerichtet, öffnet das Panel direkt hier, der Tab trägt ein „!“, die beiden Felder sind
-    nummeriert und die übrigen Karten gesperrt. Nach der Einrichtung: Schalter **Zweites Portal-Projekt** mit Feld
-    und **Weitere Projekt-IDs** (Chip „alle Boards“, bis zu 3 zusätzliche Balken).
+    nummeriert und die übrigen Karten gesperrt. Nach der Einrichtung: Feld **Weitere Projekt-IDs**
+    (kommagetrennt, bis zu 3 zusätzliche Balken für Tickets, die auch in anderen Portal-Projekten gebucht werden).
   - *Schätzungen*: Schalter **Schätzung als Badge auf diesem Board** (Standard an). Aus für Boards ohne SP/Timeboxen,
     sonst trägt jede Karte ein rotes `? SP`. Gilt pro Projekt, auch für Ticket- und MR-Seiten des Projekts.
   - *Liegezeit hervorheben* (`ambientProgressAgeHighlightLists`): ein Chip pro Label-Spalte des Boards. Nur in
@@ -56,7 +54,7 @@ Tab, Escape schließt); jede Schalter-Zeile ist als Ganzes klickbar.
 - **Fehlerzustände & Portal-Hinweise**: Hilfreiche Toasts warnen bei fehlender Portal-Base, 403/404-Block(-Wiederholung) oder
   dem erfolgreichen Speichern von Einstellungen; die Warnung zu fehlender Base meldet sich maximal alle zwei Minuten.
 - **Autosave** (Tab Dieses Board): Gültige Änderungen werden 0,7 s nach der letzten Eingabe gespeichert, das geänderte Feld leuchtet
-  kurz grün. Bei Projekt-ID, Portal-URL oder zweiter ID leert das Script den Cache und lädt das Board ohne
+  kurz grün. Bei Projekt-ID, Portal-URL oder weiteren Projekt-IDs leert das Script den Cache und lädt das Board ohne
   Seiten-Reload neu. Ungültige oder unvollständige Eingaben werden nicht gespeichert, der Hinweis steht am Feld.
 - **Daten geladen**: Der Fuß des Panels zeigt den Zeitpunkt der letzten erfolgreichen Portal-Anfrage; der
   Button „↻ Daten neu laden“ leert den lokalen Cache, setzt den Zeitstempel zurück und scannt das Board neu (ohne Seiten-Reload),
