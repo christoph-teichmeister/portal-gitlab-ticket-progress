@@ -3068,7 +3068,7 @@
     if (!isFeatureOn('columnAvg')) return;
     const header = getBoardListHeaderElement(boardListElem);
     const countBadge = header && header.querySelector(SEL.issueCountBadge);
-    if (!countBadge || countBadge.querySelector('.ambient-column-avg')) return;
+    if (!countBadge || countBadge.querySelector('.ambient-column-avg') || isVerticalText(header)) return;
     const el = createColumnAvgElement(countBadge);
     el.setAttribute('data-ambient-loading', '1');
     el.setAttribute('aria-hidden', 'true');
@@ -3083,7 +3083,7 @@
     const countBadge = header && header.querySelector(SEL.issueCountBadge);
     if (!countBadge) return;
     let el = countBadge.querySelector('.ambient-column-avg');
-    if (avg === null) {
+    if (avg === null || isVerticalText(header)) {
       if (el) el.remove();
       return;
     }
@@ -3164,7 +3164,8 @@
     const columnLabel = header.querySelector(SEL.listTitleLabel) ? getColumnLabelText(boardListElem, header) : null;
     const isClosed = !columnLabel &&
       /^(closed|geschlossen)$/.test(normalizeListNameForMatching(getListNameFromBoardListElem(boardListElem, header)));
-    if (!isFeatureOn('columnSp') || !projectSettings.projectPath || (!columnLabel && !isClosed)) {
+    // eingeklappt ist die Spalte nur ~40px breit, der Chip ragt dort heraus → ausblenden (bei Aufklappen neu aufgebaut)
+    if (!isFeatureOn('columnSp') || !projectSettings.projectPath || (!columnLabel && !isClosed) || isVerticalText(header)) {
       if (el) el.remove();
       return;
     }
