@@ -37,6 +37,10 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
 6. Über das Zahnrad rechts in der Breadcrumb-Zeile öffnest du das Einstellungs-Seitenpanel (Tabs Anzeige,
    Dieses Board, Erweitert, Experimente). Daneben sitzen die MR-Buttons „R“ und „A“; Debug ist standardmäßig aus,
    die Anzeige (Badges) standardmäßig an. Änderungen gelten sofort, einen Speichern-Button gibt es nicht.
+   Auf den Board-Karten zeigt das Puls-Icon neben der Uhr, wie lange die letzte Aktivität am Ticket oder MR her ist
+   (grün unter 3 Tagen, gelb bis 7, rot darüber). Beim Hover öffnet sich ein Verlauf mit Kommentaren, Spaltenwechseln,
+   MR-Änderungen und Portal-Buchungen (nur mit Datum); Kommentare werden erst dann geladen. Abschalten unter
+   Anzeige → Letzte Aktivität.
 7. Klicke auf das Zahnrad: Auf einem noch nicht eingerichteten Board öffnet es direkt den Tab „Dieses Board“.
    Trag dort die Portal-URL und die Portal-Projekt-ID ein (z. B. `https://user-portal.arbeitgeber.com`). Erlaubt ist nur `https://` ohne
    Benutzername/Passwort; Query und Fragment werden verworfen. Die Eingabe wird automatisch gespeichert (das Feld

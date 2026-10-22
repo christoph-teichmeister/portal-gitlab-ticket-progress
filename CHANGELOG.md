@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026.10.55
+
+- Der Aktivitäts-Chip berücksichtigt jetzt auch Buchungen aus dem Portal: die jüngste Buchung zählt wie jede andere
+  Aktivität, und der Verlauf listet sie mit Stunden, Mitarbeiter und Titel. Das Portal liefert nur ein Datum ohne
+  Uhrzeit, deshalb steht bei Buchungen „heute“ oder die Zahl der Tage. Gelesen wird die Buchungstabelle der
+  Portal-Ticketseite, die für den Fortschrittsbalken ohnehin geladen wird (kein zusätzlicher Request).
+
+## 2026.10.54
+
+- Neuer Aktivitäts-Chip im Karten-Footer, hinter der Uhr: Puls-Icon mit dem Alter der letzten Aktivität am Ticket oder
+  MR, grün unter 3 Tagen, gelb bis 7, rot darüber. Beim Hover (oder Tab-Fokus) öffnet sich ein Verlauf mit bis zu fünf
+  Einträgen (Kommentare, Spaltenwechsel, MR erstellt/aktualisiert) samt genauer Uhrzeit und Link zum Ticket. Der Chip
+  braucht nur eine Ticket-Liste pro Projekt, MR-Liste und Label-Events liegen schon im Cache; Kommentare lädt erst der
+  Hover. Abschaltbar unter Anzeige → Letzte Aktivität.
+
 ## 2026.10.53
 
 - Lange Spalten-Labels: Reicht der Platz nicht, fällt der Scope-Teil („Workflow“) ganz weg statt als schmaler Balken

@@ -22,13 +22,13 @@ const names = ['parseVersionSegments', 'isRemoteVersionGreater', 'formatDuration
   'normalizeListNameForMatching', 'normalizeLabelNameForMatching', 'parseTicketActions', 'assigneeSortKey', 'planReorder',
   'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate', 'relativeLuminance',
   'parseCssColorToRgb', 'getContrastTextColor', 'formatBookedHoursDisplay', 'isNumericId',
-  'parseExtraProjectIds', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays'];
+  'parseExtraProjectIds', 'activityTone', 'newestTimestamp', 'parseBookingDate', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays'];
 const isExp = function () { return false; };
 const patternsStart = source.indexOf('  const DEFAULT_ESTIMATE_PATTERNS');
 const defaultPatterns = source.slice(patternsStart, source.indexOf(';\n', patternsStart) + 1);
 const filterStart = source.indexOf('  const BOARD_FILTER_TO_API');
 const boardFilterMap = source.slice(filterStart, source.indexOf('};\n', filterStart) + 2);
-const code = 'const CLOSED_DAYS_DEFAULT = 28; const CLOSED_DAYS_MAX = 40; const MAX_HOURS_VALUE = 100000; const COLUMN_BLIP_MS = 15 * 60 * 1000;\n' + defaultPatterns + '\n' + boardFilterMap + '\n' + names.map(extract).join('\n') + '\nreturn {DEFAULT_ESTIMATE_PATTERNS,' + names.join(',') + '};';
+const code = 'const ACTIVITY_FRESH_MS = 3 * 86400000; const ACTIVITY_STALE_MS = 7 * 86400000; const CLOSED_DAYS_DEFAULT = 28; const CLOSED_DAYS_MAX = 40; const MAX_HOURS_VALUE = 100000; const COLUMN_BLIP_MS = 15 * 60 * 1000;\n' + defaultPatterns + '\n' + boardFilterMap + '\n' + names.map(extract).join('\n') + '\nreturn {DEFAULT_ESTIMATE_PATTERNS,' + names.join(',') + '};';
 const fn = new Function('isExp', 'expSetting', 'log', 'warn', 'error', code);
 const noop = function () {};
 const f = fn(isExp, function (key, fallback) { return fallback; }, noop, noop, noop);
@@ -164,3 +164,25 @@ console.log('normalizeListNameForMatching ok');
   assert.deepStrictEqual(f.parseExtraProjectIds(' 1,2;3  4 '), ['1', '2', '3', '4']);
 }
 console.log('extraProjectIdsFromConfig ok');
+
+// Aktivitäts-Chip: Farbstufe nach Alter, jüngster Zeitpunkt aus gemischten Quellen
+{
+  assert.strictEqual(f.activityTone(5 * 3600000), 'fresh');
+  assert.strictEqual(f.activityTone(3 * 86400000), 'aging');
+  assert.strictEqual(f.activityTone(6.9 * 86400000), 'aging');
+  assert.strictEqual(f.activityTone(7 * 86400000), 'stale');
+  assert.strictEqual(f.newestTimestamp([undefined, null, '2026-10-20T10:00:00Z', 5, NaN, '2026-10-21T08:00:00Z']), Date.parse('2026-10-21T08:00:00Z'));
+  assert.strictEqual(f.newestTimestamp([undefined, null, 'kaputt']), null);
+  assert.strictEqual(f.newestTimestamp([]), null);
+}
+console.log('activity helpers ok');
+
+// Buchungsdatum aus der Portal-Tabelle: deutsch oder ISO, ungültige Tage und Fremdtext → null
+{
+  assert.strictEqual(f.parseBookingDate('14.10.2026'), new Date(2026, 9, 14).getTime());
+  assert.strictEqual(f.parseBookingDate('2026-10-14'), new Date(2026, 9, 14).getTime());
+  assert.strictEqual(f.parseBookingDate('31.02.2026'), null);
+  assert.strictEqual(f.parseBookingDate('gestern'), null);
+  assert.strictEqual(f.parseBookingDate(null), null);
+}
+console.log('parseBookingDate ok');
