@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.53
+// @version      2026.10.55
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.53';
+  const SCRIPT_VERSION = '2026.10.55';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -133,6 +133,31 @@
       '.ambient-switch-input:checked::before{transform:translateX(16px)}' +
       '.ambient-switch-input:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}' +
       '.gl-label[data-ambient-split="1"]{display:none !important}' +
+      // Aktivitäts-Chip und Verlauf-Popover (Pseudo-Element und :focus-visible gehen nicht inline)
+      '.ambient-activity-chip{display:inline-flex;align-items:center;gap:4px;height:24px;margin:0 -6px;padding:0 6px;border:0;border-radius:999px;background:transparent;color:inherit;font:inherit;cursor:default;transition:background .12s}' +
+      '.ambient-activity-chip:hover,.ambient-activity-chip[aria-describedby]{background:var(--gl-background-color-strong,rgba(128,128,128,.22))}' +
+      '.ambient-activity-chip:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}' +
+      '.ambient-activity-icon{display:inline-flex;width:16px;height:16px}' +
+      '#ambient-activity-pop{position:fixed;z-index:10000;box-sizing:border-box;padding:14px 16px 12px;border:1px solid var(--gl-border-color-default,#4c4b51);border-radius:10px;background:var(--gl-background-color-default,#2b2a30);color:var(--gl-text-color-default,inherit);box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:13px;line-height:1.35;text-align:left}' +
+      '#ambient-activity-pop::before{content:"";position:absolute;left:var(--cx,24px);width:10px;height:10px;background:var(--gl-background-color-default,#2b2a30);border:1px solid var(--gl-border-color-default,#4c4b51);transform:rotate(45deg)}' +
+      '#ambient-activity-pop[data-placement="below"]::before{top:-6px;border-right:0;border-bottom:0}' +
+      '#ambient-activity-pop[data-placement="above"]::before{bottom:-6px;border-left:0;border-top:0}' +
+      '.ambient-activity-pop-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px}' +
+      '.ambient-activity-pop-title{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--gl-text-color-subtle,#89888d)}' +
+      '.ambient-activity-pop-pill{font-size:12px;font-weight:600}' +
+      '.ambient-activity-pop-msg{margin:8px 0 4px;color:var(--gl-text-color-subtle,#89888d)}' +
+      '.ambient-activity-log{list-style:none;margin:0;padding:0}' +
+      '.ambient-activity-log li{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:10px;align-items:start;padding:9px 0;border-top:1px solid var(--gl-border-color-default,#4c4b51)}' +
+      '.ambient-activity-log li:first-child{border-top:0}' +
+      '.ambient-activity-ic{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:color-mix(in srgb,var(--c) 18%,transparent);color:var(--c)}' +
+      '.ambient-activity-body{display:flex;flex-direction:column;min-width:0}' +
+      '.ambient-activity-entry-title{font-weight:600;overflow-wrap:anywhere}' +
+      '.ambient-activity-entry-sub{margin-top:2px;font-size:12px;color:var(--gl-text-color-subtle,#89888d);overflow-wrap:anywhere}' +
+      '.ambient-activity-when{display:flex;flex-direction:column;align-items:flex-end;white-space:nowrap;font-variant-numeric:tabular-nums}' +
+      '.ambient-activity-when time{font-size:12px;font-weight:600}' +
+      '.ambient-activity-when small{margin-top:2px;font-size:11px;color:var(--gl-text-color-subtle,#89888d)}' +
+      '.ambient-activity-pop-foot{display:flex;justify-content:flex-end;margin-top:6px;padding-top:10px;border-top:1px solid var(--gl-border-color-default,#4c4b51);font-size:12px;font-weight:600}' +
+      '.ambient-activity-pop-foot a{white-space:nowrap}' +
       // wie GitLabs Entfernen-Button: beim Hover ein runder Kreis in Label-Farbe hinter dem „×"
       '.ambient-split-label-close:hover,.ambient-split-label-close:focus-visible{background:var(--ambient-close-hover-bg) !important;color:var(--ambient-close-hover-fg) !important}' +
       // Dropdown-Menü wie GitLabs Dropdowns (z. B. Assignee-Auswahl): Panel mit Kopfzeile, Trennlinie, großzügigen Zeilen
@@ -505,6 +530,21 @@
     'Schätzung als Badge': 'Estimate badge',
     'Geteilte Scoped Labels': 'Split scoped labels',
     'Uhr im Karten-Footer': 'Clock in card footer',
+    'Letzte Aktivität': 'Last activity',
+    'Aktivitäts-Chip im Karten-Footer': 'Activity chip in card footer',
+    'Wann zuletzt am Ticket oder MR etwas passiert ist; Hover zeigt den Verlauf': 'When something last happened on the ticket or MR; hover shows the history',
+    'Letzte Aktivität vor ': 'Last activity: ',
+    'vor ': '',
+    'Verschoben nach ': 'Moved to ',
+    'Kommentar von ': 'Comment by ',
+    ' erstellt': ' created',
+    ' aktualisiert': ' updated',
+    'Lädt …': 'Loading …',
+    'Buchung ': 'Booking ',
+    'heute': 'today',
+    'Keine Einträge gefunden': 'No entries found',
+    'Verlauf konnte nicht geladen werden': 'History could not be loaded',
+    'Ticket öffnen': 'Open ticket',
     'Median im Spalten-Header': 'Median in column header',
     'Fortschritt im Ticket': 'Progress in ticket',
     'Fortschritt im Merge Request': 'Progress in merge request',
@@ -2108,6 +2148,7 @@
 
   function injectProgressIntoCard(cardElem, progressData) {
     if (!cardElem || !progressData) return;
+    noteCardBookings(cardElem, progressData);
     if (!isCardInActiveColumn(cardElem)) return;
 
     const container = getOrCreateBadgeContainer(cardElem);
@@ -2304,6 +2345,8 @@
               state: mr.state,
               assignee: (mr.assignees && mr.assignees[0]) || mr.assignee || null,
               reviewers: mr.reviewers || [],
+              created_at: mr.created_at,
+              updated_at: mr.updated_at,
               pipelineStatus: (mr.head_pipeline && mr.head_pipeline.status) || null
             };
           });
@@ -2533,7 +2576,7 @@
 
   // Entfernt alles, was das Script in eine Karte eingefügt hat; nächster Scan baut es bei Bedarf neu auf
   function clearCardInjections(cardElem) {
-    cardElem.querySelectorAll('.ambient-progress-badge, .ambient-mr-badge, .ambient-column-age, ' +
+    cardElem.querySelectorAll('.ambient-progress-badge, .ambient-mr-badge, .ambient-column-age, .ambient-activity, ' +
       '.ambient-card-actions, .ambient-card-actions-row').forEach(function (el) { el.remove(); });
     removeEstimateBadges(cardElem);
     ['data-ambient-progress-processed', 'data-ambient-entered-at', 'data-ambient-above-avg', 'data-ambient-loaded-at']
@@ -2608,7 +2651,9 @@
       applyStyles(text, getIssueNumberFontStyles(footer));
       el.appendChild(text);
       // Ans Ende der Meta-Zeile (Nummer · MR · Sprint), links vom Assignee-Avatar
-      (numberElem && numberElem.parentElement ? numberElem.parentElement : footer).appendChild(el);
+      const host = numberElem && numberElem.parentElement ? numberElem.parentElement : footer;
+      const activity = host.querySelector('.ambient-activity'); // die Uhr steht vor dem Aktivitäts-Chip
+      if (activity) host.insertBefore(el, activity); else host.appendChild(el);
       loadColumnHistory(cardElem, el);
     }
     el.style.display = showEnabled ? 'inline-flex' : 'none';
@@ -2631,6 +2676,325 @@
       .catch(function (err) {
         el.removeAttribute('data-ambient-history-loaded');
         error('Verlauf konnte nicht geladen werden für Issue', issueIid, err);
+      });
+  }
+
+  /******************************************************************
+   * Letzte Aktivität: Chip im Karten-Footer, Verlauf beim Hover
+   ******************************************************************/
+
+  const ACTIVITY_FRESH_MS = 3 * 86400000;
+  const ACTIVITY_STALE_MS = 7 * 86400000;
+  const ACTIVITY_COLORS = {fresh: '#2da160', aging: '#c98a10', stale: '#e0555c'}; // auf hellem und dunklem Theme lesbar
+  const ACTIVITY_TYPE_COLORS = {comment: '#5b9bf0', mr: '#b48cf0', move: '#e0a23a', booking: '#4cc38a'};
+  const ACTIVITY_LOG_MAX = 5;
+  const ACTIVITY_BOOKINGS_MAX = 8; // pro Ticket im Cache; mehr als die Verlaufsliste braucht, falls andere Einträge jünger sind
+  const ACTIVITY_CACHE_TTL_MS = 2 * 60 * 1000;
+  const ACTIVITY_PULSE_SVG = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 8.5h3l2-5.5 3 10 2-4.5h3"/></svg>';
+  const ACTIVITY_TYPE_ICONS = {
+    comment: '<path d="M2.5 3h11v7.5h-6L4.5 13.5v-3h-2z"/>',
+    mr: '<circle cx="4.5" cy="3.5" r="1.7"/><circle cx="4.5" cy="12.5" r="1.7"/><circle cx="11.5" cy="12.5" r="1.7"/><path d="M4.5 5.2v5.6M11.5 10.8V6.5a2 2 0 0 0-2-2H8"/>',
+    move: '<path d="M2.5 2.5h5.2L13.5 8.3 8.3 13.5 2.5 7.7z"/><circle cx="5.5" cy="5.5" r=".9" fill="currentColor"/>',
+    booking: '<circle cx="8" cy="8" r="6"/><path d="M8 4.7V8l2.2 1.4"/>'
+  };
+  const issueUpdatedCache = {}; // projectPath → {promise, timestamp}: iid → updated_at (ms)
+  const issueNotesCache = {}; // projectPath#iid → {promise, timestamp}
+
+  // Frisch unter 3 Tagen, danach bis 7 Tage „aging“, darüber „stale“
+  function activityTone(ageMs) {
+    if (ageMs < ACTIVITY_FRESH_MS) return 'fresh';
+    return ageMs < ACTIVITY_STALE_MS ? 'aging' : 'stale';
+  }
+
+  // Jüngster Zeitpunkt aus Millisekunden oder ISO-Strings; Ungültiges (null, NaN) zählt nicht. Keiner → null
+  function newestTimestamp(values) {
+    let best = 0;
+    values.forEach(function (value) {
+      const ms = typeof value === 'number' ? value : new Date(value).getTime();
+      if (ms > best) best = ms;
+    });
+    return best || null;
+  }
+
+  function loadIssueUpdatedAt(projectPath) {
+    // ponytail: per_page=100, keine Paginierung – bei >100 offenen Tickets fehlen ältere (der Chip nutzt dann MR und Label-Events)
+    return memoPromise(issueUpdatedCache, projectPath, ACTIVITY_CACHE_TTL_MS, function () {
+      return glApi(projectPath, '/issues?state=opened&order_by=updated_at&per_page=100', 'Ticket-Liste').then(function (issues) {
+        const map = {};
+        (issues || []).forEach(function (issue) { map[issue.iid] = new Date(issue.updated_at).getTime(); });
+        return map;
+      });
+    });
+  }
+
+  function loadIssueNotes(projectPath, issueIid) {
+    return memoPromise(issueNotesCache, projectPath + '#' + issueIid, ACTIVITY_CACHE_TTL_MS, function () {
+      return glApi(projectPath, '/issues/' + issueIid + '/notes?sort=desc&order_by=created_at&per_page=20', 'Kommentare');
+    });
+  }
+
+  function swallow(promise) {
+    return promise.catch(function () { return null; });
+  }
+
+  // Chip-Zeit ohne zusätzliche Requests pro Karte: Ticket-Liste und MR-Liste gibt es einmal pro Projekt, Label-Events liegen für die Verweildauer im Cache
+  function fetchAndDisplayLastActivity(projectSettings, issueIid, cardElem) {
+    const projectPath = projectSettings && projectSettings.projectPath;
+    if (!projectPath || !issueIid || !cardElem) return;
+    Promise.all([
+      swallow(loadIssueUpdatedAt(projectPath)),
+      swallow(loadLabelEvents(projectPath, issueIid)),
+      swallow(loadMergeRequestsForProject(projectPath))
+    ]).then(function (results) {
+      if (!isCardInActiveColumn(cardElem) || !isFeatureOn('lastActivity')) return;
+      const times = [results[0] && results[0][issueIid]];
+      (results[1] || []).forEach(function (ev) { times.push(ev.created_at); });
+      if (results[2]) findMatchingMrs(results[2], issueIid).forEach(function (mr) { times.push(mr.updated_at); });
+      const base = newestTimestamp(times);
+      cardElem._ambientActivityBase = base || 0;
+      injectLastActivityIntoCard(cardElem, base, projectPath, issueIid);
+    });
+  }
+
+  // Buchungen aus dem Portal gehören zur Aktivität des Tickets: am Karten-Element merken und den Chip nachziehen
+  function noteCardBookings(cardElem, progressData) {
+    cardElem._ambientBookings = progressData.bookings || [];
+    const base = cardElem._ambientActivityBase;
+    if (base === undefined || !isFeatureOn('lastActivity')) return; // Chip-Daten kommen noch und nehmen die Buchungen selbst mit
+    const issueIid = getIssueIidFromCard(cardElem);
+    if (currentScanContext && issueIid) {
+      injectLastActivityIntoCard(cardElem, base, currentScanContext.projectSettings.projectPath, issueIid);
+    }
+  }
+
+  function injectLastActivityIntoCard(cardElem, ts, projectPath, issueIid, sampleEntries) {
+    let el = cardElem.querySelector('.ambient-activity');
+    ts = newestTimestamp([ts].concat((cardElem._ambientBookings || []).map(function (b) { return b.ts; })));
+    if (!ts) {
+      if (el) el.remove();
+      return;
+    }
+    const footer = cardElem.querySelector(SEL.cardFooter);
+    if (!footer) return;
+    const ageMs = Date.now() - ts;
+    const tone = activityTone(ageMs);
+    if (!el) {
+      const numberElem = footer.querySelector(SEL.cardNumber);
+      el = document.createElement('span');
+      el.className = 'ambient-activity ambient-fade-in';
+      applyStyles(el, {
+        display: 'inline-flex',
+        alignItems: 'center',
+        marginLeft: '6px',
+        height: '20px',
+        color: numberElem ? getComputedStyle(numberElem).color : 'inherit'
+      });
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'ambient-activity-chip';
+      const icon = document.createElement('span');
+      icon.className = 'ambient-activity-icon';
+      icon.innerHTML = ACTIVITY_PULSE_SVG;
+      chip.appendChild(icon);
+      const text = document.createElement('span');
+      text.className = 'ambient-activity-text';
+      applyStyles(text, getIssueNumberFontStyles(footer));
+      chip.appendChild(text);
+      el.appendChild(chip);
+      // hinter die Uhr (Verweildauer), links vom Assignee-Avatar
+      const host = numberElem && numberElem.parentElement ? numberElem.parentElement : footer;
+      const clock = host.querySelector('.ambient-column-age');
+      if (clock) clock.after(el); else host.appendChild(el);
+      bindActivityPopover(chip, cardElem, projectPath, issueIid, sampleEntries);
+    }
+    const chipElem = el.firstChild;
+    el.querySelector('.ambient-activity-icon').style.color = ACTIVITY_COLORS[tone];
+    el.querySelector('.ambient-activity-text').textContent = formatDuration(ageMs);
+    chipElem.setAttribute('aria-label', t('Letzte Aktivität vor ') + formatDuration(ageMs));
+    chipElem.setAttribute('data-ambient-activity-at', String(ts));
+    el.style.display = showEnabled ? 'inline-flex' : 'none';
+  }
+
+  // Einträge für den Verlauf: Kommentare, Spaltenwechsel und MRs, neueste zuerst. Kommentare werden erst beim Hover geladen.
+  function loadActivityEntries(projectPath, issueIid, bookings) {
+    return Promise.all([
+      swallow(loadLabelEvents(projectPath, issueIid)),
+      swallow(loadIssueNotes(projectPath, issueIid)),
+      swallow(loadMergeRequestsForProject(projectPath))
+    ]).then(function (results) {
+      if (!results[0] && !results[1] && !results[2] && !(bookings && bookings.length)) throw new Error('Keine Aktivitätsdaten');
+      const entries = [];
+      (bookings || []).forEach(function (b) {
+        entries.push({type: 'booking', title: t('Buchung ') + b.hours + 'h', sub: [b.employee, b.title].filter(Boolean).join(' · '), ts: b.ts, dateOnly: true});
+      });
+      (results[0] || []).forEach(function (ev) {
+        if (ev.action !== 'add' || !ev.label || !boardColumnLabelSet[normalizeLabelNameForMatching(ev.label.name)]) return;
+        entries.push({type: 'move', title: t('Verschoben nach ') + ev.label.name.replace(/^.*::/, ''), sub: ev.user && ev.user.name,
+          ts: new Date(ev.created_at).getTime()});
+      });
+      (results[1] || []).forEach(function (note) {
+        if (note.system) return;
+        const body = String(note.body || '').replace(/\s+/g, ' ').trim();
+        entries.push({type: 'comment', title: t('Kommentar von ') + (note.author && note.author.name || '?'),
+          sub: body.length > 90 ? body.slice(0, 89) + '…' : body, ts: new Date(note.created_at).getTime()});
+      });
+      (results[2] ? findMatchingMrs(results[2], issueIid) : []).forEach(function (mr) {
+        const created = new Date(mr.created_at).getTime();
+        const updated = new Date(mr.updated_at).getTime();
+        entries.push({type: 'mr', title: 'MR !' + mr.iid + t(' erstellt'), ts: created});
+        if (updated - created > 60000) entries.push({type: 'mr', title: 'MR !' + mr.iid + t(' aktualisiert'), ts: updated});
+      });
+      return entries.filter(function (e) { return e.ts > 0; })
+        .sort(function (a, b) { return b.ts - a.ts; }).slice(0, ACTIVITY_LOG_MAX);
+    });
+  }
+
+  let activityPopover = null;
+  let activityAnchor = null; // {chip, card}
+  let activityHideTimer = null;
+
+  function cancelActivityHide() {
+    clearTimeout(activityHideTimer);
+  }
+
+  function scheduleActivityHide() {
+    clearTimeout(activityHideTimer);
+    activityHideTimer = setTimeout(hideActivityPopover, 150);
+  }
+
+  function hideActivityPopover() {
+    clearTimeout(activityHideTimer);
+    if (activityPopover) activityPopover.style.display = 'none';
+    if (activityAnchor) activityAnchor.chip.removeAttribute('aria-describedby');
+    activityAnchor = null;
+  }
+
+  function getActivityPopover() {
+    if (activityPopover && activityPopover.isConnected) return activityPopover;
+    activityPopover = document.createElement('div');
+    activityPopover.id = 'ambient-activity-pop';
+    activityPopover.setAttribute('role', 'dialog');
+    activityPopover.setAttribute('aria-label', t('Letzte Aktivität'));
+    activityPopover.style.display = 'none';
+    activityPopover.addEventListener('mouseenter', cancelActivityHide);
+    activityPopover.addEventListener('mouseleave', scheduleActivityHide);
+    // fest positioniert: bei Scroll oder Resize stimmt der Anker nicht mehr
+    window.addEventListener('scroll', hideActivityPopover, true);
+    window.addEventListener('resize', hideActivityPopover);
+    document.body.appendChild(activityPopover);
+    return activityPopover;
+  }
+
+  function bindActivityPopover(chip, cardElem, projectPath, issueIid, sampleEntries) {
+    const open = function () {
+      cancelActivityHide();
+      showActivityPopover(chip, cardElem, projectPath, issueIid, sampleEntries);
+    };
+    chip.addEventListener('mouseenter', open);
+    chip.addEventListener('focus', open);
+    chip.addEventListener('mouseleave', scheduleActivityHide);
+    chip.addEventListener('blur', scheduleActivityHide);
+    chip.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') hideActivityPopover();
+    });
+  }
+
+  function activityNode(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined && text !== null) node.textContent = text;
+    return node;
+  }
+
+  function renderActivityPopover(pop, chip, cardElem, entries, message) {
+    pop.textContent = '';
+    const head = activityNode('div', 'ambient-activity-pop-head');
+    head.appendChild(activityNode('span', 'ambient-activity-pop-title', t('Letzte Aktivität')));
+    const at = Number(chip.getAttribute('data-ambient-activity-at'));
+    if (at) {
+      const tone = activityTone(Date.now() - at);
+      const pill = activityNode('span', 'ambient-activity-pop-pill', t('vor ') + formatDuration(Date.now() - at));
+      pill.style.color = ACTIVITY_COLORS[tone];
+      head.appendChild(pill);
+    }
+    pop.appendChild(head);
+    if (message) {
+      pop.appendChild(activityNode('p', 'ambient-activity-pop-msg', message));
+    } else {
+      const list = activityNode('ul', 'ambient-activity-log');
+      entries.forEach(function (entry) {
+        const row = activityNode('li', '');
+        const ic = activityNode('span', 'ambient-activity-ic');
+        ic.style.setProperty('--c', ACTIVITY_TYPE_COLORS[entry.type] || ACTIVITY_TYPE_COLORS.mr);
+        ic.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          (ACTIVITY_TYPE_ICONS[entry.type] || ACTIVITY_TYPE_ICONS.mr) + '</svg>';
+        row.appendChild(ic);
+        const body = activityNode('span', 'ambient-activity-body');
+        body.appendChild(activityNode('span', 'ambient-activity-entry-title', entry.title));
+        if (entry.sub) body.appendChild(activityNode('span', 'ambient-activity-entry-sub', entry.sub));
+        row.appendChild(body);
+        const when = activityNode('span', 'ambient-activity-when');
+        // Buchungen haben nur ein Datum: Tage statt Stunden, ohne Uhrzeit
+        const days = Math.round((new Date().setHours(0, 0, 0, 0) - entry.ts) / 86400000);
+        when.appendChild(activityNode('time', '', entry.dateOnly ? (days <= 0 ? t('heute') : days + 'd') : formatDuration(Date.now() - entry.ts)));
+        when.appendChild(activityNode('small', '', new Date(entry.ts).toLocaleString(uiLocale(), entry.dateOnly
+          ? {day: 'numeric', month: 'short'}
+          : {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})));
+        row.appendChild(when);
+        list.appendChild(row);
+      });
+      pop.appendChild(list);
+    }
+    const titleLink = cardElem.querySelector(SEL.cardTitleLink);
+    if (titleLink && titleLink.href) {
+      const foot = activityNode('div', 'ambient-activity-pop-foot');
+      const link = activityNode('a', '', t('Ticket öffnen') + ' ↗');
+      link.href = titleLink.href;
+      foot.appendChild(link);
+      pop.appendChild(foot);
+    }
+  }
+
+  function positionActivityPopover() {
+    const pop = activityPopover;
+    if (!pop || !activityAnchor) return;
+    if (!activityAnchor.chip.isConnected) {
+      hideActivityPopover();
+      return;
+    }
+    const card = activityAnchor.card.getBoundingClientRect();
+    const chip = activityAnchor.chip.getBoundingClientRect();
+    const width = Math.min(Math.max(card.width, 300), window.innerWidth - 16);
+    const left = Math.min(Math.max(8, card.left), window.innerWidth - width - 8);
+    pop.style.width = width + 'px';
+    pop.style.left = left + 'px';
+    const height = pop.offsetHeight;
+    const below = chip.bottom + 10 + height <= window.innerHeight - 8 || chip.top - 10 - height < 8;
+    pop.style.top = Math.max(8, below ? chip.bottom + 10 : chip.top - 10 - height) + 'px';
+    pop.setAttribute('data-placement', below ? 'below' : 'above');
+    pop.style.setProperty('--cx', Math.round(chip.left + chip.width / 2 - left - 5) + 'px'); // Pfeil mittig unter dem Chip
+  }
+
+  function showActivityPopover(chip, cardElem, projectPath, issueIid, sampleEntries) {
+    const pop = getActivityPopover();
+    const token = projectPath + '#' + issueIid;
+    pop.setAttribute('data-token', token);
+    activityAnchor = {chip: chip, card: cardElem};
+    chip.setAttribute('aria-describedby', pop.id);
+    renderActivityPopover(pop, chip, cardElem, [], t('Lädt …'));
+    pop.style.display = 'block';
+    positionActivityPopover();
+    (sampleEntries ? Promise.resolve(sampleEntries) : loadActivityEntries(projectPath, issueIid, cardElem._ambientBookings))
+      .then(function (entries) {
+        if (!activityAnchor || activityAnchor.chip !== chip || pop.getAttribute('data-token') !== token) return;
+        renderActivityPopover(pop, chip, cardElem, entries, entries.length ? '' : t('Keine Einträge gefunden'));
+        positionActivityPopover();
+      })
+      .catch(function (err) {
+        error('Aktivitätsverlauf konnte nicht geladen werden für Issue', issueIid, err);
+        if (!activityAnchor || activityAnchor.chip !== chip) return;
+        renderActivityPopover(pop, chip, cardElem, [], t('Verlauf konnte nicht geladen werden'));
+        positionActivityPopover();
       });
   }
 
@@ -3143,6 +3507,43 @@
     return /<input[^>]+type=["']?password/i.test(String(response.responseText || '').slice(0, 20000));
   }
 
+  // Buchungstabelle der Portal-Ticketseite (Spalten Title, Employee, hours, Date): Datum kommt ohne Uhrzeit, daher Tagesanfang
+  function parseBookingDate(text) {
+    const value = String(text || '').trim();
+    const de = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const parts = de ? [de[3], de[2], de[1]] : iso ? [iso[1], iso[2], iso[3]] : null;
+    if (!parts) return null;
+    const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    return date.getMonth() === Number(parts[1]) - 1 ? date.getTime() : null; // 31.02. ist kein Datum
+  }
+
+  // Die jüngsten Buchungen (neueste zuerst) für Chip und Verlauf; ohne erkennbare Tabelle leer
+  function parseBookingsFromHtml(htmlText) {
+    try {
+      const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+      const table = Array.from(doc.querySelectorAll('table')).find(function (tbl) {
+        return Array.from(tbl.querySelectorAll('thead th')).some(function (th) { return /^(date|datum)$/i.test(th.textContent.trim()); });
+      });
+      if (!table) return [];
+      const heads = Array.from(table.querySelectorAll('thead th')).map(function (th) { return th.textContent.trim().toLowerCase(); });
+      const col = function (re) { return heads.findIndex(function (h) { return re.test(h); }); };
+      const iDate = col(/^(date|datum)$/);
+      const iTitle = col(/^(title|titel)$/);
+      const iEmployee = col(/^(employee|mitarbeiter)/);
+      const iHours = col(/^(hours|stunden)/);
+      const cell = function (row, i) { return i >= 0 && row.cells[i] ? row.cells[i].textContent.trim() : ''; };
+      const bookings = [];
+      table.querySelectorAll('tbody tr').forEach(function (row) {
+        const ts = parseBookingDate(cell(row, iDate));
+        if (ts) bookings.push({ts: ts, title: cell(row, iTitle).slice(0, 80), employee: cell(row, iEmployee), hours: cell(row, iHours)});
+      });
+      return bookings.sort(function (a, b) { return b.ts - a.ts; }).slice(0, ACTIVITY_BOOKINGS_MAX);
+    } catch (e) {
+      return [];
+    }
+  }
+
   // Ablehnungen tragen {status} (HTTP/Login → blockiert das Projekt) oder {network|timeout} (vorübergehend)
   function loadProgressData(url, issueIid) {
     if (inflightPortalRequests[url]) {
@@ -3179,6 +3580,7 @@
               resolve(null);
               return;
             }
+            progressData.bookings = parseBookingsFromHtml(response.responseText);
             log('Progress-Daten erhalten für Issue', issueIid, progressData);
             resolve(progressData);
           },
@@ -3731,7 +4133,7 @@
         if (previousList !== undefined && previousList !== (columnLabelText || '')) {
           const movedIid = trackedIid;
           if (movedIid && projectSettings.projectPath) clearEnteredAtCaches(projectSettings.projectPath, movedIid);
-          cardElem.querySelectorAll('.ambient-column-age').forEach(function (el) { el.remove(); });
+          cardElem.querySelectorAll('.ambient-column-age, .ambient-activity').forEach(function (el) { el.remove(); });
           cardElem.removeAttribute('data-ambient-entered-at');
           cardElem.removeAttribute('data-ambient-progress-processed');
           cardElem.setAttribute('data-ambient-moved', '1');
@@ -3756,6 +4158,7 @@
         if (isFeatureOn('columnAge') && !isClosedList) { // Liegezeit in Closed sagt nichts
           fetchAndDisplayColumnAge(projectSettings, issueIid, cardElem, columnLabelText);
         }
+        if (isFeatureOn('lastActivity') && !isClosedList) fetchAndDisplayLastActivity(projectSettings, issueIid, cardElem);
         if (isFeatureOn('cardActions')) injectCardActions(cardElem, issueIid, projectSettings);
 
         if (!isFeatureOn('progress')) {
@@ -4696,9 +5099,10 @@
     // Alle Injektionen entfernen und neu scannen – Daten kommen aus den Caches, kein Request-Burst
     function rerenderFeatures() {
       document.querySelectorAll(
-        '.ambient-progress-badge, .ambient-mr-badge, .ambient-column-age, .ambient-column-avg, .ambient-column-sp,' +
+        '.ambient-progress-badge, .ambient-mr-badge, .ambient-column-age, .ambient-activity, .ambient-column-avg, .ambient-column-sp,' +
         ' .ambient-progress-detail-badge, .ambient-progress-mr-badge, .ambient-ticket-assignee-badge'
       ).forEach(function (el) { el.remove(); });
+      hideActivityPopover();
       removeSplitLabels();
       removeEstimateBadges();
       document.querySelectorAll('[data-ambient-progress-processed]').forEach(clearCardInjections);
@@ -5383,6 +5787,9 @@
       ['columnAge', 'Uhr im Karten-Footer', 'Wie lange das Ticket schon in der Spalte liegt'],
       ['columnAvg', 'Median im Spalten-Header', 'Typische Liegezeit der Spalte']
     ]},
+    {view: 'board', title: 'Letzte Aktivität', items: [
+      ['lastActivity', 'Aktivitäts-Chip im Karten-Footer', 'Wann zuletzt am Ticket oder MR etwas passiert ist; Hover zeigt den Verlauf']
+    ]},
     {view: 'ticket', title: 'Ticket-Seitenleiste', items: [
       ['issueDetail', 'Fortschrittsbalken', 'Portal-Balken in der Ticket-Ansicht und im Board-Drawer'],
       ['issuePortalButtons', 'Portal- & Timesheet-Buttons', 'Links und rechts neben dem Balken'],
@@ -5755,6 +6162,7 @@
     estimateStripTitle: '.ambient-estimate-badge',
     splitLabels: '.ambient-split-label',
     columnAge: '.ambient-column-age',
+    lastActivity: '.ambient-activity',
     columnAvg: '.ambient-column-avg',
     columnSp: '.ambient-column-sp',
     issueDetail: '.ambient-progress-detail-badge',
@@ -5898,6 +6306,14 @@
         injectColumnAgeIntoCard(clone, new Date(Date.now() - 22 * 3600 * 1000));
         const ageText = clone.querySelector('.ambient-column-age-text');
         if (ageText) ageText.textContent = formatDuration(22 * 3600 * 1000);
+      }
+      if (isFeatureOn('lastActivity')) {
+        const now = Date.now();
+        injectLastActivityIntoCard(clone, now - 5 * 3600 * 1000, projectSettings ? projectSettings.projectPath : '', iid, [
+          {type: 'comment', title: t('Kommentar von ') + 'Jana E.', sub: 'Passt so, bitte noch den Report prüfen', ts: now - 5 * 3600 * 1000},
+          {type: 'mr', title: 'MR !87' + t(' aktualisiert'), ts: now - 26 * 3600 * 1000},
+          {type: 'move', title: t('Verschoben nach ') + 'In Arbeit', ts: now - 4 * 86400000}
+        ]);
       }
       if (isFeatureOn('cardActions')) {
         injectCardActions(clone, iid, Object.assign({}, projectSettings, {
