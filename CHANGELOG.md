@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.56
+
+- Aktivitäts-Chip reagiert jetzt auf Hover und Tab-Fokus: GitLabs unsichtbarer Karten-Link lag über dem Chip und hat die
+  Maus abgefangen, ein Klick öffnete nur die Karte. Der Chip liegt jetzt darüber wie die übrigen Footer-Elemente.
+
 ## 2026.10.55
 
 - Der Aktivitäts-Chip berücksichtigt jetzt auch Buchungen aus dem Portal: die jüngste Buchung zählt wie jede andere
