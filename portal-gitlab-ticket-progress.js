@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.58
+// @version      2026.10.59
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -21,7 +21,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.58';
+  const SCRIPT_VERSION = '2026.10.59';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -239,7 +239,11 @@
       '#ambient-progress-toast[data-variant=warning]{background:#fbbf24;color:#1f2937}' +
       '#ambient-progress-toast[data-variant=success]{background:#10b981;color:#0f172a}' +
       // Fortschrittsbalken: Segmente nebeneinander (float), Text darübergelegt; Füll-Animation nur bei frisch geladenen Daten
-      '.ambient-bar{position:relative;height:16px;border-radius:999px;overflow:hidden;background:var(--gl-background-color-default,#18171d)}' +
+      // flex:1 1 0 + min-width:0: Balken schrumpft mit der Zeile; Text bleibt einzeilig (Ellipsis), Label wird per Container Query kürzer
+      '.ambient-bar{position:relative;height:16px;border-radius:999px;overflow:hidden;background:var(--gl-background-color-default,#18171d);flex:1 1 0;min-width:0;container-type:inline-size}' +
+      '.ambient-bar-text span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}' +
+      '.ambient-label-short{display:none}' +
+      '@container (max-width:170px){.ambient-label-full{display:none}.ambient-label-short{display:inline}}' +
       '.ambient-bar-fill{height:100%;float:left}' +
       '.ambient-bar-spent:hover{background:var(--ambient-hover) !important}' +
       '.ambient-bar-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 8px;pointer-events:none;color:#000}' +
@@ -1281,9 +1285,20 @@
       appendCenterText(t('Nicht gefunden'));
       ariaLabel = t('Portal: nicht gefunden');
     } else if (progressData.booked && !progressData.spent && !progressData.remaining && !progressData.over) {
-      const bookedText = (progressData.bookedLabel || 'Booked Hours') + ': ' + progressData.booked;
+      const bookedLabel = progressData.bookedLabel || 'Booked Hours';
+      const bookedText = bookedLabel + ': ' + progressData.booked;
       addFill(100, colors.bookedFallback || colors.neutral, 'grow');
       appendCenterText(bookedText);
+      // schmale Balken: „Geb.: 3.5h" statt „Gebuchte Stunden: 3.5h"
+      const bookedSpan = textLayer.lastChild;
+      bookedSpan.textContent = '';
+      [['ambient-label-full', bookedLabel], ['ambient-label-short', bookedLabel === 'Gebuchte Stunden' ? 'Geb.' : 'Booked']].forEach(function (part) {
+        const label = document.createElement('span');
+        label.className = part[0];
+        label.textContent = part[1];
+        bookedSpan.appendChild(label);
+      });
+      bookedSpan.appendChild(document.createTextNode(': ' + progressData.booked));
       ariaLabel = bookedText;
     } else if (progressData.over) {
       addFill(100, colors.over, 'grow');
