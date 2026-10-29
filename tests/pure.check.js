@@ -22,13 +22,13 @@ const names = ['parseVersionSegments', 'isRemoteVersionGreater', 'formatDuration
   'normalizeListNameForMatching', 'normalizeLabelNameForMatching', 'parseTicketActions', 'assigneeSortKey', 'planReorder',
   'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate', 'relativeLuminance',
   'parseCssColorToRgb', 'getContrastTextColor', 'formatBookedHoursDisplay', 'isNumericId',
-  'parseExtraProjectIds', 'activityTone', 'newestTimestamp', 'parseBookingDate', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays'];
+  'parseExtraProjectIds', 'activityTone', 'newestTimestamp', 'parseBookingDate', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays', 'mapApiProgress'];
 const isExp = function () { return false; };
 const patternsStart = source.indexOf('  const DEFAULT_ESTIMATE_PATTERNS');
 const defaultPatterns = source.slice(patternsStart, source.indexOf(';\n', patternsStart) + 1);
 const filterStart = source.indexOf('  const BOARD_FILTER_TO_API');
 const boardFilterMap = source.slice(filterStart, source.indexOf('};\n', filterStart) + 2);
-const code = 'const ACTIVITY_FRESH_MS = 3 * 86400000; const ACTIVITY_STALE_MS = 7 * 86400000; const CLOSED_DAYS_DEFAULT = 28; const CLOSED_DAYS_MAX = 40; const MAX_HOURS_VALUE = 100000; const COLUMN_BLIP_MS = 15 * 60 * 1000;\n' + defaultPatterns + '\n' + boardFilterMap + '\n' + names.map(extract).join('\n') + '\nreturn {DEFAULT_ESTIMATE_PATTERNS,' + names.join(',') + '};';
+const code = 'const ACTIVITY_FRESH_MS = 3 * 86400000; const ACTIVITY_STALE_MS = 7 * 86400000; const CLOSED_DAYS_DEFAULT = 28; const CLOSED_DAYS_MAX = 40; const MAX_HOURS_VALUE = 100000; const COLUMN_BLIP_MS = 15 * 60 * 1000; const ACTIVITY_BOOKINGS_MAX = 8;\n' + defaultPatterns + '\n' + boardFilterMap + '\n' + names.map(extract).join('\n') + '\nreturn {DEFAULT_ESTIMATE_PATTERNS,' + names.join(',') + '};';
 const fn = new Function('isExp', 'expSetting', 'log', 'warn', 'error', code);
 const noop = function () {};
 const f = fn(isExp, function (key, fallback) { return fallback; }, noop, noop, noop);
@@ -186,3 +186,19 @@ console.log('activity helpers ok');
   assert.strictEqual(f.parseBookingDate(null), null);
 }
 console.log('parseBookingDate ok');
+
+// API-Eintrag → Fortschritt: ohne Buchungen null, remaining/over nur wenn > 0
+{
+  assert.strictEqual(f.mapApiProgress({found: false}), null);
+  assert.strictEqual(f.mapApiProgress(undefined), null);
+  assert.deepStrictEqual(f.mapApiProgress({found: true, booked: 4.5, remaining: 2, over: 0}),
+    {spent: '4.5h', remaining: '2h', over: null, booked: '4.5h', bookedLabel: 'Booked Hours', bookings: []});
+  const withBookings = f.mapApiProgress({found: true, booked: 3, remaining: 0, over: 0, bookings: [
+    {date: '2026-10-27', title: 'Ältere', employee: 'A', hours: 1},
+    {date: '2026-10-28', title: '[censored]', employee: 'B', hours: 2},
+    {date: 'kaputt', title: 'x', employee: 'C', hours: 1}]});
+  assert.deepStrictEqual(withBookings.bookings.map(function (b) { return b.title; }), ['[censored]', 'Ältere']);
+  assert.strictEqual(withBookings.bookings[0].hours, '2h');
+  assert.strictEqual(f.mapApiProgress({found: true, booked: 12, remaining: 0, over: 1.5}).over, '1.5h');
+}
+console.log('mapApiProgress ok');

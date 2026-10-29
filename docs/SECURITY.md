@@ -41,8 +41,12 @@ Ausführungsoberfläche beschränkt sich auf den Code in diesem Repository.
 
 ## Schutzmaßnahmen im Script
 
-* `@match` beschränkt das Script auf `gitlab.beyonder.de`; `@connect` gibt nur `raw.githubusercontent.com` (Update-Check)
-  vorab frei, die Portal-Domain bestätigst du einmalig in Tampermonkey.
+* `@match` beschränkt das Script auf `gitlab.beyonder.de`; `@connect` gibt `raw.githubusercontent.com` (Update-Check)
+  und `portal.beyonder.de` (API) vorab frei, eine abweichende Portal-Domain für den Weg ohne Token bestätigst du
+  einmalig in Tampermonkey.
+* Der optionale API-Token liegt in `GM_setValue` (script-eigen, nicht im `localStorage` der GitLab-Seite), wird nur an
+  das fest eingebaute `https://portal.beyonder.de` gesendet (nie an die konfigurierbare Portal-URL, auch nicht über
+  einen importierten Konfig-Hash) und taucht weder in Export noch Debug-Infos auf.
 * Die Portal-Base-URL wird beim Speichern und Lesen validiert: nur `https:`, keine Zugangsdaten in der URL.
 * Portal-Antworten werden als Text geparst und nie als HTML in die Seite eingefügt; Stundenwerte werden auf einen
   plausiblen Bereich begrenzt, die Antwortgröße ist gedeckelt. Login-Seiten werden erkannt und als „nicht angemeldet“

@@ -88,8 +88,13 @@ Weitere Details zur Nutzung und Konfiguration:
 
 ## Datenschutz & lokale Daten
 
-- Portal-Zugangsdaten werden nie gespeichert. Das Script nutzt die bestehende Portal-Session deines Browsers
+- Passwörter werden nie gespeichert. Ohne API-Token nutzt das Script die bestehende Portal-Session deines Browsers
   (Cookies, `withCredentials`); trage deshalb nur eine Portal-Base-URL ein, der du vertraust.
+- Optional: ein **Mitarbeiter-API-Token** (Zahnrad → Portal-Verbindung). Mit Token holt das Script die gebuchten Stunden
+  gesammelt per API von `portal.beyonder.de` statt je Karte die Ticket-Seite zu laden. Der Token liegt im
+  Script-Speicher von Tampermonkey (nicht im `localStorage` der GitLab-Seite), geht nur an diesen Host und ist weder in
+  Export noch Debug-Infos enthalten; „Alle lokalen Daten löschen“ entfernt ihn. Der bisherige Weg ohne Token wird
+  abgelöst, sobald das Portal den Endpunkt ausliefert (Frist wird dann im Script angezeigt).
 - Lokal im Browser (`localStorage` der GitLab-Seite) liegen: Portal-Base-URL und Projekt-IDs, Ticket-Aktionen,
   Spaltenauswahl, Feature-Schalter sowie ein Cache der gebuchten Stunden pro Ticket (1 Stunde, „keine Buchungen“
   10 Minuten). Andere Scripts/Erweiterungen auf derselben GitLab-Seite könnten diese Daten lesen.

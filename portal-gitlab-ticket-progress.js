@@ -1,14 +1,18 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.10.60
+// @version      2026.10.61
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
 // @icon         https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/icon.svg
 // @grant        GM_xmlhttpRequest
 // @grant        GM_info
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_deleteValue
 // @connect      raw.githubusercontent.com
+// @connect      portal.beyonder.de
 // @updateURL    https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/portal-gitlab-ticket-progress.js
 // @downloadURL  https://raw.githubusercontent.com/christoph-teichmeister/portal-gitlab-ticket-progress/refs/heads/main/portal-gitlab-ticket-progress.js
 // ==/UserScript==
@@ -21,7 +25,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.10.60';
+  const SCRIPT_VERSION = '2026.10.61';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -2228,6 +2232,7 @@
 
   function describePortalError(reason) {
     if (!reason) return 'unbekannt';
+    if (reason.api && (reason.status === 401 || reason.status === 403)) return 'API-Token ungültig, abgelaufen oder ohne Zugriff (HTTP ' + reason.status + ')';
     if (reason.login) return 'Login-Seite (nicht angemeldet?)';
     if (reason.status) return 'HTTP ' + reason.status;
     if (reason.timeout) return 'Timeout';
@@ -3574,8 +3579,132 @@
     }
   }
 
+  /******************************************************************
+   * Portal-API: gebuchte Stunden per Mitarbeiter-Token (#1968)
+   * Mit Token läuft alles über die API (kein stiller HTML-Fallback), ohne Token der alte Weg.
+   ******************************************************************/
+  // Token nie in localStorage (andere Scripts der GitLab-Seite könnten ihn lesen), sondern script-eigen in GM_*; fester Host, damit er nirgendwohin sonst geht
+  const PORTAL_API_ORIGIN = 'https://portal.beyonder.de';
+  const PORTAL_API_PATH = '/api/booking-labels/project/'; // ponytail: Pfad folgt dem Vertrag aus #1968, bei Abweichung hier anpassen
+  const API_TOKEN_KEY = 'portalApiToken';
+  const API_MAX_IIDS = 100; // Labels pro Aufruf, Obergrenze laut Ticket
+  const API_BATCH_WINDOW_MS = 50;
+  // Hinweis auf den Token samt Frist erst einschalten, wenn der Endpunkt live ist (deadline: 'YYYY-MM-DD', Release + 1 Monat)
+  const API_TOKEN_NAG = {enabled: false, deadline: null};
+  const apiBatches = {}; // projectId → {waiters: {iid: [{resolve, reject}]}, timer}
+
+  function getApiToken() {
+    try {
+      return String(GM_getValue(API_TOKEN_KEY, '') || '').trim();
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function setApiToken(value) {
+    try {
+      if (value) GM_setValue(API_TOKEN_KEY, value);
+      else GM_deleteValue(API_TOKEN_KEY);
+    } catch (e) {
+      error('Token konnte nicht gespeichert werden:', e);
+    }
+  }
+
+  // Eintrag der API → dieselbe Form wie parseProgressHtml; keine Buchungen → null
+  function mapApiProgress(entry) {
+    if (!entry || !entry.found) return null;
+    const booked = formatBookedHoursDisplay(entry.booked);
+    const remaining = Number(entry.remaining) > 0 ? formatBookedHoursDisplay(entry.remaining) : null;
+    const over = Number(entry.over) > 0 ? formatBookedHoursDisplay(entry.over) : null;
+    // Buchungen für den Aktivitäts-Chip; das Portal zensiert Titel dort, wo es das auch in der Liste tut ("[censored]")
+    const bookings = (Array.isArray(entry.bookings) ? entry.bookings : []).map(function (b) {
+      return {ts: parseBookingDate(b.date), title: String(b.title || '').slice(0, 80), employee: String(b.employee || ''), hours: formatBookedHoursDisplay(b.hours) || ''};
+    }).filter(function (b) { return b.ts; }).sort(function (a, b) { return b.ts - a.ts; }).slice(0, ACTIVITY_BOOKINGS_MAX);
+    return {spent: booked, remaining: remaining, over: over, booked: booked, bookedLabel: 'Booked Hours', bookings: bookings};
+  }
+
+  // ponytail: Token "mock" liefert Fake-Daten, solange der Endpunkt nicht live ist; mit dem Endpunkt entfernen
+  function mockApiResults(iids) {
+    const results = {};
+    iids.forEach(function (iid) {
+      results['#' + iid] = Number(iid) % 5 === 0 ? {found: false} : {found: true, booked: 4.5, remaining: 2, over: 0, bookings: [{date: '2026-10-28', title: 'Mock-Buchung', employee: 'Test Person', hours: 1.5}]};
+    });
+    return {results: results};
+  }
+
+  function fetchApiBatch(projectId, iids, token) {
+    if (token === 'mock') return Promise.resolve(mockApiResults(iids));
+    return portalLimiter(function () {
+      return new Promise(function (resolve, reject) {
+        GM_xmlhttpRequest({
+          method: 'GET',
+          url: PORTAL_API_ORIGIN + PORTAL_API_PATH + encodeURIComponent(projectId) + '?include=bookings&labels=' + iids.map(function (iid) { return encodeURIComponent('#' + iid); }).join(','),
+          headers: {Authorization: 'Bearer ' + token, Accept: 'application/json'},
+          timeout: PORTAL_REQUEST_TIMEOUT_MS,
+          onload: function (response) {
+            if (response.status !== 200) {
+              reject({status: response.status, api: true});
+              return;
+            }
+            try {
+              resolve(JSON.parse(response.responseText));
+            } catch (e) {
+              reject({message: 'API-Antwort ist kein JSON'});
+            }
+          },
+          onerror: function () { reject({network: true}); },
+          ontimeout: function () { reject({timeout: true}); },
+          onabort: function () { reject({aborted: true}); }
+        });
+      });
+    });
+  }
+
+  function flushApiBatch(projectId) {
+    const batch = apiBatches[projectId];
+    delete apiBatches[projectId];
+    const token = getApiToken();
+    const iids = Object.keys(batch.waiters);
+    for (let i = 0; i < iids.length; i += API_MAX_IIDS) {
+      const chunk = iids.slice(i, i + API_MAX_IIDS);
+      fetchApiBatch(projectId, chunk, token).then(function (data) {
+        const results = (data && data.results) || {};
+        chunk.forEach(function (iid) {
+          const progress = mapApiProgress(results['#' + iid]); // Schlüssel = Booking-Label wie gesendet
+          batch.waiters[iid].forEach(function (w) { w.resolve(progress); });
+        });
+      }, function (reason) {
+        chunk.forEach(function (iid) {
+          batch.waiters[iid].forEach(function (w) { w.reject(reason); });
+        });
+      });
+    }
+  }
+
+  // Sammelt die IIDs eines Scan-Durchlaufs pro Projekt zu einem Aufruf
+  function loadProgressViaApi(projectId, issueIid) {
+    return new Promise(function (resolve, reject) {
+      const batch = apiBatches[projectId] || (apiBatches[projectId] = {waiters: {}});
+      (batch.waiters[issueIid] = batch.waiters[issueIid] || []).push({resolve: resolve, reject: reject});
+      if (!batch.timer) batch.timer = setTimeout(function () { flushApiBatch(projectId); }, API_BATCH_WINDOW_MS);
+    });
+  }
+
+  function maybeShowApiTokenNag() {
+    if (!API_TOKEN_NAG.enabled || getApiToken()) return;
+    showToast({
+      variant: 'warning',
+      text: 'Bitte im Portal einen API-Token erstellen und unter Zahnrad → Portal-Verbindung eintragen' +
+        (API_TOKEN_NAG.deadline ? ' – der bisherige Weg endet am ' + API_TOKEN_NAG.deadline : '') + '.'
+    });
+  }
+
   // Ablehnungen tragen {status} (HTTP/Login → blockiert das Projekt) oder {network|timeout} (vorübergehend)
   function loadProgressData(url, issueIid) {
+    const apiMatch = getApiToken() && /\/management\/project\/(\d+)\/booking-label\/%23(\d+)\/?$/.exec(url);
+    if (apiMatch) {
+      return loadProgressViaApi(apiMatch[1], apiMatch[2]);
+    }
     if (inflightPortalRequests[url]) {
       return inflightPortalRequests[url];
     }
@@ -6070,6 +6199,7 @@
     } catch (e) {
       error('Löschen der lokalen Daten fehlgeschlagen:', e);
     }
+    setApiToken('');
     window.location.reload();
   }
 
@@ -7090,6 +7220,25 @@
     projectStatusElement = projectField.status;
     portal.element.appendChild(projectField.element);
 
+    // Token ist global (nicht pro Board) und liegt in GM_*, nie in der Konfiguration oder im Export
+    const tokenInput = document.createElement('input');
+    tokenInput.type = 'password';
+    tokenInput.id = 'ambient-api-token';
+    tokenInput.autocomplete = 'off';
+    tokenInput.placeholder = getApiToken() ? '••••••••  (gespeichert)' : 'Mitarbeiter-Token aus dem Portal';
+    const tokenField = createInputField('Portal-API-Token', tokenInput,
+      'Mitarbeiter-Token (nicht Projekt-Token). Mit Token nutzt das Script die API statt der Ticket-Detailseite; leer lassen und Speichern entfernt ihn. ' +
+      'Liegt nur im Script-Speicher von Tampermonkey, geht nur an ' + PORTAL_API_ORIGIN + ' und fehlt in Export und Debug-Infos.',
+      'ambient-api-token-status');
+    tokenInput.addEventListener('change', function () {
+      setApiToken(tokenInput.value.trim());
+      tokenInput.value = '';
+      tokenInput.placeholder = getApiToken() ? '••••••••  (gespeichert)' : 'Mitarbeiter-Token aus dem Portal';
+      tokenField.status.style.color = SETTINGS_SUBTLE_TEXT;
+      tokenField.status.textContent = getApiToken() ? 'Token gespeichert – Seite neu laden.' : 'Token entfernt.';
+    });
+    portal.element.appendChild(tokenField.element);
+
     // Boards, die bewusst ohne Portal laufen, sollen nicht bei jedem Laden warnen
     const warningToggle = makeSwitch('Warnung bei fehlender Portal-URL', projectSettings.portalWarning !== false, function (value) {
       projectSettings.portalWarning = value;
@@ -7217,6 +7366,7 @@
     ensureStylesheet(); // vor allem, was einen Toast zeigen kann
     installNoTriggerGuard();
     importConfigFromLocationHash(projectSettings);
+    maybeShowApiTokenNag();
     window.addEventListener('pagehide', flushProgressCache);
     createToolbar(projectSettings);
     createMrLinksBar();
