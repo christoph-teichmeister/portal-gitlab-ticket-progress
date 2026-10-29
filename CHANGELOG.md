@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.10.61
+
+- Portal-API-Token (optional): Mitarbeiter-Token unter Zahnrad → Portal-Verbindung. Mit Token lädt das Script die
+  gebuchten Stunden gesammelt (bis 100 Tickets pro Aufruf) per API statt je Karte die Ticket-Seite. Der Token liegt in
+  `GM_setValue`, geht nur an `portal.beyonder.de`; ohne Token bleibt alles wie bisher. Hinweis mit Frist ist vorbereitet,
+  aber aus, bis der Endpunkt (#1968) live ist.
+
 ## 2026.10.56
 
 - Aktivitäts-Chip reagiert jetzt auf Hover und Tab-Fokus: GitLabs unsichtbarer Karten-Link lag über dem Chip und hat die
