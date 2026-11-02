@@ -95,6 +95,7 @@ Weitere Details zur Nutzung und Konfiguration:
   Script-Speicher von Tampermonkey (nicht im `localStorage` der GitLab-Seite), geht nur an diesen Host und ist weder in
   Export noch Debug-Infos enthalten; „Alle lokalen Daten löschen“ entfernt ihn. Der bisherige Weg ohne Token wird
   abgelöst, sobald das Portal den Endpunkt ausliefert (Frist wird dann im Script angezeigt).
+  Antwortet die API mit 404 (Endpunkt noch nicht live), fällt das Script bis zum Reload auf die Ticket-Seite zurück.
 - Lokal im Browser (`localStorage` der GitLab-Seite) liegen: Portal-Base-URL und Projekt-IDs, Ticket-Aktionen,
   Spaltenauswahl, Feature-Schalter sowie ein Cache der gebuchten Stunden pro Ticket (1 Stunde, „keine Buchungen“
   10 Minuten). Andere Scripts/Erweiterungen auf derselben GitLab-Seite könnten diese Daten lesen.
