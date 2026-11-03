@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.11.5
+// @version      2026.11.6
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -25,7 +25,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.11.5';
+  const SCRIPT_VERSION = '2026.11.6';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -134,6 +134,7 @@
       '.ambient-switch-row{cursor:pointer;margin:0;font-weight:400}' +
       '.ambient-switch-compact{gap:.6rem;padding:.3rem .5rem .3rem .8rem;min-height:36px;border-radius:999px;border:1px solid var(--gl-border-color-default,#4c4b51)}' +
       '.ambient-switch-elbow{display:flex;flex:0 0 auto;opacity:.6;margin-top:-.9rem}' +
+      '.ambient-token-input{-webkit-text-security:disc;text-security:disc}' +
       '.ambient-switch-input{appearance:none;-webkit-appearance:none;position:relative;flex:0 0 auto;width:36px;height:20px;margin:0;border-radius:999px;background:#89888d;cursor:pointer;transition:background .2s ease}' +
       '.ambient-switch-input::before{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.35);transition:transform .2s ease}' +
       '.ambient-switch-input:checked{background:#1f75cb}' +
@@ -7237,9 +7238,16 @@
 
     // Token ist global (nicht pro Board) und liegt in GM_*, nie in der Konfiguration oder im Export
     const tokenInput = document.createElement('input');
-    tokenInput.type = 'password';
+    // Kein type=password: ein Passwortfeld auf der Seite lässt Chrome/Passwortmanager GitLabs Suchfelder mit der
+    // E-Mail befüllen. Maskiert wird per CSS.
+    tokenInput.type = 'text';
+    tokenInput.className = 'ambient-token-input';
     tokenInput.id = 'ambient-api-token';
     tokenInput.autocomplete = 'off';
+    tokenInput.setAttribute('data-1p-ignore', '');
+    tokenInput.setAttribute('data-lpignore', 'true');
+    tokenInput.setAttribute('data-bwignore', 'true');
+    tokenInput.setAttribute('data-form-type', 'other');
     tokenInput.placeholder = getApiToken() ? '••••••••  (gespeichert)' : 'Mitarbeiter-Token aus dem Portal';
     const tokenField = createInputField('Portal-API-Token', tokenInput,
       'Mitarbeiter-Token (nicht Projekt-Token). Mit Token nutzt das Script die API statt der Ticket-Detailseite; leer lassen und Speichern entfernt ihn. ' +

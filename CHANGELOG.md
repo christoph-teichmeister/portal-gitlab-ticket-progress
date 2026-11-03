@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.11.6
+
+- Das Token-Feld ist kein Passwortfeld mehr (Maskierung per CSS). Chrome und Passwortmanager haben wegen des Passwortfelds
+  die E-Mail in GitLabs Suchfelder (z. B. Dateifilter im Diff) eingetragen.
+
 ## 2026.10.61
 
 - Portal-API-Token (optional): Mitarbeiter-Token unter Zahnrad → Portal-Verbindung. Mit Token lädt das Script die
