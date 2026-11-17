@@ -22,7 +22,7 @@ const names = ['parseVersionSegments', 'isRemoteVersionGreater', 'formatDuration
   'normalizeListNameForMatching', 'normalizeLabelNameForMatching', 'parseTicketActions', 'assigneeSortKey', 'planReorder',
   'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate', 'relativeLuminance',
   'parseCssColorToRgb', 'getContrastTextColor', 'formatBookedHoursDisplay', 'isNumericId',
-  'parseExtraProjectIds', 'activityTone', 'newestTimestamp', 'parseBookingDate', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays', 'mapApiProgress'];
+  'parseExtraProjectIds', 'activityTone', 'newestTimestamp', 'parseBookingDate', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays', 'mapApiProgress', 'normalizeMilestoneSp', 'milestoneSpToShow', 'milestoneSpQuery'];
 const isExp = function () { return false; };
 const patternsStart = source.indexOf('  const DEFAULT_ESTIMATE_PATTERNS');
 const defaultPatterns = source.slice(patternsStart, source.indexOf(';\n', patternsStart) + 1);
@@ -202,3 +202,16 @@ console.log('parseBookingDate ok');
   assert.strictEqual(f.mapApiProgress({found: true, booked: 12, remaining: 0, over: 1.5}).over, '1.5h');
 }
 console.log('mapApiProgress ok');
+
+// Meilenstein-SP: kaputte Einträge fallen raus, „nur Board-Filter“ zeigt nur den gefilterten Meilenstein
+{
+  const entries = f.normalizeMilestoneSp([{name: ' M1 ', sold: '10'}, {name: 'M2', sold: 5, show: false}, {name: '', sold: 20}, {name: 'M3', sold: 'x'}, {name: 'M4', sold: ''}, null]);
+  assert.deepStrictEqual(entries, [{name: 'M1', sold: 10, show: true}, {name: 'M2', sold: 5, show: false}, {name: '', sold: 20, show: true}]);
+  assert.deepStrictEqual(f.normalizeMilestoneSp('kaputt'), []);
+  assert.deepStrictEqual(f.milestoneSpToShow(entries, '', false).map(function (e) { return e.name; }), ['M1', '']);
+  assert.deepStrictEqual(f.milestoneSpToShow(entries, '?milestone_title=M1', true).map(function (e) { return e.name; }), ['M1', '']);
+  assert.deepStrictEqual(f.milestoneSpToShow(entries, '?milestone_title=M9', true).map(function (e) { return e.name; }), ['']);
+  assert.strictEqual(f.milestoneSpQuery('Sprint 1'), 'milestone=Sprint%201&state=all');
+  assert.strictEqual(f.milestoneSpQuery(''), 'state=all');
+}
+console.log('milestoneSp ok');

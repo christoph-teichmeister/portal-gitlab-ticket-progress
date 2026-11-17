@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.8
+
+- Neu: Verkaufte SP. Chip hinter den Breadcrumbs vergleicht die SP aller Tickets eines Meilensteins mit den verkauften SP
+  (`M1: 11 / 10 SP`, rot bei Überschreitung). Verkaufte SP je Meilenstein pflegst du unter Zahnrad → Dieses Board →
+  Verkaufte SP (lokal im Browser; auch ohne Meilenstein als „Gesamt“), einzeln und global ein-/ausblendbar.
+
 ## 2026.11.6
 
 - Das Token-Feld ist kein Passwortfeld mehr (Maskierung per CSS). Chrome und Passwortmanager haben wegen des Passwortfelds
