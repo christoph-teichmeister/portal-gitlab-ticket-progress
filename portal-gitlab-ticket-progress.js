@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.11.7
+// @version      2026.11.8
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -25,7 +25,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.11.7';
+  const SCRIPT_VERSION = '2026.11.8';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -189,6 +189,12 @@
       '#js-vue-page-breadcrumbs-wrapper:has(>#js-my-mr-links,>#ambient-progress-toolbar)>nav.gl-breadcrumbs{flex:1 1 auto;min-width:0}' +
       '#js-my-mr-links,#js-vue-page-breadcrumbs-wrapper>#ambient-progress-toolbar{flex:0 0 auto}' +
       '#js-my-mr-links{margin-left:auto}' +
+      // Meilenstein-Chip direkt hinter den Breadcrumbs: Breadcrumbs wachsen nicht mehr, der Chip schiebt die Buttons nach rechts
+      '#js-vue-page-breadcrumbs-wrapper:has(>#ambient-milestone-sp)>nav.gl-breadcrumbs{flex:0 1 auto}' +
+      '#ambient-milestone-sp{display:flex;flex:1 1 auto;flex-wrap:wrap;align-items:center;gap:.4rem;min-width:0;margin-left:.5rem}' +
+      '.ambient-milestone-sp-chip{padding:.1rem .6rem;border:1px solid var(--gl-border-color-default,#4c4b51);border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;color:var(--gl-text-color-subtle,#89888d)}' +
+      '.ambient-milestone-sp-chip.is-over{color:var(--gl-text-color-danger,#dd2b0e);border-color:currentColor}' +
+      '.ambient-milestone-sp-chip.is-equal{color:var(--gl-text-color-success,#108548);border-color:currentColor}' +
       '.ambient-split-label>span:first-child{flex:0 0 auto}' +
       '.ambient-split-label>span:nth-child(2){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
       // GitLabs h2 hat hier Standard-Abstände (20px oben / 10px unten) und sitzt dadurch ~5px unter den Icons
@@ -1567,7 +1573,9 @@
       ticketActions: (storedProjectConfig && storedProjectConfig.ticketActions) || '',
       estimateEnabled: !storedProjectConfig || storedProjectConfig.estimateEnabled !== false,
       portalWarning: !storedProjectConfig || storedProjectConfig.portalWarning !== false,
-      closedDays: clampClosedDays(storedProjectConfig && storedProjectConfig.closedDays)
+      closedDays: clampClosedDays(storedProjectConfig && storedProjectConfig.closedDays),
+      milestoneSp: normalizeMilestoneSp(storedProjectConfig && storedProjectConfig.milestoneSp),
+      milestoneSpFilterOnly: Boolean(storedProjectConfig && storedProjectConfig.milestoneSpFilterOnly)
     };
   }
 
@@ -2618,7 +2626,7 @@
 
   // Entfernt alles, was das Script in eine Karte eingefügt hat; nächster Scan baut es bei Bedarf neu auf
   function clearCardInjections(cardElem) {
-    cardElem.querySelectorAll('.ambient-progress-badge, .ambient-mr-badge, .ambient-column-age, .ambient-activity, ' +
+    cardElem.querySelectorAll('#ambient-milestone-sp, .ambient-progress-badge, .ambient-mr-badge, .ambient-column-age, .ambient-activity, ' +
       '.ambient-card-actions, .ambient-card-actions-row').forEach(function (el) { el.remove(); });
     removeEstimateBadges(cardElem);
     ['data-ambient-progress-processed', 'data-ambient-entered-at', 'data-ambient-above-avg', 'data-ambient-loaded-at']
@@ -3234,6 +3242,82 @@
     }).catch(function (err) {
       warn('SP-Summe fehlgeschlagen:', err);
       el.remove();
+    });
+  }
+
+  // Pro Board gepflegte verkaufte SP: [{name, sold, show}], name '' = gesamtes Projekt; kaputte Einträge fallen raus
+  function normalizeMilestoneSp(raw) {
+    return (Array.isArray(raw) ? raw : []).filter(function (entry) {
+      return entry && typeof entry.name === 'string' && entry.sold !== '' && Number.isFinite(Number(entry.sold));
+    }).map(function (entry) {
+      return {name: entry.name.trim(), sold: Number(entry.sold), show: entry.show !== false};
+    });
+  }
+
+  // Sichtbare Einträge; „nur Board-Filter“: von den Meilensteinen nur der in der URL gefilterte, „Gesamt“ bleibt
+  function milestoneSpToShow(entries, search, filterOnly) {
+    const wanted = new URLSearchParams(search).get('milestone_title');
+    return entries.filter(function (entry) {
+      return entry.show && (!filterOnly || !entry.name || entry.name === wanted);
+    });
+  }
+
+  function milestoneSpQuery(name) {
+    return (name ? 'milestone=' + encodeURIComponent(name) + '&' : '') + 'state=all';
+  }
+
+  function milestoneSpLabel(entry) {
+    return entry.name || 'Gesamt';
+  }
+
+  // „M1: 11 / 10 SP“ hinter den Breadcrumbs: SP aller Tickets des Meilensteins (offen und geschlossen) gegen die verkaufte Zahl
+  function updateMilestoneSpChip(projectSettings) {
+    let el = document.getElementById('ambient-milestone-sp');
+    const wrapper = document.querySelector(SEL.breadcrumbsWrapper);
+    const entries = !isFeatureOn('milestoneSp') || !wrapper || !projectSettings.projectPath ? [] :
+      milestoneSpToShow(projectSettings.milestoneSp, window.location.search, projectSettings.milestoneSpFilterOnly);
+    if (!entries.length) {
+      if (el) el.remove();
+      return;
+    }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'ambient-milestone-sp';
+    }
+    const anchor = document.getElementById('js-my-mr-links') || document.getElementById('ambient-progress-toolbar');
+    if (anchor && anchor.parentNode === wrapper) {
+      if (el.nextSibling !== anchor) wrapper.insertBefore(el, anchor);
+    } else if (el.parentNode !== wrapper) {
+      wrapper.appendChild(el);
+    }
+    const key = JSON.stringify(entries);
+    if (el.getAttribute('data-ambient-key') === key) return;
+    el.setAttribute('data-ambient-key', key);
+    el.textContent = '';
+    entries.forEach(function (entry) {
+      const chip = document.createElement('span');
+      chip.className = 'ambient-milestone-sp-chip';
+      chip.textContent = milestoneSpLabel(entry) + ' …';
+      chip.addEventListener('click', function () { // neu laden statt 5 Minuten Cache abzuwarten
+        delete columnSpCache[projectSettings.projectPath + '?' + milestoneSpQuery(entry.name)];
+        el.removeAttribute('data-ambient-key');
+        if (rescanHook) rescanHook();
+      });
+      el.appendChild(chip);
+      fetchColumnSp(projectSettings.projectPath, milestoneSpQuery(entry.name)).then(function (total) {
+        if (chip.parentNode !== el) return; // inzwischen neu aufgebaut
+        const sp = Math.round(total.sp * 10) / 10;
+        chip.textContent = milestoneSpLabel(entry) + ': ' + (total.truncated ? '≥ ' : '') + sp + ' / ' + entry.sold + ' SP';
+        chip.classList.toggle('is-over', sp > entry.sold);
+        chip.classList.toggle('is-equal', sp === entry.sold);
+        chip.title = sp + ' SP im Board (' + total.issues + ' Tickets, offen und geschlossen' + (entry.name ? '' : ', ganzes Projekt') + ') von ' + entry.sold + ' verkauften SP' +
+          (sp > entry.sold ? ': ' + Math.round((sp - entry.sold) * 10) / 10 + ' SP zu viel' :
+            sp < entry.sold ? ': noch ' + Math.round((entry.sold - sp) * 10) / 10 + ' SP frei' : '') +
+          (total.missing ? '. ' + total.missing + ' Tickets ohne Schätzung' : '') + '. Klick: neu laden.';
+      }).catch(function (err) {
+        warn('Meilenstein-SP fehlgeschlagen:', err);
+        if (chip.parentNode === el) chip.textContent = milestoneSpLabel(entry) + ': ?';
+      });
     });
   }
 
@@ -5691,7 +5775,8 @@
     });
 
     const onDocumentClick = function (event) {
-      if (!dropdownLocked || gearButton.contains(event.target) || dropdown.contains(event.target)) {
+      // Ziel schon aus dem DOM entfernt (Panel baut Listen bei Klick neu auf, z. B. „Entfernen“): war ein Klick im Panel
+      if (!dropdownLocked || !event.target.isConnected || gearButton.contains(event.target) || dropdown.contains(event.target)) {
         return;
       }
       setDropdownOpen(false, false);
@@ -5971,6 +6056,9 @@
       ['columnSp', 'SP-Summe im Spalten-Header', 'Alle Tickets der Spalte (auch nicht geladene), berücksichtigt die Board-Filter'],
       ['splitLabels', 'Geteilte Scoped Labels', 'workflow::Review zweifarbig darstellen, auch in Ticket und MR'],
       ['cardActions', 'Ticket-Aktionen-Menü', '⋮ im Karten-Footer mit deinen Ticket-Aktionen (Tab „Dieses Board“)']
+    ]},
+    {view: 'board', title: 'Verkaufte SP', items: [
+      ['milestoneSp', 'SP im Board vs. verkauft', 'Chip hinter den Breadcrumbs, Werte im Tab „Dieses Board“']
     ]},
     {view: 'board', title: 'Verweildauer', items: [
       ['columnAge', 'Uhr im Karten-Footer', 'Wie lange das Ticket schon in der Spalte liegt'],
@@ -6355,6 +6443,7 @@
     lastActivity: '.ambient-activity',
     columnAvg: '.ambient-column-avg',
     columnSp: '.ambient-column-sp',
+    milestoneSp: '#ambient-milestone-sp',
     issueDetail: '.ambient-progress-detail-badge',
     mrPageProgress: '.ambient-progress-mr-badge',
     mrAssigneeButtons: '.ambient-ticket-assignee-badge',
@@ -6852,6 +6941,7 @@
     panel.appendChild(config.portalCard);
     panel.appendChild(createBoardEstimateSection(projectSettings));
     panel.appendChild(createClosedDaysSection(projectSettings));
+    panel.appendChild(createMilestoneSpSection(projectSettings));
     panel.appendChild(age.element);
     panel.appendChild(config.actionsCard);
 
@@ -7081,6 +7171,137 @@
     card.element.appendChild(input);
     card.element.appendChild(createTextSpan('Ist das Auge der Closed-Spalte an, läuft das Script nur auf Tickets, die in ' +
       'so vielen Tagen geschlossen wurden (1–' + CLOSED_DAYS_MAX + ').', FIELD_HINT_STYLES));
+    return card.element;
+  }
+
+  // Pro Board: verkaufte SP je Meilenstein pflegen (nur lokal im Browser) und einzeln ein-/ausblenden
+  function createMilestoneSpSection(projectSettings) {
+    const card = createPanelCard('Verkaufte SP',
+      'Pro Meilenstein oder gesamt. Der Chip hinter den Breadcrumbs vergleicht sie mit den SP im Board. Nur lokal gespeichert.');
+    const list = document.createElement('div');
+    applyStyles(list, {display: 'flex', flexDirection: 'column', gap: '0.4rem'});
+
+    function save() {
+      writeProjectConfigEntry(projectSettings.projectKey, {
+        milestoneSp: projectSettings.milestoneSp,
+        milestoneSpFilterOnly: projectSettings.milestoneSpFilterOnly
+      });
+      if (rescanHook) rescanHook();
+    }
+
+    function createSoldInput(label, value, onChange) {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.min = '0';
+      input.step = '0.5';
+      input.value = String(value);
+      input.setAttribute('aria-label', label);
+      input.className = FORM_INPUT_CLASSES;
+      applyStyles(input, EXPERIMENT_INPUT_STYLES);
+      input.style.width = '5rem';
+      input.addEventListener('change', function () { onChange(input.value); });
+      return input;
+    }
+
+    function renderList() {
+      list.textContent = '';
+      projectSettings.milestoneSp.forEach(function (entry, index) {
+        const row = document.createElement('div');
+        applyStyles(row, {display: 'flex', alignItems: 'center', gap: '0.5rem'});
+        const show = document.createElement('input');
+        show.type = 'checkbox';
+        show.checked = entry.show;
+        show.title = 'Im Chip anzeigen';
+        show.setAttribute('aria-label', milestoneSpLabel(entry) + ' anzeigen');
+        show.addEventListener('change', function () {
+          entry.show = show.checked;
+          save();
+        });
+        const name = createTextSpan(milestoneSpLabel(entry), {flex: '1 1 auto', minWidth: '0', overflowWrap: 'anywhere'});
+        const sold = createSoldInput('Verkaufte SP für ' + milestoneSpLabel(entry), entry.sold, function (value) {
+          if (!Number.isFinite(Number(value)) || value === '') return renderList();
+          entry.sold = Number(value);
+          save();
+        });
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = '✕';
+        remove.title = 'Entfernen';
+        remove.setAttribute('aria-label', milestoneSpLabel(entry) + ' entfernen');
+        remove.className = 'ambient-btn btn gl-button btn-default btn-default-tertiary btn-sm';
+        remove.addEventListener('click', function () {
+          projectSettings.milestoneSp.splice(index, 1);
+          save();
+          renderList();
+        });
+        [show, name, sold, createTextSpan('SP', FIELD_HINT_STYLES), remove].forEach(function (el) { row.appendChild(el); });
+        list.appendChild(row);
+      });
+    }
+
+    // Neuer Eintrag: Name mit Vorschlägen aus GitLab (aktive Meilensteine des Projekts und der Gruppe), leer = gesamt
+    const addRow = document.createElement('div');
+    applyStyles(addRow, {display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem'});
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'Meilenstein (leer = gesamt)';
+    nameInput.setAttribute('aria-label', 'Meilenstein, leer für gesamt');
+    nameInput.className = FORM_INPUT_CLASSES;
+    applyStyles(nameInput, EXPERIMENT_INPUT_STYLES);
+    nameInput.style.flex = '1 1 9rem';
+    nameInput.style.minWidth = '0';
+    const datalist = document.createElement('datalist');
+    datalist.id = 'ambient-milestone-sp-names';
+    nameInput.setAttribute('list', datalist.id);
+    const soldInput = createSoldInput('Verkaufte SP', '', function () {});
+    soldInput.placeholder = 'SP';
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.textContent = '+';
+    add.title = 'Hinzufügen';
+    add.setAttribute('aria-label', 'Hinzufügen');
+    add.className = 'ambient-btn btn gl-button btn-default btn-sm';
+    add.addEventListener('click', function () {
+      const name = nameInput.value.trim();
+      if (soldInput.value === '' || !Number.isFinite(Number(soldInput.value))) return;
+      const existing = projectSettings.milestoneSp.filter(function (entry) { return entry.name === name; })[0];
+      if (existing) {
+        existing.sold = Number(soldInput.value);
+      } else {
+        projectSettings.milestoneSp.push({name: name, sold: Number(soldInput.value), show: true});
+      }
+      nameInput.value = '';
+      soldInput.value = '';
+      save();
+      renderList();
+    });
+    [nameInput, soldInput].forEach(function (input) { // Enter in einem der Felder = Hinzufügen
+      input.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') add.click();
+      });
+    });
+    [nameInput, soldInput, add, datalist].forEach(function (el) { addRow.appendChild(el); });
+
+    const filterOnly = makeSwitch('Nur Board-Filter-Meilenstein', projectSettings.milestoneSpFilterOnly, function (value) {
+      projectSettings.milestoneSpFilterOnly = value;
+      save();
+    }, {desc: 'Zeigt nur den Meilenstein, nach dem das Board gefiltert ist (und „gesamt“).'});
+    filterOnly.style.margin = '0 -1.1rem';
+
+    card.element.appendChild(list);
+    card.element.appendChild(addRow);
+    card.element.appendChild(filterOnly);
+    renderList();
+    if (projectSettings.projectPath) {
+      glApi(projectSettings.projectPath, '/milestones?state=active&include_parent_milestones=true&per_page=100', 'Meilensteine')
+        .then(function (milestones) {
+          (milestones || []).forEach(function (milestone) {
+            const option = document.createElement('option');
+            option.value = milestone.title;
+            datalist.appendChild(option);
+          });
+        }).catch(function (err) { warn('Meilenstein-Vorschläge nicht ladbar:', err); });
+    }
     return card.element;
   }
 
@@ -7408,6 +7629,7 @@
       }
       repositionToolbarIfNeeded();
       repositionMrLinksIfNeeded();
+      updateMilestoneSpChip(projectSettings);
       if (isFeatureOn('splitLabels')) {
         applySplitLabels(document.body); // einziger Durchlauf: Board-Header und -Karten, Issue-Detail, Drawer, MR-Seite
       }

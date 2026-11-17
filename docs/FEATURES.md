@@ -223,6 +223,16 @@ die Schätzung daraus).
   Unterpunkt von „Schätzung als Badge“, also auch pro Board abschaltbar. Die gespeicherte Board-Konfiguration
   (Milestone/Labels im Board selbst) wird nicht berücksichtigt, nur die Filter in der Suchleiste.
 
+## Verkaufte SP (Meilenstein oder gesamt)
+
+- Für Projekte mit Story-Point-Abrechnung: Chip hinter den Breadcrumbs, z. B. `M1: 11 / 10 SP` (rot = mehr SP im Board als
+  verkauft, grün = genau gleich, grau = noch SP frei). Gezählt werden alle Tickets des Meilensteins (offen und geschlossen,
+  SP aus dem Titel wie bei der SP-Summe). Tooltip: Differenz und Tickets ohne Schätzung. Klick lädt neu, sonst 5 min Cache.
+- Pflege: Zahnrad → „Dieses Board“ → „Verkaufte SP“. Pro Eintrag Meilenstein-Name (Vorschläge aus GitLab; leer = gesamtes Projekt, Chip „Gesamt“), verkaufte SP,
+  Häkchen zum Ein-/Ausblenden und ✕ zum Entfernen. „Nur Board-Filter-Meilenstein“ zeigt von den Meilensteinen nur den, nach
+  dem das Board gerade gefiltert ist („Gesamt“ bleibt). Globaler Schalter: Anzeige → Board-Karten → Verkaufte SP.
+- Die verkauften SP liegen nur lokal im Browser (pro Projekt), nicht im GitLab und nicht im Team geteilt.
+
 ## Split-Labels
 
 - Scoped Labels (`scope::Name`, z. B. `workflow::Design`, `prio::Hoch`) werden als `[Scope | Name]` gezeichnet: links
