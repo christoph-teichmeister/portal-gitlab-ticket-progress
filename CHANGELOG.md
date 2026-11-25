@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.11.13
+
+- Board-Drag&Drop flotter: Zielspalte scrollt beim Ziehen deutlich schneller (scrollSpeed 300, Zone 120 px), keine
+  200-ms-Verschiebeanimation, und das Skript scannt während des Ziehens nicht mehr.
+
 ## 2026.11.8
 
 - Neu: Verkaufte SP. Chip hinter den Breadcrumbs vergleicht die SP aller Tickets eines Meilensteins mit den verkauften SP
