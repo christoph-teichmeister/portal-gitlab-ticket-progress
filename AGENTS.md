@@ -36,8 +36,10 @@
 
 ## Testing Guidelines
 
-- No automated test suite exists. Manual verification via the GitLab board and Developer Console (debug logs) is
-  expected after changes.
+- `node tests/pure.check.js` checks pure functions and the settings menu consistency; `node tests/browser.check.js`
+  (needs `playwright`, CI installs it) loads the script into a fake GitLab board page. GitHub Actions also run ESLint
+  (errors only), a release check (`@version` bumped, matches `SCRIPT_VERSION` and the top `CHANGELOG.md` entry) and a leak scan.
+  Manual verification via the GitLab board and Developer Console (debug logs) is still expected after changes.
 - When adjusting parsing logic, mention in the commit/PR what scenarios were manually inspected (board columns, portal
   detail page).
 

@@ -1,0 +1,36 @@
+name: Release check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: "@version, SCRIPT_VERSION and CHANGELOG agree"
+        run: |
+          file=portal-gitlab-ticket-progress.js
+          header=$(grep -m1 '@version' $file | awk '{print $3}')
+          const=$(grep -m1 "const SCRIPT_VERSION" $file | sed "s/.*'\(.*\)'.*/\1/")
+          top=$(grep -m1 '^## ' CHANGELOG.md | sed 's/^## //' | awk '{print $1}')
+          echo "header=$header const=$const changelog=$top"
+          test "$header" = "$const" || { echo "::error::@version and SCRIPT_VERSION differ"; exit 1; }
+          test "$header" = "$top" || { echo "::error::Top CHANGELOG entry ($top) does not match @version ($header)"; exit 1; }
+      - name: Version is bumped when the script changed
+        run: |
+          base=origin/${{ github.base_ref }}
+          if git diff --quiet "$base"...HEAD -- portal-gitlab-ticket-progress.js; then
+            echo "Script unchanged, no bump needed."; exit 0
+          fi
+          old=$(git show "$base:portal-gitlab-ticket-progress.js" | grep -m1 '@version' | awk '{print $3}')
+          new=$(grep -m1 '@version' portal-gitlab-ticket-progress.js | awk '{print $3}')
+          echo "base=$old pr=$new"
+          test "$old" != "$new" || { echo "::error::Script changed but @version was not bumped"; exit 1; }
+          newest=$(printf '%s\n%s\n' "$old" "$new" | sort -V | tail -1)
+          test "$newest" = "$new" || { echo "::error::@version went backwards"; exit 1; }

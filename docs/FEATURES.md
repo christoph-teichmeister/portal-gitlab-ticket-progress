@@ -18,12 +18,12 @@ des Boards; die Einstellung gilt pro Board. Das frühere „zweite Portal-Projek
 - Platziert eine Toolbar rechts in der Breadcrumb-Zeile mit einem Gear-Button (bei schmalem Fenster kürzen sich die
   Breadcrumbs, Toolbar und MR-Buttons bleiben in derselben Zeile; rendert GitLab die Zeile neu, wird sie wieder aufgebaut). Das Menü öffnet als Seitenpanel rechts (wie GitLabs Ticket-Vorschau) mit Hauptschalter
   „Aktiv“ und den Tabs Anzeige (jedes Feature einzeln, mit Vorschau), Dieses Board (Portal-Verbindung, roter Rahmen,
-  Ticket-Aktionen), Erweitert und Experimente. Details siehe [Lokale Controls](CONTROLS.md).
+  Ticket-Aktionen), Global und Experimente. Details siehe [Lokale Controls](CONTROLS.md).
 - Fügt pro Board-Spalte einen Augen-Button in GitLabs Button-Gruppe (neben `+` und `⚙`) ein, mit dem du das Script
   für die Spalte ein- oder ausschaltest (Auge = an, durchgestrichenes Auge = aus). In eingeklappten Spalten blendet
   GitLab die Button-Gruppe samt Augen-Button aus. Die Auswahl wird lokal gespeichert (haftet an den Projekt-Keys) und aktiviert den
   expliziten Modus, wenn du manuell eingreifst. Zeichnet GitLab in der Closed-Spalte keine Button-Gruppe, setzt das Script dort eine eigene neben den Zähler. In der Closed-Spalte wirkt das Auge nur auf Tickets, die in den
-  letzten 28 Tagen geschlossen wurden (einstellbar unter Dieses Board → Closed-Spalte, höchstens 40).
+  letzten 28 Tagen geschlossen wurden (einstellbar unter Dieses Board → Board-Darstellung → Closed-Spalte: Zeitraum, höchstens 40).
 - Fügt pro Board-Karte ein Overlay-Badge ein, das eine farbige Progressbar, `spent`/`remaining`-Labels (oder
   Over-/Booked-Hours-Fallback) sowie einen `↗`-Button zum entsprechenden Portal-Ticket enthält. Booked-Hours-Fallbacks
   nutzen einen deutlich blauen Balken, damit sie sich besser von den normalen Fortschrittsdaten abheben.
@@ -50,6 +50,8 @@ des Boards; die Einstellung gilt pro Board. Das frühere „zweite Portal-Projek
 - Beim ersten Request nach dem Speichern einer neuen Portal-Base-URL erscheint ein Tampermonkey-Popup, das dich um
   Erlaubnis für den Zugriff auf diese URL bittet (`GM_xmlhttpRequest`). Gib dort „Allow" oder „Ja", damit das Skript
   tatsächlich auf das Portal zugreifen darf.
+- Meldungen erscheinen als Toast im GitLab-Look (dunkel, Status-Icon, Schließen-Button) unten rechts; „Toast-Test“ unter Global → Diagnose & Daten zeigt alle Varianten.
+- „Was ist neu“ (Zahnrad → Global): zeigt den Changelog je Version, geladen aus `CHANGELOG.md` im Repository (nur beim Öffnen, einmal je Seitenladung). Bei einer neuen Version zeigt der Update-Hinweis zusätzlich die Neuerungen.
 - Beobachtet das Board via `MutationObserver`, reagiert auf neue Karten/Listen und führt bei Bedarf neue Scans aus.
 - Zeigt im Panel eine Zeile mit dem Zeitstempel der letzten Portal-Anfrage und einen Button zum sofortigen
   Neuladen aller Tickets; der Button löscht den lokalen Cache, setzt den Zeitstempel zurück und scannt das Board neu
@@ -212,7 +214,7 @@ die Schätzung daraus).
 - Pro Board: Zahnrad → Dieses Board → „Schätzung als Badge auf diesem Board“. Aus für Boards ohne Schätzungen, dann
   gibt es dort weder Badges noch rote `? SP`. Der globale Schalter zeigt dann einen Chip „aus auf N Boards“ bzw. „aus auf
   diesem Board“ (Tooltip: welche Boards).
-- Muster: Zahnrad → Erweitert → „Schätzungs-Muster“ (mit Gültigkeitsanzeige). Eine Zeile pro Muster, `sp: <Regex>` oder `timebox: <Regex>`,
+- Muster: Zahnrad → Global → „Schätzungs-Muster“ (mit Gültigkeitsanzeige). Eine Zeile pro Muster, `sp: <Regex>` oder `timebox: <Regex>`,
   Gruppe 1 ist die Zahl, Groß-/Kleinschreibung egal, das erste passende Muster gewinnt. Leeres Feld = Standard-Muster
   (wie der Issue-Syncer des Portals: `(n SP)`, `(Timebox: nh)`, `(Spike: nh)`, `(nh)`, `(n Tage)`, auch mit `[]`, ohne Doppelpunkt und
   mit `,5` / `.5`). Ungültige Zeilen werden ignoriert und unter dem Feld gemeldet.
@@ -220,6 +222,8 @@ die Schätzung daraus).
   Tickets der Spalte über die GitLab-API, nicht nur die geladenen Karten, und übernimmt die Board-Filter aus der URL
   (Labels, Assignee, Autor, Milestone, Suche, …). Tooltip: Anzahl Tickets und wie viele ohne Schätzung. Neu gezählt,
   wenn sich Filter oder GitLabs Zähler ändern, sonst 5 min Cache. Ab 1000 Tickets (Closed ohne Filter) `≥`.
+  Mit „Kosten anzeigen“ folgen die echten Kosten der Spalte (Buchungen der Tickets, deren Fortschritt geladen ist; `≥`, wenn nicht
+  alle) und, bei gepflegtem VP, der Wert SP × VP mit Ampel: `Σ 12 SP · 9,4k € / 10,8k €`. Ohne VP nur die Kosten.
   Unterpunkt von „Schätzung als Badge“, also auch pro Board abschaltbar. Die gespeicherte Board-Konfiguration
   (Milestone/Labels im Board selbst) wird nicht berücksichtigt, nur die Filter in der Suchleiste.
 
@@ -228,10 +232,74 @@ die Schätzung daraus).
 - Für Projekte mit Story-Point-Abrechnung: Chip hinter den Breadcrumbs, z. B. `M1: 11 / 10 SP` (rot = mehr SP im Board als
   verkauft, grün = genau gleich, grau = noch SP frei). Gezählt werden alle Tickets des Meilensteins (offen und geschlossen,
   SP aus dem Titel wie bei der SP-Summe). Tooltip: Differenz und Tickets ohne Schätzung. Klick lädt neu, sonst 5 min Cache.
-- Pflege: Zahnrad → „Dieses Board“ → „Verkaufte SP“. Pro Eintrag Meilenstein-Name (Vorschläge aus GitLab; leer = gesamtes Projekt, Chip „Gesamt“), verkaufte SP,
-  Häkchen zum Ein-/Ausblenden und ✕ zum Entfernen. „Nur Board-Filter-Meilenstein“ zeigt von den Meilensteinen nur den, nach
-  dem das Board gerade gefiltert ist („Gesamt“ bleibt). Globaler Schalter: Anzeige → Board-Karten → Verkaufte SP.
+- Pflege: Zahnrad → „Dieses Board“ → „Schätzung & Verkauf“ → „Verkaufte SP“. Pro Eintrag Meilenstein (Dropdown mit den noch nicht eingetragenen aus GitLab; „Gesamt“ = ganzes Projekt, Chip „Gesamt“), verkaufte SP,
+  Häkchen zum Ein-/Ausblenden und ✕ zum Entfernen. „Nur Chip des gefilterten Meilensteins“ zeigt von den Meilensteinen nur den, nach
+  dem das Board gerade gefiltert ist („Gesamt“ bleibt). Globaler Schalter: Anzeige → Topbar → „SP im Board vs. verkauft“.
 - Die verkauften SP liegen nur lokal im Browser (pro Projekt), nicht im GitLab und nicht im Team geteilt.
+
+## Kostensätze (Kosten je Ticket)
+
+- Die Karten unter Zahnrad → „Dieses Board“ sind nach Thema sortiert und einklappbar (Klick auf den Titel; Standard zu, der Zustand wird gemerkt). Nur „Portal-Verbindung“ ist offen, solange die Verbindung fehlt; bei fehlenden Kostensätzen zeigt der eingeklappte Kopf ein rotes „⚠ Sätze fehlen“.
+
+- Zahnrad → „Dieses Board“ → „Kostensätze“. „Rollen aus Portal laden“ liest Name, Rolle und Tagessatz (extern) aus
+  `/management/project/detail/<ID>/` (Browser-Login, kein Token; Spaltenköpfe englisch oder deutsch).
+- Aufbau des Blocks: oben der Hauptschalter „Kosten anzeigen“ (aus = alles darunter abgeblendet und ohne Wirkung), dann Modus
+  (extern/intern), Sätze-Tabelle, Story-Point-Abrechnung mit VP, zuletzt die Darstellung („Ergebnis anzeigen als“).
+- Alle Geld-Anzeigen lassen sich global im Tab Anzeige abschalten (Gruppe „Kosten & Marge“: Pille, Break-even-Marker, Tooltip; Reiter „Spalten-Header“: SP-Summe, Kosten, Median; Topbar: Meilenstein-Chip, Finanz-Dashboard-Button). Voraussetzung bleibt „Kosten anzeigen“ pro Board.
+- Interne Projekte (Portal-Kategorie „Internal“, Zeile „Category“ der Projektseite) werden erkannt: Verkauf (extern, SP-Abrechnung, Zeitlimit, Ergebnis-Darstellung) ist dann ausgegraut und erklärt, gerechnet wird nur mit internen Sätzen.
+- Zeitabrechnung mit SP-Limit (Schalter pro Projekt, für Kundenprojekte nach Zeit): statt der Marge zeigt die Pille neben dem
+  Balken „gebuchte h / maximale h“ für die SP des Tickets (z. B. `6,5 / 8 h`): grün, gelb ab der Warnschwelle, rot ab dem
+  Eskalationslimit. Im Balken markiert ein Strich die Warnschwelle, die Füllung läuft gegen das Limit. Die Limits liest „Limits aus Portal
+  laden“ aus dem Formular `/management/project/<ID>/ticket-story-points/escalation-limits` (je SP Warn- und Eskalationsstunden; Werte
+  zwischen den Stufen linear, darüber mit der Steigung der letzten Stufe). Ist dort nichts gepflegt, gilt „Standard: Stunden pro SP“
+  (Vorgabe 1 SP = 8 h, einstellbar). Die Kosten stehen im Tooltip. Hat Vorrang vor der Marge; läuft unter „Kosten anzeigen“.
+- Wartungsprojekte mit Stundenkontingent: hat ein Portal-Projekt (Hauptprojekt oder zusätzliches) in den Financial data die Zeile
+  „Hour quota“, zeigt dessen Balkenzeile eine Pille `gebucht / Kontingent h` (grün, gelb ab 80 %, rot ab 100 %; Tooltip: Zeitraum,
+  h pro Monat, Verfall). Das Finanz-Dashboard zeigt das Kontingent als breite Kachel. Nur mit „Kosten anzeigen“.
+- „Interne Sätze aus Admin laden“ (nur mit Portal-Staff-Zugang): findet den Weg ohne feste Admin-URL über Links (Portal-Seite →
+  „Django Admin“ → Link der Level-Kostensätze → Tabelle, nur auf dem Portal-Host), liest Level, Projektrolle und internen Satz und
+  trägt sie für die Rollen der Tabelle ein (Schlüssel „Rolle (Level X)“). Ohne Zugriff meldet der Button das, die Hand-Eingabe bleibt.
+- Die internen €/h pro Rolle (z. B. „Developer (Level 3)“) trägst du selbst ein. Es gibt keine API dafür, die Werte
+  liegen nur lokal im Tampermonkey-Speicher (`GM_*`, wie der API-Token, nicht in `localStorage`, den andere Scripte lesen könnten) und gelten nur für das jeweilige Projekt (Board). Extern = Tagessatz ÷ 8.
+- Schalter „Mit externen Sätzen rechnen“ (pro Projekt): aus = intern (interne Projekte, Story-Point-Festpreis), an = extern
+  (Kundenprojekte nach Stunden).
+- Schalter „Kosten anzeigen“ (Standard aus, damit bei Screenshares nichts auffällt) und „Verkaufspreis pro SP“. Erlös eines
+  Tickets = SP × Preis, Marge = Erlös − Kosten (nur im internen Modus).
+- Bei „Kosten anzeigen“ an prüft der Block selbst und warnt rot (mit rot markierten Feldern): keine Rollen geladen, interner Satz je Rolle fehlt, Verkaufspreis pro SP fehlt.
+- Tickets ohne SP im Titel (und im externen Modus) bekommen nur die Kosten als Pille, ohne Ampel.
+- Ampel: die Kostenzahl (Pille, Meilenstein-Chip) ist grün, gelb ab 80 % des Erlöses (wie die Warnschwelle des Balkens) und rot ab 100 %.
+- Dropdown „Ergebnis anzeigen als“ (Marge oder Kosten / Erlös; pro Projekt, Standard Marge; nur mit SP-basierter Abrechnung aktiv): Pille und Meilenstein-Chip zeigen `722 € / 2.700 €` statt der Marge als Summe (`+1.978 €`).
+- Anzeige mit Schalter an: Marge-Pille neben dem Balken (`+340 €`, rot bei Minus); Break-even-Strich auf dem Balken, wenn
+  das Ticket ein Stundenbudget hat (Stunden, bei denen die Kosten den Erlös erreichen; liegt der Punkt hinter dem Budget, steht der Strich gestrichelt am rechten Rand), rote Umrandung des Balkens, sobald
+  mehr gebucht ist; Meilenstein-Chip `… · Kosten / Erlös` aus den Buchungen der Tickets, deren Fortschritt geladen ist (Tooltip nennt die Abdeckung).
+- Tooltip des Fortschrittsbalkens: `Kosten (intern): 1.234 €`. Gebuchte Stunden je Person stammen aus den
+  Ticket-Buchungen; Personen ohne Satz zählen nicht mit und stehen im Tooltip. Nach dem Laden der Rollen greift es beim
+  nächsten Refresh der Karte.
+
+## Finanz-Dashboard
+
+- Button „Finanzen“ (€-Symbol) direkt vor den Einstellungen (nach den MR-Links), öffnet ein Seitenpanel wie die Einstellungen. Quelle:
+  `/management/project/financial-rows/load/<ID>/` (Browser-Login, kein Token): Initial budget und Tabelle „Hours per employee“.
+- Anzeige: Budget, Kosten (Ampel), Rest, ein Balken für das ganze Budget mit je einem Segment pro Person (Tooltip: Kosten und Anteil; über Budget wächst die Skala, roter Strich am Budget) und je Person Stunden, €/h, Kosten und Anteil am Budget, absteigend
+  nach Kosten. Sätze und Modus (intern/extern) kommen aus Einstellungen → Kostensätze.
+- Zeitraum (oben im Panel) und Vergleich (Auswahl im Abschnitt „Verlauf“, wirkt nur auf den Verlauf; beides pro Projekt gemerkt): „Gesamt“ nutzt die Summen des Portals. Ein Monat (dieser oder
+  einer der letzten 12) oder eine Spanne (letzte 3/6/12 Monate, dieses Jahr, „Eigene Spanne“ von–bis) lädt die Timesheets (`/management/timesheet/table-grid/data/`, 50 je Seite) und zeigt nur Personen mit
+  Buchungen im Zeitraum (je Person mit ↗-Link zur vorgefilterten Timesheet-Tabelle im Portal): Stunden, Ø €/h, Kosten, Δ zum Vormonat bzw. zur gleich langen Vorperiode (Tooltip: Stunden) und Anteil am Budget. „Vergleich“ (nur Vormonat
+  oder 3/6/12 Monate) ergänzt einen Verlauf mit Balken je Monat in Personenfarben und Δ zum jeweiligen Vormonat.
+- Δ-Spalten stehen mit Pfeil in fester Spalte untereinander: Kosten gestiegen = rot (▲), gesunken = grün (▼).
+- Monate werden mit dem Level zum Buchungsdatum bepreist: je Person wird die Level-Historie aus dem Mitarbeiterprofil
+  (`/account/employee/detail/<ID>/tab/new-pay-history/`, 24 h im localStorage gecacht) gelesen. Ohne Zugriff oder Historie gilt
+  das aktuelle Level. Rollen aus der Historie ohne Satz erscheinen in der Sätze-Tabelle der Einstellungen („aus der
+  Level-Historie“). „Gesamt“ rechnet weiter mit dem aktuellen Level.
+- Ladeanzeige mit Schritten und Balken: Finanzdaten → Timesheets (Seiten) → Level-Historien (Personen), je mit Zähler, dazu ein Gesamtbalken. Im Modus „Gesamt“ erscheint die Tabelle sofort, die Rollen der Buchenden laden mit eigenem Balken nach.
+- Der Finanz-Button erscheint nur bei eingeschaltetem „Kosten anzeigen“.
+- Schalter „Story-Point-basierte Abrechnung“ (Einstellungen → Kostensätze): an = „Verkaufspreis (VP) pro SP“ ist Pflicht (rote
+  Warnung, solange er fehlt) und Erlös/Marge/Break-even zählen; aus = nur Kosten, das Preisfeld ist ausgegraut. Bestehende
+  Konfigurationen mit Preis gelten als „an“.
+- Buchende, die nicht in der Personentabelle des Projekts stehen, laden ihre Rolle aus dem Portal-Profil (`/account/employee/detail/<ID>/`,
+  Zeile „Level“) nach und erscheinen danach auch bei den Kostensätzen. Gelingt das nicht, wählst du die Rolle im Dashboard von Hand.
+- Ohne „Initial budget“ (Abrechnung nach Aufwand) zeigt das Dashboard nur Kosten, ohne Anteile. Zum Abgleich steht der
+  interne Kostenwert des Portals darunter.
 
 ## Split-Labels
 
@@ -250,8 +318,8 @@ die Schätzung daraus).
   erneuert; schlägt das fehl, bleibt der alte Wert mit Hinweis stehen.
 - **Cache-Alter** („geladen vor …“) im Balken-Tooltip. **Daten neu laden** leert den Cache und scannt neu, ohne
   Seiten-Reload.
-- **Weitere Portal-Projekt-IDs** (bis zu 3 zusätzliche Balken): Zahnrad → Erweitert.
-- **Portal-Fehlerprotokoll:** Zahnrad → Erweitert → „Portal-Fehler anzeigen“.
+- **Weitere Portal-Projekt-IDs** (bis zu 3 zusätzliche Balken): Zahnrad → Global.
+- **Portal-Fehlerprotokoll:** Zahnrad → Global → „Portal-Fehler anzeigen“.
 - **Verweildauer:** Median statt Durchschnitt; Verlauf pro Spalte im Tooltip; Eintrittszeiten 30 min in `localStorage`;
   Aktualisierung nach Drag & Drop.
 - **Ticket-Aktionen als Dropdown** (Drei-Punkte-Icon) auf Karten und im Issue-Detail, im GitLab-Stil.
@@ -262,7 +330,7 @@ die Schätzung daraus).
 - **Split-Labels** (`workflow::…`) auch im Issue-Detail, Board-Drawer und auf der MR-Seite (nicht in Dropdowns und
   der Filterleiste).
 - **Changelog** im Update-Hinweis (liest `CHANGELOG.md`), **Auto-Selbsttest** einmal nach jedem Script-Update und eine
-  **teilweise englische Oberfläche** (Zahnrad → Erweitert, Reload nötig).
+  **teilweise englische Oberfläche** (Zahnrad → Global, Reload nötig).
 
 ## Neu in 2026.10.12 bis 2026.10.18
 

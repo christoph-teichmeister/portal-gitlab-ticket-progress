@@ -1,0 +1,32 @@
+name: Leak scan
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secrets (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Own patterns (tokens, private keys, IPs, unexpected e-mails)
+        run: |
+          set -e
+          files=$(git ls-files | grep -v -E '^(LICENSE|\.github/leak-patterns\.txt)$')
+          if grep -n -I -E -f .github/leak-patterns.txt $files; then
+            echo "::error::Pattern from .github/leak-patterns.txt found (see above)"; exit 1
+          fi
+          # E-Mail-Adressen: nur Platzhalter erlaubt
+          if grep -n -I -E -o '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}' $files | grep -v -E '@(example\.(com|org)|users\.noreply\.github\.com)|@(types|eslint)/|@[a-z-]+/|\.git@'; then
+            echo "::error::Unexpected e-mail address"; exit 1
+          fi

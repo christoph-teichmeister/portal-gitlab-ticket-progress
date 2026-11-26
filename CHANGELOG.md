@@ -1,15 +1,84 @@
 # Changelog
 
+## 2026.11.15
+
+- Neu: Zahnrad → Global → „Was ist neu“ zeigt den Changelog je Version (aus dem Repository geladen, die neueste aufgeklappt).
+- Toasts im GitLab-Stil (dunkle Fläche, Status-Icon, Schließen-Button), unten rechts, damit sie die Toolbar-Icons nicht verdecken. Neuer Debug-Button „Toast-Test“ unter Zahnrad → Global → Diagnose & Daten.
+- Neu: Finanz-Button (Reihenfolge: MR-Links, Finanzen, Einstellungen) öffnet ein Finanz-Dashboard (Seitenpanel). Es liest „Financial data“
+  der Portal-Projektseite (Initial budget, Hours per employee) und zeigt mit den Kostensätzen, wer wie viel vom Budget
+  verbraucht (Stunden, €/h, Kosten, Anteil am Budget, Rest). Wer Stunden gebucht hat, aber nicht in der Personentabelle des
+  Projekts steht, bekommt die Rolle automatisch aus dem Portal-Profil.
+  Der Button erscheint nur bei eingeschaltetem „Kosten anzeigen“. Zeitraum einstellbar (Gesamt, dieser Monat oder ein
+  früherer Monat) mit Vergleich zu den letzten 3, 6 oder 12 Monaten und Δ zum Vormonat; im Monat erscheinen nur Personen mit
+  Buchungen. Monate werden mit dem Level zum Buchungsdatum bepreist (Level-Historie aus dem Portal-Profil, 24 h gecacht).
+- Neu: Schalter „Story-Point-basierte Abrechnung“. Aus: nur Kosten, „Verkaufspreis (VP) pro SP“ ausgegraut. An: der VP ist
+  Pflicht (rote Warnung, solange er fehlt), Erlös, Marge und Break-even zählen.
+- Neu: Finanz-Dashboard mit Zeitspanne (letzte 3/6/12 Monate, dieses Jahr, eigene Spanne von–bis) und Δ zur Vorperiode; je Person ein ↗-Link zu den gebuchten Timesheets im Portal. Meilenstein-Chip in zwei Segmenten (Name, SP, Kosten mit Ampel-Hintergrund). Spalten-Header zeigt zusätzlich die echten Kosten der Spalte, mit VP als „Kosten / SP × VP“ (Ampel).
+- Neu: Button „Interne Sätze aus Admin laden“ (Staff): holt die Level-Kostensätze aus dem Django-Admin, ohne feste Admin-URL (Link-Suche im Portal). Kostensätze-Block neu geordnet: „Kosten anzeigen“ oben, der Rest ist ohne ihn abgeblendet.
+- Neu: Zeitabrechnung mit SP-Limit (Kundenprojekte nach Zeit): Pille „gebucht / maximale h“ mit Ampel und Limit-Strich, Limits aus den Escalation-Limits des Portals (Standard 1 SP = 8 h). Wartungsprojekte: Stundenkontingent als Pille am Balken und Kachel im Finanz-Dashboard.
+- Einstellungen „Dieses Board“: Karten nach Thema sortiert und einklappbar (Standard zu, Zustand wird gemerkt).
+- Neu: Kostensätze (erster Schritt für Marge/Break-even je Ticket). Zahnrad → Dieses Board → Kostensätze lädt Rollen und
+  Tagessatz aus der Portal-Projektseite; die internen €/h pro Rolle trägst du von Hand ein (lokal im geschützten `GM_*`-Speicher, pro Projekt).
+  Schalter „Mit externen Sätzen rechnen“ wechselt auf Tagessatz ÷ 8. Der Tooltip des Fortschrittsbalkens zeigt die Kosten
+  des Tickets (Stunden je Person × Satz); Personen ohne Satz stehen als „ohne Satz“ dabei.
+  Schalter „Kosten anzeigen“ (Standard aus, für Screenshares) schaltet alles frei: Tooltip, Marge-Pille auf der Karte,
+  Break-even-Strich auf dem Balken (rote Umrandung, sobald die Kosten den Erlös übersteigen) und `Kosten / Erlös` im
+  Meilenstein-Chip (wahlweise als Marge-Summe oder `Kosten / Erlös`). Erlös = SP × „Verkaufspreis pro SP“ (Feld im Kostensätze-Block, nur im internen Modus).
+
+## 2026.11.14
+
+- On-Hold-Tickets werden auf dem Board ausgegraut; die Labels dafür sind pro Board einstellbar (Dieses Board → Board-Darstellung → On-Hold-Labels).
+
 ## 2026.11.13
 
 - Board-Drag&Drop flotter: Zielspalte scrollt beim Ziehen deutlich schneller (scrollSpeed 300, Zone 120 px), keine
   200-ms-Verschiebeanimation, und das Skript scannt während des Ziehens nicht mehr.
+
+## 2026.11.9
+
+- Der Meilenstein-Name steht neben der Raute auf den Board-Karten.
+
+## 2026.11.10
+
+- Die SP-Pille hat in der Closed-Spalte denselben rechten Abstand wie in den anderen Spalten.
+
+## 2026.11.11
+
+- Das Verschieben-Menü (drei Punkte) der Karte ist immer sichtbar.
+
+## 2026.11.12
+
+- Der blaue Balken für gebuchte Stunden ist etwas weicher, damit schwarzer Text besser lesbar ist.
 
 ## 2026.11.8
 
 - Neu: Verkaufte SP. Chip hinter den Breadcrumbs vergleicht die SP aller Tickets eines Meilensteins mit den verkauften SP
   (`M1: 11 / 10 SP`, rot bei Überschreitung). Verkaufte SP je Meilenstein pflegst du unter Zahnrad → Dieses Board →
   Verkaufte SP (lokal im Browser; auch ohne Meilenstein als „Gesamt“), einzeln und global ein-/ausblendbar.
+
+## 2026.11.7
+
+- Eine geöffnete Board-Karte bleibt im Dark Mode beim Hovern dunkel.
+
+## 2026.11.5
+
+- Unter dem Kartentitel gibt es etwas mehr Abstand nach unten.
+
+## 2026.11.4
+
+- Die Lücke der SP-Pille bleibt reserviert, damit der Kartentitel beim Hovern nicht umbricht.
+
+## 2026.11.3
+
+- Zwischen Aktivitäts-Chip und Assignee-Avatar im Karten-Footer ist jetzt ein Abstand.
+
+## 2026.11.2
+
+- Der Sprint steht nur noch als Icon, und Uhr und Aktivitäts-Chip im Footer klappen sauber ein.
+
+## 2026.11.1
+
+- Liefert das Portal-API 404, nutzt das Script als Rückfall die Ticket-Seite.
 
 ## 2026.11.6
 
