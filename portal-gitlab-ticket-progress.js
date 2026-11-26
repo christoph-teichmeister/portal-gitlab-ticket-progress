@@ -261,6 +261,8 @@
       '.ambient-tab-badge:empty{display:none}' +
       '.ambient-tab-badge-warning{background:#e9be74;color:#1f1e24}' +
       '#ambient-progress-settings .ambient-tab:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
+      '.ambient-changelog-release>summary{cursor:pointer;font-weight:600;padding:.25rem 0}' +
+      '.ambient-changelog-release ul{margin:.25rem 0 .5rem;padding-left:1.25rem;display:flex;flex-direction:column;gap:.35rem;font-size:.85rem;line-height:1.45}' +
       '#ambient-progress-settings code{padding:0.1rem 0.4rem;border-radius:4px;background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
       // Toast im GitLab-Stil (Pajamas): dunkle Fläche, 4px-Radius, unten rechts, Status als Icon-Punkt (info ist Standard)
       '#ambient-progress-toast{position:fixed;bottom:2rem;right:1.5rem;z-index:1050;display:flex;align-items:flex-start;gap:.75rem;' +
@@ -1192,6 +1194,46 @@
     } catch (e) {
       warn('Release-Check konnte nicht gestartet werden', e);
     }
+  }
+
+  // CHANGELOG.md → [{version, items: [Text]}], neueste zuerst; Aufzählungspunkte samt eingerückter Folgezeilen
+  function parseChangelog(text) {
+    const releases = [];
+    String(text || '').split('\n').forEach(function (line) {
+      const head = /^##\s+(\S.*?)\s*$/.exec(line);
+      if (head) {
+        releases.push({version: head[1], items: []});
+        return;
+      }
+      const current = releases[releases.length - 1];
+      if (!current) return;
+      const bullet = /^[-*]\s+(.*)$/.exec(line);
+      if (bullet) current.items.push(bullet[1]);
+      else if (/^\s+\S/.test(line) && current.items.length) current.items[current.items.length - 1] += ' ' + line.trim();
+    });
+    return releases.filter(function (r) { return r.items.length; });
+  }
+
+  let changelogPromise = null; // einmal je Seitenladung
+
+  function loadChangelog() {
+    if (!changelogPromise) {
+      changelogPromise = new Promise(function (resolve, reject) {
+        GM_xmlhttpRequest({
+          method: 'GET',
+          url: RAW_SCRIPT_URL.replace(/[^/]+$/, 'CHANGELOG.md'),
+          timeout: 30 * 1000,
+          onload: function (response) {
+            if (response.status === 200) resolve(parseChangelog(response.responseText));
+            else reject(new Error('HTTP ' + response.status));
+          },
+          onerror: function () { reject(new Error('Netzwerkfehler')); },
+          ontimeout: function () { reject(new Error('Zeitüberschreitung')); }
+        });
+      });
+      changelogPromise.catch(function () { changelogPromise = null; }); // nächster Versuch beim nächsten Öffnen
+    }
+    return changelogPromise;
   }
 
   // Update-Hinweis: oberster Abschnitt aus CHANGELOG.md (gleiche Raw-Domain wie das Script)
@@ -8772,6 +8814,7 @@
     estimateBadge: '.ambient-estimate-badge',
     estimateStripTitle: '.ambient-estimate-badge',
     splitLabels: '.ambient-split-label',
+    onHold: '.board-card[data-ambient-hold]',
     columnAge: '.ambient-column-age',
     lastActivity: '.ambient-activity',
     columnAvg: '.ambient-column-avg',
@@ -8912,6 +8955,7 @@
     resetPreviewCard(clone);
     applyStyles(clone, {width: '100%', maxWidth: '100%', listStyle: 'none'});
     column.appendChild(clone);
+    if (isFeatureOn('onHold')) clone.setAttribute('data-ambient-hold', '1'); // Beispiel: Karte mit On-Hold-Label
     nodes.push(clone);
     if (showEnabled) {
       if (isFeatureOn('splitLabels')) applySplitLabels(clone);
@@ -9410,6 +9454,8 @@
 
     panel.appendChild(createEstimatePatternGroup());
 
+    panel.appendChild(createChangelogGroup());
+
     const tools = createSettingsGroup('Diagnose & Daten', '', {key: 'fold:global:Diagnose', open: false});
     createDataToolDefs(projectSettings).forEach(function (def) {
       tools.list.appendChild(createActionRow(def[0], def[1], def[2], def[3]));
@@ -9424,6 +9470,38 @@
       'Löschen…', clearAllScriptData, true));
     panel.appendChild(danger.element);
     return panel;
+  }
+
+  // „Was ist neu“: CHANGELOG.md aus dem Repo, je Version aufklappbar (native details), die neueste offen
+  function createChangelogGroup() {
+    const group = createSettingsGroup('Was ist neu', 'Changelog', {key: 'fold:global:Changelog', open: false});
+    group.list.className = '';
+    applyStyles(group.list, {padding: '0.9rem 1rem', gap: '0.5rem'});
+    const status = createTextSpan('Lade Changelog…', FIELD_HINT_STYLES);
+    group.list.appendChild(status);
+    loadChangelog().then(function (releases) {
+      status.remove();
+      releases.slice(0, 15).forEach(function (release, index) {
+        const details = document.createElement('details');
+        details.className = 'ambient-changelog-release';
+        details.open = index === 0;
+        const summary = document.createElement('summary');
+        summary.textContent = release.version + (release.version === SCRIPT_VERSION ? ' (installiert)' : '');
+        details.appendChild(summary);
+        const ul = document.createElement('ul');
+        release.items.forEach(function (item) {
+          const li = document.createElement('li');
+          li.textContent = item.replace(/[`*]/g, ''); // nur Text, nie als HTML
+          ul.appendChild(li);
+        });
+        details.appendChild(ul);
+        group.list.appendChild(details);
+      });
+      if (!releases.length) group.list.appendChild(createTextSpan('Keine Einträge gefunden.', FIELD_HINT_STYLES));
+    }).catch(function (err) {
+      status.textContent = 'Changelog konnte nicht geladen werden (' + err.message + '). Er steht auch im Repository als CHANGELOG.md.';
+    });
+    return group.element;
   }
 
   function createEstimatePatternGroup() {
@@ -9608,6 +9686,11 @@
     });
   }
 
+  // „Internal“/„Intern“ ja, „International“ nein
+  function isInternalCategory(text) {
+    return /^\s*intern(al|e|es)?\s*$/i.test(text || '');
+  }
+
   // Portal-Kategorie des Projekts (Zeile „Category“ der Projektseite); true bei „Internal“
   function fetchProjectIsInternal(projectSettings) {
     const base = getPortalBaseUrl(projectSettings);
@@ -9617,7 +9700,7 @@
       const row = Array.from(doc.querySelectorAll('tr')).filter(function (tr) {
         return tr.cells.length === 2 && /^(category|kategorie)$/i.test(tr.cells[0].textContent.trim());
       })[0];
-      return row ? /intern/i.test(row.cells[1].textContent) : null;
+      return row ? isInternalCategory(row.cells[1].textContent) : null;
     }).catch(function () { return null; });
   }
 

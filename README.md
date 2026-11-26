@@ -47,7 +47,7 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    Trag dort die Portal-URL und die Portal-Projekt-ID ein (z. B. `https://user-portal.arbeitgeber.com`). Erlaubt ist nur `https://` ohne
    Benutzername/Passwort; Query und Fragment werden verworfen. Die Eingabe wird automatisch gespeichert (das Feld
    leuchtet kurz grün) und ausschließlich lokal im Browser abgelegt (per Projekt). Du musst sie nur einmal hinterlegen.
-8. Wenn die Portal-Base-URL fehlt, blendet das Script einen kleinen Toast von oben rechts ein („Portal-URL fehlt –
+8. Wenn die Portal-Base-URL fehlt, blendet das Script einen kleinen Toast unten rechts ein („Portal-URL fehlt –
    Zahnrad → „Dieses Board“ öffnen und eintragen.”). Nach fünf Sekunden verschwindet der Hinweis wieder; du kannst
    ihn bei Bedarf erneut triggern, indem du das Zahnrad öffnest. Boards ohne Portal: im Tab „Dieses Board“ den
    Schalter „Warnung bei fehlender Portal-URL“ ausschalten, dann bleibt der Toast dort weg.
@@ -101,7 +101,7 @@ Weitere Details zur Nutzung und Konfiguration:
 - Lokal im Browser (`localStorage` der GitLab-Seite) liegen: Portal-Base-URL und Projekt-IDs, Ticket-Aktionen,
   Spaltenauswahl, Feature-Schalter sowie ein Cache der gebuchten Stunden pro Ticket (1 Stunde, „keine Buchungen“
   10 Minuten). Andere Scripts/Erweiterungen auf derselben GitLab-Seite könnten diese Daten lesen.
-- Unter Zahnrad → Global lassen sich alle lokalen Daten löschen (Gefahrenzone) sowie Konfiguration
+- Unter Zahnrad → Global steht „Was ist neu“ (Changelog je Version); dort lassen sich alle lokalen Daten löschen (Gefahrenzone) sowie Konfiguration
   exportieren/importieren, der Selektor-Selbsttest ausführen und Debug-Infos (ohne Portal-URL) kopieren.
 - Updates kommen vom `main`-Branch auf GitHub. Wer mehr Kontrolle möchte, kann die `@updateURL`/`@downloadURL` auf
   einen Release-Tag (`refs/tags/<version>`) pinnen; siehe [Sicherheitsaspekte](docs/SECURITY.md).

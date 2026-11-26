@@ -50,6 +50,8 @@ des Boards; die Einstellung gilt pro Board. Das frühere „zweite Portal-Projek
 - Beim ersten Request nach dem Speichern einer neuen Portal-Base-URL erscheint ein Tampermonkey-Popup, das dich um
   Erlaubnis für den Zugriff auf diese URL bittet (`GM_xmlhttpRequest`). Gib dort „Allow" oder „Ja", damit das Skript
   tatsächlich auf das Portal zugreifen darf.
+- Meldungen erscheinen als Toast im GitLab-Look (dunkel, Status-Icon, Schließen-Button) unten rechts; „Toast-Test“ unter Global → Diagnose & Daten zeigt alle Varianten.
+- „Was ist neu“ (Zahnrad → Global): zeigt den Changelog je Version, geladen aus `CHANGELOG.md` im Repository (nur beim Öffnen, einmal je Seitenladung). Bei einer neuen Version zeigt der Update-Hinweis zusätzlich die Neuerungen.
 - Beobachtet das Board via `MutationObserver`, reagiert auf neue Karten/Listen und führt bei Bedarf neue Scans aus.
 - Zeigt im Panel eine Zeile mit dem Zeitstempel der letzten Portal-Anfrage und einen Button zum sofortigen
   Neuladen aller Tickets; der Button löscht den lokalen Cache, setzt den Zeitstempel zurück und scannt das Board neu

@@ -22,7 +22,7 @@ const names = ['parseVersionSegments', 'isRemoteVersionGreater', 'formatDuration
   'normalizeListNameForMatching', 'normalizeLabelNameForMatching', 'parseTicketActions', 'assigneeSortKey', 'planReorder',
   'parseLooseNumber', 'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate', 'relativeLuminance',
   'parseCssColorToRgb', 'getContrastTextColor', 'formatBookedHoursDisplay', 'isNumericId',
-  'parseExtraProjectIds', 'activityTone', 'newestTimestamp', 'parseBookingDate', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays', 'mapApiProgress', 'normalizeMilestoneSp', 'milestoneSpToShow', 'milestoneSpQuery', 'sumHoursByEmployee', 'personHourlyRate', 'computeTicketCost', 'buildCostInfo', 'formatEuro', 'formatSignedEuro', 'formatEuroShort', 'costTooltipSuffix', 'parseProjectFinanceFromHtml', 'buildFinanceRows', 'effectiveSpPrice', 'parseHoursHM', 'monthKeyOf', 'addMonthsKey', 'monthLabel', 'monthRangeParams', 'roleAtDate', 'buildMonthReport', 'adminRatesFromRows', 'escalationLimitsFromFields', 'limitForSp', 'parseQuotaText', 'monthSpanLength', 'resolvePeriodSpan', 'sumMonthSpan'];
+  'parseExtraProjectIds', 'activityTone', 'newestTimestamp', 'parseBookingDate', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays', 'mapApiProgress', 'normalizeMilestoneSp', 'milestoneSpToShow', 'milestoneSpQuery', 'sumHoursByEmployee', 'personHourlyRate', 'computeTicketCost', 'buildCostInfo', 'formatEuro', 'formatSignedEuro', 'formatEuroShort', 'costTooltipSuffix', 'parseProjectFinanceFromHtml', 'buildFinanceRows', 'effectiveSpPrice', 'parseHoursHM', 'monthKeyOf', 'addMonthsKey', 'monthLabel', 'monthRangeParams', 'roleAtDate', 'buildMonthReport', 'adminRatesFromRows', 'escalationLimitsFromFields', 'limitForSp', 'parseQuotaText', 'monthSpanLength', 'resolvePeriodSpan', 'sumMonthSpan', 'effectiveCostMode', 'formatStand', 'isInternalCategory', 'formatHours', 'parseChangelog'];
 const isExp = function () { return false; };
 const patternsStart = source.indexOf('  const DEFAULT_ESTIMATE_PATTERNS');
 const defaultPatterns = source.slice(patternsStart, source.indexOf(';\n', patternsStart) + 1);
@@ -72,7 +72,7 @@ const N = function (id, name) { return {iid: id, id: id * 10, assignees: name ? 
 const grouped = f.planReorder([N(1, 'Bob'), N(2, 'Anna'), N(3, 'Bob'), N(4, 'Anna'), N(5)], 'assignee');
 assert.deepStrictEqual(grouped, [{iid: 5, move_before_id: 10}, {iid: 2, move_after_id: 50}, {iid: 4, move_after_id: 20}]);
 
-console.log('pure.check.js: alle Checks bestanden');
+
 
 // computeEnteredAt: Ausrutscher (kurz in B, zurück in A) zählen nicht; Label nicht mehr am Ticket → null
 {
@@ -318,3 +318,207 @@ console.log('milestoneSp ok');
   assert.strictEqual(f.parseQuotaText('Total: 18,476.25€ (73.90%)'), null);
   console.log('month report ok');
 }
+
+// Interne Projekte: Kategorie-Erkennung, Modus und Verkaufspreis
+{
+  ['Internal', 'internal', ' Intern ', 'INTERNAL'].forEach(function (v) { assert.strictEqual(f.isInternalCategory(v), true, v); });
+  ['International', 'Customer', 'Maintenance', '', null, undefined, 'Internal Tools GmbH'].forEach(function (v) {
+    assert.strictEqual(f.isInternalCategory(v), false, String(v));
+  });
+  assert.strictEqual(f.effectiveCostMode({projectInternal: true, costMode: 'external'}), 'internal');
+  assert.strictEqual(f.effectiveCostMode({projectInternal: false, costMode: 'external'}), 'external');
+  assert.strictEqual(f.effectiveCostMode({costMode: 'internal'}), 'internal');
+  assert.strictEqual(f.effectiveSpPrice({projectInternal: true, spPricing: true, spPrice: 500}), null);
+  assert.strictEqual(f.effectiveSpPrice({spPricing: true, spPrice: 500}), 500);
+  assert.strictEqual(f.effectiveSpPrice({spPricing: false, spPrice: 500}), null);
+  assert.strictEqual(f.effectiveSpPrice({spPricing: true, spPrice: 0}), null);
+  assert.strictEqual(f.effectiveSpPrice({spPricing: true}), null);
+  // Interne Projekte: kein Erlös, auch wenn ein Preis hinterlegt ist
+  const people = [{name: 'A', role: 'Web', daily: 800}];
+  const ps = {projectInternal: true, costMode: 'external', spPricing: true, spPrice: 500};
+  const info = f.buildCostInfo({A: 2}, people, {Web: 100}, f.effectiveCostMode(ps), 3, f.effectiveSpPrice(ps));
+  assert.strictEqual(info.mode, 'internal');
+  assert.strictEqual(info.cost, 200);
+  assert.strictEqual(info.revenue, null);
+  assert.strictEqual(info.margin, null);
+  console.log('internal projects ok');
+}
+
+// Wartung / Budget: Kosten ohne SP, Erlös nur mit SP und Preis, Ampel-Grenzen
+{
+  const people = [{name: 'A', role: 'Web', daily: 800}];
+  const none = f.buildCostInfo({A: 0.5}, people, {Web: 100}, 'internal', null, null);
+  assert.strictEqual(none.cost, 50);
+  assert.strictEqual(none.revenue, null);
+  assert.strictEqual(none.breakEvenHours, null);
+  const ext = f.buildCostInfo({A: 0.5}, people, {}, 'external', null, null);
+  assert.strictEqual(ext.cost, 50);
+  const zero = f.buildCostInfo({A: 0}, people, {Web: 100}, 'internal', 2, 100);
+  assert.strictEqual(zero.cost, 0);
+  assert.strictEqual(zero.margin, 200);
+  assert.strictEqual(zero.breakEvenHours, null);
+  const loss = f.buildCostInfo({A: 5}, people, {Web: 100}, 'internal', 1, 100);
+  assert.strictEqual(loss.margin, -400);
+  assert.strictEqual(loss.breakEvenHours, 1);
+  assert(/-/.test(f.formatSignedEuro(-400)) || /−/.test(f.formatSignedEuro(-400)));
+  assert(f.formatSignedEuro(340).indexOf('+') === 0);
+  console.log('maintenance/margin edge cases ok');
+}
+
+// Datenstand mit Datum
+{
+  const out = f.formatStand(new Date(2026, 10, 27, 0, 14).getTime());
+  assert(/27\.11\.2026/.test(out), out);
+  assert(/00:14/.test(out), out);
+  assert.strictEqual(f.formatHours(1.25), '1,3');
+  assert.strictEqual(f.formatHours(8), '8');
+  console.log('formatStand ok');
+}
+
+// Feature-Schalter: Eltern, Voraussetzungen, Vorschau-Zwang, Hauptschalter (isFeatureOn mit Zustand nachgebaut)
+function sliceConst(name, endMarker) {
+  const start = source.indexOf('  const ' + name + ' = ');
+  assert(start >= 0, 'Konstante fehlt: ' + name);
+  const end = source.indexOf(endMarker, start);
+  assert(end > start, 'Ende fehlt: ' + name);
+  return source.slice(start, end + endMarker.length);
+}
+function evalConst(name, endMarker) {
+  return new Function('portalButtonSelector', sliceConst(name, endMarker) + '\nreturn ' + name + ';')(function (root) { return root + ' .portal-btn'; });
+}
+const FEATURE_PARENTS = evalConst('FEATURE_PARENTS', '};');
+const FEATURE_NEEDS = evalConst('FEATURE_NEEDS', '};');
+const FEATURE_MENU = evalConst('FEATURE_MENU', '\n  ];');
+const PREVIEW_SELECTORS = evalConst('PREVIEW_FEATURE_SELECTORS', '\n  };');
+const DISPLAY_SUBTABS = evalConst('DISPLAY_SUBTABS', '];');
+
+function makeFeatureState() {
+  const state = {features: {}, showEnabled: true, previewForceKey: null, ctx: null};
+  const body = extract('inPreviewForce') + '\n' + extract('isFeatureOn') + '\nreturn isFeatureOn;';
+  const factory = new Function('state', 'FEATURE_PARENTS', 'FEATURE_NEEDS',
+    'const features = new Proxy({}, {get: function (_, k) { return state.features[k]; }});' +
+    'const proxy = state; Object.defineProperty(this, "x", {});' +
+    body.replace(/previewForceKey/g, 'proxy.previewForceKey').replace(/showEnabled/g, 'proxy.showEnabled')
+      .replace(/currentScanContext/g, 'proxy.ctx'));
+  state.isOn = factory.call({}, state, FEATURE_PARENTS, FEATURE_NEEDS);
+  return state;
+}
+
+{
+  const s = makeFeatureState();
+  assert.strictEqual(s.isOn('progress'), true, 'Standard: an');
+  assert.strictEqual(s.isOn('portalButtons'), true);
+  s.features.progress = false;
+  assert.strictEqual(s.isOn('progress'), false);
+  assert.strictEqual(s.isOn('portalButtons'), false, 'Unterpunkt folgt Eltern');
+  s.features.portalButtons = false;
+  s.features.progress = true;
+  assert.strictEqual(s.isOn('portalButtons'), false, 'eigener Schalter aus');
+  s.features.portalButtons = true;
+  s.showEnabled = false;
+  assert.strictEqual(s.isOn('progress'), false, 'Hauptschalter aus');
+  s.showEnabled = true;
+  s.ctx = {projectSettings: {estimateEnabled: false}};
+  assert.strictEqual(s.isOn('estimateBadge'), false, 'Board ohne Schätzung');
+  assert.strictEqual(s.isOn('columnSp'), false, 'SP-Summe hängt am Badge');
+  s.ctx = null;
+  // Vorschau-Zwang: gehoverte Geld-Anzeige zeigt sich samt Element, in dem sie steht, trotz „aus“
+  s.features.progress = false;
+  s.features.costPill = false;
+  s.previewForceKey = 'costPill';
+  assert.strictEqual(s.isOn('costPill'), true);
+  assert.strictEqual(s.isOn('progress'), true, 'Voraussetzung wird mitgezeichnet');
+  assert.strictEqual(s.isOn('mrBadge'), true, 'unbeteiligte Features bleiben unberührt (Standard an)');
+  s.features.mrBadge = false;
+  assert.strictEqual(s.isOn('mrBadge'), false);
+  s.previewForceKey = 'portalButtons';
+  assert.strictEqual(s.isOn('progress'), true, 'Eltern wird mitgezwungen');
+  s.showEnabled = false;
+  assert.strictEqual(s.isOn('portalButtons'), true, 'Vorschau zeigt auch bei pausiertem Script');
+  s.previewForceKey = null;
+  assert.strictEqual(s.isOn('portalButtons'), false);
+  console.log('isFeatureOn ok');
+}
+
+// Statische Konsistenz: Menü, Eltern, Voraussetzungen, Vorschau-Selektoren, Reiter
+{
+  const keys = [];
+  FEATURE_MENU.forEach(function (group) {
+    assert(group.title && group.items.length, 'Gruppe ohne Titel/Einträge');
+    assert(DISPLAY_SUBTABS.some(function (t) { return t[0] === group.view; }), 'Unbekannte Ansicht: ' + group.view);
+    group.items.forEach(function (item) {
+      assert.strictEqual(item.length, 3, 'Eintrag braucht Schlüssel, Label, Beschreibung: ' + item[0]);
+      assert(item[1] && item[2], 'Label/Beschreibung leer: ' + item[0]);
+      keys.push(item[0]);
+    });
+  });
+  assert.strictEqual(new Set(keys).size, keys.length, 'doppelte Schlüssel im Menü');
+  DISPLAY_SUBTABS.forEach(function (t) {
+    assert(FEATURE_MENU.some(function (g) { return g.view === t[0]; }), 'Reiter ohne Gruppen: ' + t[0]);
+  });
+  Object.keys(FEATURE_PARENTS).forEach(function (k) {
+    assert(keys.indexOf(k) >= 0, 'Kind fehlt im Menü: ' + k);
+    assert(keys.indexOf(FEATURE_PARENTS[k]) >= 0, 'Eltern fehlt im Menü: ' + FEATURE_PARENTS[k]);
+    assert.notStrictEqual(k, FEATURE_PARENTS[k]);
+  });
+  Object.keys(FEATURE_NEEDS).forEach(function (k) {
+    assert(keys.indexOf(k) >= 0 && keys.indexOf(FEATURE_NEEDS[k]) >= 0, 'Voraussetzung unbekannt: ' + k);
+  });
+  // Zyklenfrei (sonst hängt isFeatureOn)
+  Object.keys(FEATURE_PARENTS).concat(Object.keys(FEATURE_NEEDS)).forEach(function (k) {
+    const seen = new Set();
+    for (let c = k; c; c = FEATURE_PARENTS[c] || FEATURE_NEEDS[c]) {
+      assert(!seen.has(c), 'Zyklus bei ' + k);
+      seen.add(c);
+    }
+  });
+  // Jedes Feature hat ein Vorschau-Element zum Umranden
+  keys.forEach(function (k) { assert(PREVIEW_SELECTORS[k], 'Vorschau-Selektor fehlt: ' + k); });
+  Object.keys(PREVIEW_SELECTORS).forEach(function (k) { assert(keys.indexOf(k) >= 0, 'Selektor ohne Menüeintrag: ' + k); });
+  // Alle Geld-Schalter liegen im Menü (Anzeige-Tab), Standard an
+  ['costPill', 'costMarker', 'costTooltip', 'columnCost', 'milestoneCost', 'financeButton'].forEach(function (k) {
+    assert(keys.indexOf(k) >= 0, 'Geld-Schalter fehlt: ' + k);
+  });
+  // Meilenstein-Features gehören in die Topbar, Spalten-Header-Features in den eigenen Reiter
+  const viewOf = function (k) { return FEATURE_MENU.filter(function (g) { return g.items.some(function (i) { return i[0] === k; }); })[0].view; };
+  ['milestoneSp', 'milestoneCost', 'financeButton', 'mrLinks'].forEach(function (k) { assert.strictEqual(viewOf(k), 'topbar', k); });
+  ['columnSp', 'columnCost', 'columnAvg'].forEach(function (k) { assert.strictEqual(viewOf(k), 'column', k); });
+  console.log('feature menu consistency ok');
+}
+
+// Toast: Varianten haben Icon-Stil, Demo-Auslöser und Schließen-Button existieren, Position verdeckt die Toolbar nicht
+{
+  ['success', 'warning'].forEach(function (v) {
+    assert(source.indexOf('#ambient-progress-toast[data-variant=' + v + '] .ambient-toast-icon') >= 0, 'Toast-Stil fehlt: ' + v);
+  });
+  assert(/#ambient-progress-toast\{position:fixed;bottom:[^;]+;right:/.test(source), 'Toast gehört unten rechts hin');
+  assert(!/#ambient-progress-toast\{[^}]*top:/.test(source), 'Toast darf nicht oben sitzen (Toolbar-Icons)');
+  assert(source.indexOf("ambient-toast-close") >= 0 && source.indexOf("'Toast-Test'") >= 0);
+  assert(/function showToastDemo\(/.test(source));
+  // Demo zeigt alle drei Varianten reihum
+  const demo = extract('showToastDemo');
+  ['info', 'success', 'warning'].forEach(function (v) { assert(demo.indexOf("'" + v + "'") >= 0, v); });
+  console.log('toast ok');
+}
+
+// Changelog-Parser („Was ist neu“)
+{
+  const md = '# Changelog\n\n## 2026.11.15\n\n- Neu: A\n  zweite Zeile\n- Neu: B\n\n## 2026.11.13\n\n* Fix: C\n\n## 2026.11.12\n\nnur Text\n';
+  const r = f.parseChangelog(md);
+  assert.deepStrictEqual(r.map(function (x) { return x.version; }), ['2026.11.15', '2026.11.13']);
+  assert.deepStrictEqual(r[0].items, ['Neu: A zweite Zeile', 'Neu: B']);
+  assert.deepStrictEqual(r[1].items, ['Fix: C']);
+  assert.deepStrictEqual(f.parseChangelog(''), []);
+  assert.deepStrictEqual(f.parseChangelog(null), []);
+  assert.deepStrictEqual(f.parseChangelog('- ohne Überschrift'), []);
+  // echtes Repo-Changelog: jede Version hat Einträge, die aktuelle Version steht oben
+  const real = f.parseChangelog(fs.readFileSync(path.join(__dirname, '..', 'CHANGELOG.md'), 'utf8'));
+  assert(real.length > 3);
+  const ver = /@version\s+(\S+)/.exec(source)[1];
+  assert.strictEqual(real[0].version, ver, 'oberster Changelog-Abschnitt = @version');
+  assert(real.every(function (x) { return /^\d{4}\.\d+\.\d+/.test(x.version); }));
+  assert(source.indexOf("'Was ist neu'") >= 0 && /function createChangelogGroup\(/.test(source));
+  console.log('changelog ok');
+}
+
+console.log('pure.check.js: alle Checks bestanden');

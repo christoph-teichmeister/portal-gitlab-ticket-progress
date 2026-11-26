@@ -2,6 +2,7 @@
 
 ## 2026.11.15
 
+- Neu: Zahnrad → Global → „Was ist neu“ zeigt den Changelog je Version (aus dem Repository geladen, die neueste aufgeklappt).
 - Toasts im GitLab-Stil (dunkle Fläche, Status-Icon, Schließen-Button), unten rechts, damit sie die Toolbar-Icons nicht verdecken. Neuer Debug-Button „Toast-Test“ unter Zahnrad → Global → Diagnose & Daten.
 - Neu: Finanz-Button (Reihenfolge: MR-Links, Finanzen, Einstellungen) öffnet ein Finanz-Dashboard (Seitenpanel). Es liest „Financial data“
   der Portal-Projektseite (Initial budget, Hours per employee) und zeigt mit den Kostensätzen, wer wie viel vom Budget
