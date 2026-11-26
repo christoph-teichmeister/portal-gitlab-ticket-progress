@@ -259,7 +259,7 @@ die Schätzung daraus).
 - „Interne Sätze aus Admin laden“ (nur mit Portal-Staff-Zugang): findet den Weg ohne feste Admin-URL über Links (Portal-Seite →
   „Django Admin“ → Link der Level-Kostensätze → Tabelle, nur auf dem Portal-Host), liest Level, Projektrolle und internen Satz und
   trägt sie für die Rollen der Tabelle ein (Schlüssel „Rolle (Level X)“). Ohne Zugriff meldet der Button das, die Hand-Eingabe bleibt.
-- Die internen €/h pro Rolle (z. B. „Webentwicklung (Level 3)“) trägst du selbst ein. Es gibt keine API dafür, die Werte
+- Die internen €/h pro Rolle (z. B. „Developer (Level 3)“) trägst du selbst ein. Es gibt keine API dafür, die Werte
   liegen nur lokal im Tampermonkey-Speicher (`GM_*`, wie der API-Token, nicht in `localStorage`, den andere Scripte lesen könnten) und gelten nur für das jeweilige Projekt (Board). Extern = Tagessatz ÷ 8.
 - Schalter „Mit externen Sätzen rechnen“ (pro Projekt): aus = intern (interne Projekte, Story-Point-Festpreis), an = extern
   (Kundenprojekte nach Stunden).

@@ -221,8 +221,8 @@ console.log('milestoneSp ok');
   const hours = f.sumHoursByEmployee([{employee: 'A', hours: '1.5h'}, {employee: 'A', hours: '2'}, {employee: 'B', hours: '1,5'}, {employee: '', hours: '3'}]);
   assert.deepStrictEqual(hours, {A: 3.5, B: 1.5});
   const people = [{name: 'A', role: 'Web (Level 3)', daily: 800}, {name: 'B', role: 'SM (Level 2)', daily: 600}];
-  const rates = {'Web (Level 3)': 74};
-  assert.deepStrictEqual(f.computeTicketCost(hours, people, rates, 'internal'), {cost: 259, missing: ['B']});
+  const rates = {'Web (Level 3)': 60};
+  assert.deepStrictEqual(f.computeTicketCost(hours, people, rates, 'internal'), {cost: 210, missing: ['B']});
   assert.deepStrictEqual(f.computeTicketCost(hours, people, rates, 'external'), {cost: 350 + 112.5, missing: []});
   assert.deepStrictEqual(f.computeTicketCost({'X Y': 1}, people, rates, 'internal'), {cost: 0, missing: ['X Y']});
   console.log('computeTicketCost ok');
@@ -272,16 +272,16 @@ console.log('milestoneSp ok');
   assert.strictEqual(f.effectiveSpPrice({spPricing: false, spPrice: 900}), null);
   assert.strictEqual(f.effectiveSpPrice({spPricing: true, spPrice: 900}), 900);
   assert.strictEqual(f.effectiveSpPrice({spPricing: true, spPrice: null}), null);
-  // Level-Wechsel am 21.10.: Oktober-Stunden vorher Level 2+ (69), danach Level 3 (74)
+  // Level-Wechsel am 21.10.: Oktober-Stunden vorher Level 2+ (55), danach Level 3 (60)
   const rows = [
     {name: 'A', path: '/a', ts: day(2026, 10, 10), hours: 10},
     {name: 'A', path: '/a', ts: day(2026, 10, 25), hours: 10},
     {name: 'A', path: '/a', ts: day(2026, 11, 3), hours: 5},
     {name: 'B', path: '', ts: day(2026, 11, 3), hours: 2}
   ];
-  const rep = f.buildMonthReport(rows, {'/a': history}, [], {}, {'Web (Level 2+)': 69, 'Web (Level 3)': 74}, 'internal');
-  assert.strictEqual(rep.months['2026-10'].cost, 10 * 69 + 10 * 74);
-  assert.strictEqual(rep.months['2026-11'].cost, 5 * 74);
+  const rep = f.buildMonthReport(rows, {'/a': history}, [], {}, {'Web (Level 2+)': 55, 'Web (Level 3)': 60}, 'internal');
+  assert.strictEqual(rep.months['2026-10'].cost, 10 * 55 + 10 * 60);
+  assert.strictEqual(rep.months['2026-11'].cost, 5 * 60);
   assert.strictEqual(rep.months['2026-11'].persons.B.missing, true);
   assert.strictEqual(rep.months['2026-11'].persons.B.cost, 0);
   assert.deepStrictEqual(rep.roles.sort(), ['Web (Level 2+)', 'Web (Level 3)']);
@@ -291,15 +291,15 @@ console.log('milestoneSp ok');
   assert.deepStrictEqual(f.resolvePeriodSpan('2026-10', '2026-11'), {first: '2026-10', last: '2026-10', len: 1});
   assert.strictEqual(f.resolvePeriodSpan('all', '2026-11'), null);
   const sum = f.sumMonthSpan(rep.months, '2026-10', '2026-11');
-  assert.strictEqual(sum.cost, 10 * 69 + 10 * 74 + 5 * 74);
+  assert.strictEqual(sum.cost, 10 * 55 + 10 * 60 + 5 * 60);
   assert.strictEqual(sum.persons.A.hours, 25);
   assert.strictEqual(sum.persons.B.missing, true);
   assert.strictEqual(f.sumMonthSpan(rep.months, '2026-01', '2026-02'), undefined);
   assert.strictEqual(f.formatEuroShort(10800), '10,8k €');
   assert.strictEqual(f.formatEuroShort(4500), f.formatEuro(4500));
   assert.strictEqual(f.formatEuroShort(1250000), '1,3M €');
-  const adminRates = f.adminRatesFromRows([{level: '3', role: 'Webentwicklung', internal: '74.00000'}, {level: '1+', role: 'Buchhaltung', internal: '51,5'}, {level: '1', role: 'X', internal: '0.00000'}]);
-  assert.deepStrictEqual(adminRates, {'Webentwicklung (Level 3)': 74, 'Buchhaltung (Level 1+)': 51.5});
+  const adminRates = f.adminRatesFromRows([{level: '3', role: 'Developer', internal: '60.00000'}, {level: '1+', role: 'Operations', internal: '40,5'}, {level: '1', role: 'X', internal: '0.00000'}]);
+  assert.deepStrictEqual(adminRates, {'Developer (Level 3)': 60, 'Operations (Level 1+)': 40.5});
   const lim = f.escalationLimitsFromFields([
     {name: 'story_point_configuration-1-story_points', value: '1'}, {name: 'story_point_configuration-1-hours_warning', value: '6'}, {name: 'story_point_configuration-1-hours_escalation', value: '8'},
     {name: 'story_point_configuration-0-story_points', value: '0'}, {name: 'story_point_configuration-0-hours_warning', value: '0'}, {name: 'story_point_configuration-0-hours_escalation', value: '0'},
