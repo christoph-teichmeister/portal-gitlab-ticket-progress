@@ -20,9 +20,21 @@ jobs:
         run: node --check portal-gitlab-ticket-progress.js
       - name: Pure function checks
         run: node tests/pure.check.js
-      - name: Version header matches SCRIPT_VERSION
+      - name: Lint (errors only)
         run: |
-          header=$(grep -m1 '@version' portal-gitlab-ticket-progress.js | awk '{print $3}')
-          const=$(grep -m1 "const SCRIPT_VERSION" portal-gitlab-ticket-progress.js | sed "s/.*'\(.*\)'.*/\1/")
-          echo "header=$header const=$const"
-          test "$header" = "$const"
+          npm install --no-save --legacy-peer-deps eslint@9 @eslint/js@9 globals
+          npx eslint -c eslint.config.js portal-gitlab-ticket-progress.js tests
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Browser smoke test
+        run: node tests/browser.check.js

@@ -1420,7 +1420,7 @@
   }
 
   function getBoardIdentifierFromPath() {
-    const match = window.location.pathname.match(/\/-\/boards\/([^\/?]+)/);
+    const match = window.location.pathname.match(/\/-\/boards\/([^/?]+)/);
     if (match && match[1]) {
       return match[1];
     }
@@ -3561,7 +3561,6 @@
       return !(node.classList && /\bambient-/.test(node.className));
     }).map(function (node) { return node.textContent; }).join('').trim();
     const query = buildColumnIssueQuery(window.location.search, columnLabel);
-    const price = projectSettings.costShow ? effectiveSpPrice(projectSettings) : null; // Wert der Spalte = SP × VP, nur mit „Kosten anzeigen“
     const key = query + '|' + gitlabCount + '|' + (projectSettings.costShow ? 'c' : '');
     if (el && el.getAttribute('data-ambient-key') === key) return;
     if (!el) {
