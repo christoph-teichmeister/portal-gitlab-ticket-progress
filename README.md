@@ -41,6 +41,8 @@ sie direkt von GitHub, wenn du die RAW-URL verwendest, damit alle Nutzer automat
    (grün unter 3 Tagen, gelb bis 7, rot darüber). Beim Hover öffnet sich ein Verlauf mit Kommentaren, Spaltenwechseln,
    MR-Änderungen und Portal-Buchungen (nur mit Datum); Kommentare werden erst dann geladen. Abschalten unter
    Anzeige → Letzte Aktivität.
+   Tickets mit einem „On Hold“-Label erscheinen ausgegraut, weil sie warten. Welche Labels zählen, wählst du unter
+   Dieses Board → On-Hold-Labels; Abschalten unter Anzeige → On-Hold-Tickets ausgrauen.
 7. Klicke auf das Zahnrad: Auf einem noch nicht eingerichteten Board öffnet es direkt den Tab „Dieses Board“.
    Trag dort die Portal-URL und die Portal-Projekt-ID ein (z. B. `https://user-portal.arbeitgeber.com`). Erlaubt ist nur `https://` ohne
    Benutzername/Passwort; Query und Fragment werden verworfen. Die Eingabe wird automatisch gespeichert (das Feld

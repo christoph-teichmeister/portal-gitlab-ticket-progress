@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.11.13
+// @version      2026.11.14
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -25,7 +25,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.11.13';
+  const SCRIPT_VERSION = '2026.11.14';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -128,6 +128,7 @@
       '#ambient-progress-settings button:focus-visible,#ambient-progress-settings summary:focus-visible,' +
       '#ambient-progress-settings input:focus-visible,#ambient-progress-settings textarea:focus-visible,' +
       '.ambient-btn:focus-visible,.ambient-mr-badge:focus-visible,.ambient-progress-bar:focus-visible,' +
+      '.board-card[data-ambient-hold]{opacity:.6;transition:opacity .15s}.board-card[data-ambient-hold]:hover{opacity:.85}' +
       '.ambient-progress-list-toggle:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}' +
       // Schalter: natives role=switch-Checkbox, ganze Zeile ist das Label
       '.ambient-setting-row{display:flex;align-items:center;gap:.75rem;padding:.6rem 1rem;min-height:52px;box-sizing:border-box}' +
@@ -488,6 +489,7 @@
   const LS_KEY_RELEASE_INFO = 'ambientProgressReleaseInfo';
   const LS_KEY_RATE_LIMIT_WARNING = 'ambientProgressRateLimitWarning';
   const LS_KEY_AGE_HIGHLIGHT_LISTS = 'ambientProgressAgeHighlightLists';
+  const LS_KEY_HOLD_LABELS = 'ambientProgressHoldLabels';
 
   // Globale Feature-Schalter (gelten für alle Boards), auch Anzeigen (show), Debug-Logs (debug) und MR-Buttons (mrLinks)
   const LS_KEY_FEATURES = 'ambientProgressFeatures';
@@ -787,6 +789,38 @@
     const state = storageRead(LS_KEY_AGE_HIGHLIGHT_LISTS, {});
     state[ageHighlightProjectKey] = ageHighlightLookup;
     storageWrite(LS_KEY_AGE_HIGHLIGHT_LISTS, state);
+  }
+
+  // „On Hold“-Labels pro Projekt: {projectKey: {labelKey: true}}; ohne Eintrag gilt das Standard-Muster
+  const HOLD_LABEL_DEFAULT = /\bon[\s-]?hold\b/;
+  let holdProjectKey = null;
+  let holdLookup = null;
+
+  function loadHoldLookup(projectKey) {
+    if (projectKey === holdProjectKey) return;
+    holdProjectKey = projectKey;
+    const state = storageRead(LS_KEY_HOLD_LABELS, {});
+    holdLookup = (state && state[projectKey]) || null;
+  }
+
+  function saveHoldLookup() {
+    if (!holdProjectKey) return;
+    const state = storageRead(LS_KEY_HOLD_LABELS, {});
+    state[holdProjectKey] = holdLookup;
+    storageWrite(LS_KEY_HOLD_LABELS, state);
+  }
+
+  function isHoldLabelKey(key) {
+    return holdLookup ? Boolean(holdLookup[key]) : HOLD_LABEL_DEFAULT.test(key);
+  }
+
+  // Karte ausgrauen, wenn sie ein On-Hold-Label trägt (Aus-Schalter oder kein Treffer: Markierung weg)
+  function applyHoldDimming(cardElem) {
+    const hold = isFeatureOn('onHold') && Array.prototype.some.call(cardElem.querySelectorAll(SEL.cardLabel), function (label) {
+      return isHoldLabelKey(normalizeLabelNameForMatching(label.textContent));
+    });
+    if (hold) cardElem.setAttribute('data-ambient-hold', '1');
+    else cardElem.removeAttribute('data-ambient-hold');
   }
 
   function writeListSelectionEntry(projectKey, includeLookup, explicit) {
@@ -4333,11 +4367,13 @@
       // Spalten-Buttons (Auge + Sortierung) komplett entfernen; bei „an" baut ensureListSelectionCheckbox sie neu auf
       rootBoardsApp.querySelectorAll('.ambient-progress-list-toggle, .ambient-progress-sort-toggle')
         .forEach(function (button) { button.remove(); });
+      rootBoardsApp.querySelectorAll('[data-ambient-hold]').forEach(function (el) { el.removeAttribute('data-ambient-hold'); });
       return;
     }
 
     const allowedLookup = projectSettings.allowedListLookup || {};
     loadAgeHighlightLookup(projectSettings.projectKey);
+    loadHoldLookup(projectSettings.projectKey);
     const hasAllowedFilters = Object.keys(allowedLookup).length > 0;
 
     let newFetchesThisScan = 0;
@@ -4381,6 +4417,7 @@
 
       for (let k = 0; k < cards.length; k++) {
         const cardElem = cards[k];
+        applyHoldDimming(cardElem);
         const titleLink = isFeatureOn('estimateBadge') && cardElem.querySelector(SEL.cardTitleLink);
         if (!isAllowed || (isClosedList && !(closedIids && closedIids.has(getIssueIidFromCard(cardElem))))) {
           markCardSkipped(cardElem);
@@ -6058,6 +6095,7 @@
       ['estimateBadge', 'Schätzung als Badge', '„(3 SP)“ oder „(Timebox: 4h)“ aus dem Titel wird ein Badge, auch in Ticket und MR'],
       ['estimateStripTitle', 'Schätzung aus dem Titel nehmen', 'Aus: „(3 SP)“ bleibt zusätzlich im Titel stehen, z. B. für Scripte, die SP aus dem Titel zählen'],
       ['columnSp', 'SP-Summe im Spalten-Header', 'Alle Tickets der Spalte (auch nicht geladene), berücksichtigt die Board-Filter'],
+      ['onHold', 'On-Hold-Tickets ausgrauen', 'Tickets mit On-Hold-Label erscheinen blasser, weil sie warten (Labels im Tab „Dieses Board“)'],
       ['splitLabels', 'Geteilte Scoped Labels', 'workflow::Review zweifarbig darstellen, auch in Ticket und MR'],
       ['cardActions', 'Ticket-Aktionen-Menü', '⋮ im Karten-Footer mit deinen Ticket-Aktionen (Tab „Dieses Board“)']
     ]},
@@ -6942,11 +6980,13 @@
 
     const config = createProjectConfigSection(projectSettings, onValuesChanged);
     const age = createAgeHighlightSection(projectSettings);
+    const hold = createHoldLabelSection(projectSettings);
     panel.appendChild(config.portalCard);
     panel.appendChild(createBoardEstimateSection(projectSettings));
     panel.appendChild(createClosedDaysSection(projectSettings));
     panel.appendChild(createMilestoneSpSection(projectSettings));
     panel.appendChild(age.element);
+    panel.appendChild(hold.element);
     panel.appendChild(config.actionsCard);
 
     // Bis Portal-URL und Projekt-ID gespeichert sind, bleiben die übrigen Karten gesperrt
@@ -6961,7 +7001,7 @@
     }
 
     updateStatus();
-    return {element: panel, refreshAgeHighlight: age.refresh, updateStatus: updateStatus};
+    return {element: panel, refreshAgeHighlight: function () { age.refresh(); hold.refresh(); }, updateStatus: updateStatus};
   }
 
   function createAdvancedTab(projectSettings) {
@@ -7381,6 +7421,63 @@
       if (!chips.firstChild) {
         chips.appendChild(createTextSpan('Keine Label-Spalten gefunden.', FIELD_HINT_STYLES));
       }
+    }
+
+    return {element: card.element, refresh: refresh};
+  }
+
+  function createHoldLabelSection(projectSettings) {
+    const card = createPanelCard('On-Hold-Labels');
+    card.element.appendChild(createTextSpan('Tickets mit diesen Labels erscheinen ausgegraut. Ohne eigene Auswahl zählt jedes „On Hold“-Label.', FIELD_HINT_STYLES));
+    const chips = document.createElement('div');
+    chips.setAttribute('role', 'group');
+    chips.setAttribute('aria-label', 'Labels, die ausgegraut werden');
+    applyStyles(chips, {display: 'flex', flexWrap: 'wrap', gap: '0.5rem'});
+    card.element.appendChild(chips);
+    let seenKeys = [];
+
+    function createChip(key, text) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      applyStyles(chip, {minHeight: '32px', padding: '0.3rem 0.8rem', borderRadius: '999px', border: '1px solid', fontSize: '0.85rem', fontWeight: '500', cursor: 'pointer'});
+      function paint() {
+        const on = isHoldLabelKey(key);
+        chip.textContent = (on ? '✓ ' : '') + text;
+        chip.setAttribute('aria-pressed', String(on));
+        applyStyles(chip, {
+          background: on ? SETTINGS_ACCENT : 'transparent',
+          borderColor: on ? SETTINGS_ACCENT : 'var(--gl-border-color-strong, #5c5a62)',
+          color: on ? '#ffffff' : 'inherit'
+        });
+      }
+      chip.addEventListener('click', function () {
+        if (!holdLookup) { // erste eigene Auswahl: Standard-Treffer übernehmen
+          holdLookup = {};
+          seenKeys.forEach(function (k) { if (HOLD_LABEL_DEFAULT.test(k)) holdLookup[k] = true; });
+        }
+        if (holdLookup[key]) delete holdLookup[key]; else holdLookup[key] = true;
+        saveHoldLookup();
+        chips.querySelectorAll('button').forEach(function (b) { b.dispatchEvent(new Event('ambient-paint')); });
+        document.querySelectorAll(SEL.boardCard).forEach(applyHoldDimming);
+      });
+      chip.addEventListener('ambient-paint', paint);
+      paint();
+      return chip;
+    }
+
+    // Labels erst beim Öffnen von den Karten lesen (Spalten-Labels stehen im Header, nicht in den Karten)
+    function refresh() {
+      loadHoldLookup(projectSettings.projectKey);
+      chips.textContent = '';
+      const seen = {};
+      document.querySelectorAll(SEL.boardCard + ' ' + SEL.cardLabel).forEach(function (label) {
+        const text = normalizeWhitespace(label.textContent);
+        const key = normalizeLabelNameForMatching(text);
+        if (key && !seen[key]) seen[key] = text;
+      });
+      seenKeys = Object.keys(seen);
+      seenKeys.sort().forEach(function (key) { chips.appendChild(createChip(key, seen[key])); });
+      if (!chips.firstChild) chips.appendChild(createTextSpan('Keine Labels auf den Karten gefunden.', FIELD_HINT_STYLES));
     }
 
     return {element: card.element, refresh: refresh};
