@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.11.16
+
+- Der Update-Hinweis steht jetzt oben im Einstellungs-Panel über den Reitern (lange Neuerungen scrollen) statt unter der Vorschau. Die Neuerungen darin sind auf vier Einträge begrenzt und sauber an Wortgrenzen gekürzt, der Rest steht unter „Was ist neu“.
+
 ## 2026.11.15
 
 - Neu: Zahnrad → Global → „Was ist neu“ zeigt den Changelog je Version (aus dem Repository geladen, die neueste aufgeklappt).
