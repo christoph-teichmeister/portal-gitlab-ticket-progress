@@ -22,7 +22,7 @@ const names = ['parseVersionSegments', 'isRemoteVersionGreater', 'formatDuration
   'normalizeListNameForMatching', 'normalizeLabelNameForMatching', 'parseTicketActions', 'assigneeSortKey', 'planReorder',
   'parseLooseNumber', 'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate', 'relativeLuminance',
   'parseCssColorToRgb', 'getContrastTextColor', 'formatBookedHoursDisplay', 'isNumericId',
-  'parseExtraProjectIds', 'activityTone', 'newestTimestamp', 'parseBookingDate', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays', 'mapApiProgress', 'normalizeMilestoneSp', 'milestoneSpToShow', 'milestoneSpQuery', 'sumHoursByEmployee', 'personHourlyRate', 'computeTicketCost', 'buildCostInfo', 'formatEuro', 'formatSignedEuro', 'formatEuroShort', 'costTooltipSuffix', 'parseProjectFinanceFromHtml', 'buildFinanceRows', 'effectiveSpPrice', 'parseHoursHM', 'monthKeyOf', 'addMonthsKey', 'monthLabel', 'monthRangeParams', 'roleAtDate', 'buildMonthReport', 'adminRatesFromRows', 'escalationLimitsFromFields', 'limitForSp', 'parseQuotaText', 'monthSpanLength', 'resolvePeriodSpan', 'sumMonthSpan', 'effectiveCostMode', 'formatStand', 'isInternalCategory', 'formatHours', 'parseChangelog'];
+  'parseExtraProjectIds', 'activityTone', 'newestTimestamp', 'parseBookingDate', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays', 'mapApiProgress', 'normalizeMilestoneSp', 'milestoneSpToShow', 'milestoneSpQuery', 'sumHoursByEmployee', 'personHourlyRate', 'computeTicketCost', 'buildCostInfo', 'formatEuro', 'formatSignedEuro', 'formatEuroShort', 'costTooltipSuffix', 'parseProjectFinanceFromHtml', 'buildFinanceRows', 'effectiveSpPrice', 'parseHoursHM', 'monthKeyOf', 'addMonthsKey', 'monthLabel', 'monthRangeParams', 'roleAtDate', 'buildMonthReport', 'adminRatesFromRows', 'escalationLimitsFromFields', 'limitForSp', 'parseQuotaText', 'monthSpanLength', 'resolvePeriodSpan', 'sumMonthSpan', 'effectiveCostMode', 'formatStand', 'isInternalCategory', 'formatHours', 'parseChangelog', 'summarizeChangelogNotes'];
 const isExp = function () { return false; };
 const patternsStart = source.indexOf('  const DEFAULT_ESTIMATE_PATTERNS');
 const defaultPatterns = source.slice(patternsStart, source.indexOf(';\n', patternsStart) + 1);
@@ -519,6 +519,20 @@ function makeFeatureState() {
   assert(real.every(function (x) { return /^\d{4}\.\d+\.\d+/.test(x.version); }));
   assert(source.indexOf("'Was ist neu'") >= 0 && /function createChangelogGroup\(/.test(source));
   console.log('changelog ok');
+}
+
+// Update-Hinweis: Kürzung an Wortgrenzen, Obergrenze, kein „verbrauc“
+{
+  const long = 'Neu: Finanz-Button (Reihenfolge: MR-Links, Finanzen, Einstellungen) öffnet ein Finanz-Dashboard (Seitenpanel). Es liest Financial data der Portal-Projektseite und zeigt, wer wie viel vom Budget verbraucht hat.';
+  const out = f.summarizeChangelogNotes([long, 'Kurz `A`', 'B', 'C', 'D', 'E'], 4, 60).split('\n');
+  assert.strictEqual(out.length, 5);
+  assert(out[0].endsWith('…') && out[0].length <= 64, out[0]);
+  assert(long.indexOf(out[0].slice(2, -1)) === 0, 'Kürzung ist ein Präfix an einer Wortgrenze');
+  assert.strictEqual(out[1], '• Kurz A');
+  assert(/^\+ 2 weitere/.test(out[4]), out[4]);
+  assert.strictEqual(f.summarizeChangelogNotes([], 4, 60), '');
+  assert.strictEqual(f.summarizeChangelogNotes(['x'], 4, 60), '• x');
+  console.log('update notes ok');
 }
 
 console.log('pure.check.js: alle Checks bestanden');

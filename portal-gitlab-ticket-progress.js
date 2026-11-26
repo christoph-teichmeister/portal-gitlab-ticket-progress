@@ -1218,6 +1218,20 @@
     return releases.filter(function (r) { return r.items.length; });
   }
 
+  // Update-Hinweis: wenige Einträge, jeder an einer Wortgrenze mit „…“ gekürzt; der Rest steht unter „Was ist neu“
+  function summarizeChangelogNotes(items, maxItems, maxLen) {
+    const clean = function (text) { return String(text).replace(/[`*]/g, '').replace(/\s+/g, ' ').trim(); };
+    const lines = (items || []).slice(0, maxItems).map(function (item) {
+      const text = clean(item);
+      if (text.length <= maxLen) return '• ' + text;
+      const cut = text.slice(0, maxLen);
+      return '• ' + cut.slice(0, Math.max(cut.lastIndexOf(' '), maxLen / 2)).replace(/[\s,;:.\-–]+$/, '') + '…';
+    });
+    const more = (items || []).length - lines.length;
+    if (more > 0) lines.push('+ ' + more + ' weitere unter Zahnrad → Global → „Was ist neu“');
+    return lines.join('\n');
+  }
+
   let changelogPromise = null; // einmal je Seitenladung
 
   function loadChangelog() {
@@ -1248,9 +1262,9 @@
       timeout: 30 * 1000,
       onload: function (response) {
         if (response.status !== 200) return;
-        const section = String(response.responseText || '').split(/^## /m)[1];
-        if (!section) return;
-        info.notes = section.split('\n').slice(1).join('\n').trim().slice(0, 600);
+        const top = parseChangelog(response.responseText)[0];
+        if (!top) return;
+        info.notes = summarizeChangelogNotes(top.items, 4, 140);
         writeReleaseInfoToStorage(info);
         updateReleaseNotificationUI(info);
       },

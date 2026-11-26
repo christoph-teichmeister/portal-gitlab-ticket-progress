@@ -2,7 +2,7 @@
 
 ## 2026.11.16
 
-- Der Update-Hinweis steht jetzt oben im Einstellungs-Panel über den Reitern (lange Neuerungen scrollen) statt unter der Vorschau.
+- Der Update-Hinweis steht jetzt oben im Einstellungs-Panel über den Reitern (lange Neuerungen scrollen) statt unter der Vorschau. Die Neuerungen darin sind auf vier Einträge begrenzt und sauber an Wortgrenzen gekürzt, der Rest steht unter „Was ist neu“.
 
 ## 2026.11.15
 
