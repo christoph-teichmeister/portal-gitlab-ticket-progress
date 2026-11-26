@@ -261,7 +261,11 @@
       '.ambient-tab-badge:empty{display:none}' +
       '.ambient-tab-badge-warning{background:#e9be74;color:#1f1e24}' +
       '#ambient-progress-settings .ambient-tab:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
-      '.ambient-changelog-release>summary{cursor:pointer;font-weight:600;padding:.25rem 0}' +
+      '.ambient-changelog-summary{width:100%;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;font-weight:600;padding:.25rem .4rem;border-radius:4px;display:flex;align-items:center;gap:.5rem}' +
+      '.ambient-changelog-summary::before{content:"";width:.45rem;height:.45rem;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .2s ease}' +
+      '.ambient-changelog-release.is-open .ambient-changelog-summary::before{transform:rotate(45deg)}' +
+      '.ambient-changelog-summary:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
+      '.ambient-changelog-release>.ambient-collapse{margin-top:0}' +
       '.ambient-changelog-release ul{margin:.25rem 0 .5rem;padding-left:1.25rem;display:flex;flex-direction:column;gap:.35rem;font-size:.85rem;line-height:1.45}' +
       '#ambient-progress-settings code{padding:0.1rem 0.4rem;border-radius:4px;background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
       // Toast im GitLab-Stil (Pajamas): dunkle Fläche, 4px-Radius, unten rechts, Status als Icon-Punkt (info ist Standard)
@@ -9472,7 +9476,7 @@
     return panel;
   }
 
-  // „Was ist neu“: CHANGELOG.md aus dem Repo, je Version aufklappbar (native details), die neueste offen
+  // „Was ist neu“: CHANGELOG.md aus dem Repo, je Version aufklappbar (animiert), die neueste offen
   function createChangelogGroup() {
     const group = createSettingsGroup('Was ist neu', 'Changelog', {key: 'fold:global:Changelog', open: false});
     group.list.className = '';
@@ -9482,19 +9486,33 @@
     loadChangelog().then(function (releases) {
       status.remove();
       releases.slice(0, 15).forEach(function (release, index) {
-        const details = document.createElement('details');
+        const details = document.createElement('div');
         details.className = 'ambient-changelog-release';
-        details.open = index === 0;
-        const summary = document.createElement('summary');
+        const summary = document.createElement('button');
+        summary.type = 'button';
+        summary.className = 'ambient-changelog-summary';
         summary.textContent = release.version + (release.version === SCRIPT_VERSION ? ' (installiert)' : '');
-        details.appendChild(summary);
+        const wrap = document.createElement('div');
+        wrap.className = 'ambient-collapse';
+        const inner = document.createElement('div');
+        inner.className = 'ambient-collapse-inner';
         const ul = document.createElement('ul');
         release.items.forEach(function (item) {
           const li = document.createElement('li');
           li.textContent = item.replace(/[`*]/g, ''); // nur Text, nie als HTML
           ul.appendChild(li);
         });
-        details.appendChild(ul);
+        inner.appendChild(ul);
+        wrap.appendChild(inner);
+        function setOpen(open) {
+          summary.setAttribute('aria-expanded', String(open));
+          if (open) wrap.setAttribute('data-open', '');
+          else wrap.removeAttribute('data-open');
+          details.classList.toggle('is-open', open);
+        }
+        summary.addEventListener('click', function () { setOpen(!wrap.hasAttribute('data-open')); });
+        setOpen(index === 0);
+        details.append(summary, wrap);
         group.list.appendChild(details);
       });
       if (!releases.length) group.list.appendChild(createTextSpan('Keine Einträge gefunden.', FIELD_HINT_STYLES));

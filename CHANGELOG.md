@@ -25,16 +25,60 @@
   Break-even-Strich auf dem Balken (rote Umrandung, sobald die Kosten den Erlös übersteigen) und `Kosten / Erlös` im
   Meilenstein-Chip (wahlweise als Marge-Summe oder `Kosten / Erlös`). Erlös = SP × „Verkaufspreis pro SP“ (Feld im Kostensätze-Block, nur im internen Modus).
 
+## 2026.11.14
+
+- On-Hold-Tickets werden auf dem Board ausgegraut; die Labels dafür sind pro Board einstellbar (Dieses Board → Board-Darstellung → On-Hold-Labels).
+
 ## 2026.11.13
 
 - Board-Drag&Drop flotter: Zielspalte scrollt beim Ziehen deutlich schneller (scrollSpeed 300, Zone 120 px), keine
   200-ms-Verschiebeanimation, und das Skript scannt während des Ziehens nicht mehr.
+
+## 2026.11.9
+
+- Der Meilenstein-Name steht neben der Raute auf den Board-Karten.
+
+## 2026.11.10
+
+- Die SP-Pille hat in der Closed-Spalte denselben rechten Abstand wie in den anderen Spalten.
+
+## 2026.11.11
+
+- Das Verschieben-Menü (drei Punkte) der Karte ist immer sichtbar.
+
+## 2026.11.12
+
+- Der blaue Balken für gebuchte Stunden ist etwas weicher, damit schwarzer Text besser lesbar ist.
 
 ## 2026.11.8
 
 - Neu: Verkaufte SP. Chip hinter den Breadcrumbs vergleicht die SP aller Tickets eines Meilensteins mit den verkauften SP
   (`M1: 11 / 10 SP`, rot bei Überschreitung). Verkaufte SP je Meilenstein pflegst du unter Zahnrad → Dieses Board →
   Verkaufte SP (lokal im Browser; auch ohne Meilenstein als „Gesamt“), einzeln und global ein-/ausblendbar.
+
+## 2026.11.7
+
+- Eine geöffnete Board-Karte bleibt im Dark Mode beim Hovern dunkel.
+
+## 2026.11.5
+
+- Unter dem Kartentitel gibt es etwas mehr Abstand nach unten.
+
+## 2026.11.4
+
+- Die Lücke der SP-Pille bleibt reserviert, damit der Kartentitel beim Hovern nicht umbricht.
+
+## 2026.11.3
+
+- Zwischen Aktivitäts-Chip und Assignee-Avatar im Karten-Footer ist jetzt ein Abstand.
+
+## 2026.11.2
+
+- Der Sprint steht nur noch als Icon, und Uhr und Aktivitäts-Chip im Footer klappen sauber ein.
+
+## 2026.11.1
+
+- Liefert das Portal-API 404, nutzt das Script als Rückfall die Ticket-Seite.
 
 ## 2026.11.6
 
