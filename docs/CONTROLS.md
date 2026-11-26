@@ -44,7 +44,7 @@ Tab, Escape schließt); jede Schalter-Zeile ist als Ganzes klickbar.
     sofort pro Projektschlüssel gespeichert. Benötigt „Uhr im Karten-Footer“.
   - *Ticket-Aktionen im Merge Request*: Textfeld plus Vorschau der entstehenden Buttons („Ergibt: …“). Format und
     Beispiele: [Wesentliche Features](FEATURES.md#ticket-aktionen-im-mr).
-- **Tab Erweitert**: *Allgemein* (Sprache Deutsch/English – teilweise übersetzt, wirkt nach Reload; Debug-Logs),
+- **Tab Global**: *Allgemein* (Sprache Deutsch/English – teilweise übersetzt, wirkt nach Reload; Debug-Logs),
   *Schätzungs-Muster* (siehe [Features](FEATURES.md#schätzung-als-badge-am-titel), mit Gültigkeitsanzeige und
   „Auf Standard zurücksetzen“), *Diagnose & Daten* (Selektor-Selbsttest, Portal-Fehler, Debug-Info ohne Portal-URL,
   Konfiguration exportieren/importieren) und die rot abgesetzte *Gefahrenzone* „Alle lokalen Daten löschen“.

@@ -20,15 +20,15 @@ function extract(name) {
 
 const names = ['parseVersionSegments', 'isRemoteVersionGreater', 'formatDuration', 'median',
   'normalizeListNameForMatching', 'normalizeLabelNameForMatching', 'parseTicketActions', 'assigneeSortKey', 'planReorder',
-  'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate', 'relativeLuminance',
+  'parseLooseNumber', 'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate', 'relativeLuminance',
   'parseCssColorToRgb', 'getContrastTextColor', 'formatBookedHoursDisplay', 'isNumericId',
-  'parseExtraProjectIds', 'activityTone', 'newestTimestamp', 'parseBookingDate', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays', 'mapApiProgress', 'normalizeMilestoneSp', 'milestoneSpToShow', 'milestoneSpQuery'];
+  'parseExtraProjectIds', 'activityTone', 'newestTimestamp', 'parseBookingDate', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays', 'mapApiProgress', 'normalizeMilestoneSp', 'milestoneSpToShow', 'milestoneSpQuery', 'sumHoursByEmployee', 'personHourlyRate', 'computeTicketCost', 'buildCostInfo', 'formatEuro', 'formatSignedEuro', 'formatEuroShort', 'costTooltipSuffix', 'parseProjectFinanceFromHtml', 'buildFinanceRows', 'effectiveSpPrice', 'parseHoursHM', 'monthKeyOf', 'addMonthsKey', 'monthLabel', 'monthRangeParams', 'roleAtDate', 'buildMonthReport', 'adminRatesFromRows', 'escalationLimitsFromFields', 'limitForSp', 'parseQuotaText', 'monthSpanLength', 'resolvePeriodSpan', 'sumMonthSpan'];
 const isExp = function () { return false; };
 const patternsStart = source.indexOf('  const DEFAULT_ESTIMATE_PATTERNS');
 const defaultPatterns = source.slice(patternsStart, source.indexOf(';\n', patternsStart) + 1);
 const filterStart = source.indexOf('  const BOARD_FILTER_TO_API');
 const boardFilterMap = source.slice(filterStart, source.indexOf('};\n', filterStart) + 2);
-const code = 'const ACTIVITY_FRESH_MS = 3 * 86400000; const ACTIVITY_STALE_MS = 7 * 86400000; const CLOSED_DAYS_DEFAULT = 28; const CLOSED_DAYS_MAX = 40; const MAX_HOURS_VALUE = 100000; const COLUMN_BLIP_MS = 15 * 60 * 1000; const ACTIVITY_BOOKINGS_MAX = 8;\n' + defaultPatterns + '\n' + boardFilterMap + '\n' + names.map(extract).join('\n') + '\nreturn {DEFAULT_ESTIMATE_PATTERNS,' + names.join(',') + '};';
+const code = 'const ACTIVITY_FRESH_MS = 3 * 86400000; const ACTIVITY_STALE_MS = 7 * 86400000; const CLOSED_DAYS_DEFAULT = 28; const CLOSED_DAYS_MAX = 40; const MAX_HOURS_VALUE = 100000; const COLUMN_BLIP_MS = 15 * 60 * 1000; const MONTH_NAMES = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]; const ACTIVITY_BOOKINGS_MAX = 8; const HOURS_PER_DAY = 8; const WARN_PCT = 80; const DEFAULT_HOURS_PER_SP = 8;\n' + defaultPatterns + '\n' + boardFilterMap + '\n' + names.map(extract).join('\n') + '\nreturn {DEFAULT_ESTIMATE_PATTERNS,' + names.join(',') + '};';
 const fn = new Function('isExp', 'expSetting', 'log', 'warn', 'error', code);
 const noop = function () {};
 const f = fn(isExp, function (key, fallback) { return fallback; }, noop, noop, noop);
@@ -192,7 +192,7 @@ console.log('parseBookingDate ok');
   assert.strictEqual(f.mapApiProgress({found: false}), null);
   assert.strictEqual(f.mapApiProgress(undefined), null);
   assert.deepStrictEqual(f.mapApiProgress({found: true, booked: 4.5, remaining: 2, over: 0}),
-    {spent: '4.5h', remaining: '2h', over: null, booked: '4.5h', bookedLabel: 'Booked Hours', bookings: []});
+    {spent: '4.5h', remaining: '2h', over: null, booked: '4.5h', bookedLabel: 'Booked Hours', bookings: [], hoursByEmployee: {}});
   const withBookings = f.mapApiProgress({found: true, booked: 3, remaining: 0, over: 0, bookings: [
     {date: '2026-10-27', title: 'Ältere', employee: 'A', hours: 1},
     {date: '2026-10-28', title: '[censored]', employee: 'B', hours: 2},
@@ -215,3 +215,106 @@ console.log('mapApiProgress ok');
   assert.strictEqual(f.milestoneSpQuery(''), 'state=all');
 }
 console.log('milestoneSp ok');
+
+// Kostenrechnung
+{
+  const hours = f.sumHoursByEmployee([{employee: 'A', hours: '1.5h'}, {employee: 'A', hours: '2'}, {employee: 'B', hours: '1,5'}, {employee: '', hours: '3'}]);
+  assert.deepStrictEqual(hours, {A: 3.5, B: 1.5});
+  const people = [{name: 'A', role: 'Web (Level 3)', daily: 800}, {name: 'B', role: 'SM (Level 2)', daily: 600}];
+  const rates = {'Web (Level 3)': 74};
+  assert.deepStrictEqual(f.computeTicketCost(hours, people, rates, 'internal'), {cost: 259, missing: ['B']});
+  assert.deepStrictEqual(f.computeTicketCost(hours, people, rates, 'external'), {cost: 350 + 112.5, missing: []});
+  assert.deepStrictEqual(f.computeTicketCost({'X Y': 1}, people, rates, 'internal'), {cost: 0, missing: ['X Y']});
+  console.log('computeTicketCost ok');
+}
+
+{
+  const people = [{name: 'A', role: 'Web', daily: 800}];
+  const hrs = {A: 10, B: 2};
+  const info = f.buildCostInfo(hrs, people, {Web: 100}, 'internal', 3, 500);
+  assert.deepStrictEqual(info, {mode: 'internal', cost: 1000, hours: 10, missing: ['B'], revenue: 1500, margin: 500, breakEvenHours: 15});
+  assert.strictEqual(f.buildCostInfo(hrs, people, {Web: 100}, 'internal', null, 500).margin, null);
+  assert.strictEqual(f.buildCostInfo(hrs, people, {Web: 100}, 'external', 3, 500).revenue, null);
+  assert.strictEqual(f.buildCostInfo(hrs, [], {}, 'internal', 3, 500), null);
+  assert(/Marge \+500/.test(f.costTooltipSuffix(info, 3)));
+  console.log('buildCostInfo ok');
+}
+
+{
+  assert.strictEqual(f.parseLooseNumber('97,200.00€'), 97200);
+  assert.strictEqual(f.parseLooseNumber('97.200,00 €'), 97200);
+  assert.strictEqual(f.parseLooseNumber('Total: 43.50 hrs.'), 43.5);
+  assert.strictEqual(f.extractHourNumber('150000'), null);
+  const people = [{name: 'A', role: 'Web', daily: 800}];
+  const model = f.buildFinanceRows([{name: 'A', hours: 10}, {name: 'X', hours: 5}, {name: 'Y', hours: 2}], people, {X: 'Web'}, {Web: 100}, 'internal');
+  assert.strictEqual(model.total, 1500);
+  assert.strictEqual(model.missing, 1);
+  assert.deepStrictEqual(model.rows.map(function (r) { return r.name; }), ['A', 'X', 'Y']);
+  assert.strictEqual(f.buildFinanceRows([{name: 'X', hours: 8}], people, {X: 'Web'}, {}, 'external').total, 800);
+  console.log('finance ok');
+}
+
+{
+  assert.strictEqual(f.parseHoursHM('1:30'), 1.5);
+  assert.strictEqual(f.parseHoursHM('0:15'), 0.25);
+  assert.strictEqual(f.parseHoursHM('2.5'), 2.5);
+  assert.strictEqual(f.addMonthsKey('2026-01', -1), '2025-12');
+  assert.strictEqual(f.addMonthsKey('2026-11', 3), '2027-02');
+  assert.strictEqual(f.monthLabel('2026-03'), 'März 2026');
+  assert.deepStrictEqual(f.monthRangeParams('2026-09', '2026-11'), {start: '01/09/2026', end: '30/11/2026'});
+  assert.deepStrictEqual(f.monthRangeParams('2024-01', '2024-02'), {start: '01/01/2024', end: '29/02/2024'});
+  const day = function (y, m, d) { return new Date(y, m - 1, d).getTime(); };
+  const history = [{from: day(2026, 10, 21), role: 'Web (Level 3)'}, {from: day(2024, 2, 1), role: 'Web (Level 2+)'}];
+  assert.strictEqual(f.roleAtDate(history, day(2026, 11, 5), 'X'), 'Web (Level 3)');
+  assert.strictEqual(f.roleAtDate(history, day(2026, 9, 5), 'X'), 'Web (Level 2+)');
+  assert.strictEqual(f.roleAtDate(history, day(2020, 1, 1), 'X'), 'Web (Level 2+)');
+  assert.strictEqual(f.roleAtDate([], day(2026, 9, 5), 'X'), 'X');
+  assert.strictEqual(f.effectiveSpPrice({spPricing: false, spPrice: 900}), null);
+  assert.strictEqual(f.effectiveSpPrice({spPricing: true, spPrice: 900}), 900);
+  assert.strictEqual(f.effectiveSpPrice({spPricing: true, spPrice: null}), null);
+  // Level-Wechsel am 21.10.: Oktober-Stunden vorher Level 2+ (69), danach Level 3 (74)
+  const rows = [
+    {name: 'A', path: '/a', ts: day(2026, 10, 10), hours: 10},
+    {name: 'A', path: '/a', ts: day(2026, 10, 25), hours: 10},
+    {name: 'A', path: '/a', ts: day(2026, 11, 3), hours: 5},
+    {name: 'B', path: '', ts: day(2026, 11, 3), hours: 2}
+  ];
+  const rep = f.buildMonthReport(rows, {'/a': history}, [], {}, {'Web (Level 2+)': 69, 'Web (Level 3)': 74}, 'internal');
+  assert.strictEqual(rep.months['2026-10'].cost, 10 * 69 + 10 * 74);
+  assert.strictEqual(rep.months['2026-11'].cost, 5 * 74);
+  assert.strictEqual(rep.months['2026-11'].persons.B.missing, true);
+  assert.strictEqual(rep.months['2026-11'].persons.B.cost, 0);
+  assert.deepStrictEqual(rep.roles.sort(), ['Web (Level 2+)', 'Web (Level 3)']);
+  assert.deepStrictEqual(f.resolvePeriodSpan('last:3', '2026-11'), {first: '2026-09', last: '2026-11', len: 3});
+  assert.deepStrictEqual(f.resolvePeriodSpan('year', '2026-11'), {first: '2026-01', last: '2026-11', len: 11});
+  assert.deepStrictEqual(f.resolvePeriodSpan('custom', '2026-11', '2026-10', '2026-08'), {first: '2026-08', last: '2026-10', len: 3});
+  assert.deepStrictEqual(f.resolvePeriodSpan('2026-10', '2026-11'), {first: '2026-10', last: '2026-10', len: 1});
+  assert.strictEqual(f.resolvePeriodSpan('all', '2026-11'), null);
+  const sum = f.sumMonthSpan(rep.months, '2026-10', '2026-11');
+  assert.strictEqual(sum.cost, 10 * 69 + 10 * 74 + 5 * 74);
+  assert.strictEqual(sum.persons.A.hours, 25);
+  assert.strictEqual(sum.persons.B.missing, true);
+  assert.strictEqual(f.sumMonthSpan(rep.months, '2026-01', '2026-02'), undefined);
+  assert.strictEqual(f.formatEuroShort(10800), '10,8k €');
+  assert.strictEqual(f.formatEuroShort(4500), f.formatEuro(4500));
+  assert.strictEqual(f.formatEuroShort(1250000), '1,3M €');
+  const adminRates = f.adminRatesFromRows([{level: '3', role: 'Webentwicklung', internal: '74.00000'}, {level: '1+', role: 'Buchhaltung', internal: '51,5'}, {level: '1', role: 'X', internal: '0.00000'}]);
+  assert.deepStrictEqual(adminRates, {'Webentwicklung (Level 3)': 74, 'Buchhaltung (Level 1+)': 51.5});
+  const lim = f.escalationLimitsFromFields([
+    {name: 'story_point_configuration-1-story_points', value: '1'}, {name: 'story_point_configuration-1-hours_warning', value: '6'}, {name: 'story_point_configuration-1-hours_escalation', value: '8'},
+    {name: 'story_point_configuration-0-story_points', value: '0'}, {name: 'story_point_configuration-0-hours_warning', value: '0'}, {name: 'story_point_configuration-0-hours_escalation', value: '0'},
+    {name: 'story_point_configuration-2-story_points', value: '2'}, {name: 'story_point_configuration-2-hours_warning', value: '12'}, {name: 'story_point_configuration-2-hours_escalation', value: '16'}
+  ]);
+  assert.deepStrictEqual(lim.map(function (e) { return e.sp + ':' + e.limit; }), ['0:0', '1:8', '2:16']);
+  assert.deepStrictEqual(f.limitForSp(lim, 2, 8), {limit: 16, warn: 12, fromPortal: true});
+  assert.strictEqual(f.limitForSp(lim, 1.5, 8).limit, 12);
+  assert.strictEqual(f.limitForSp(lim, 0.5, 8).limit, 4);
+  assert.strictEqual(f.limitForSp(lim, 4, 8).limit, 32); // über der größten Stufe: Steigung 8 h/SP
+  assert.deepStrictEqual(f.limitForSp([], 3, 8), {limit: 24, warn: 19.2, fromPortal: false});
+  assert.deepStrictEqual(f.limitForSp([], 2, 6), {limit: 12, warn: 9.6, fromPortal: false});
+  assert.strictEqual(f.limitForSp(lim, 0, 8), null);
+  const q = f.parseQuotaText('Remaining: 8.50 h Quota 32 h · booked 23.50 h 01.10.2026 – 31.12.2026 16 h per month · expires every 3 months');
+  assert.deepStrictEqual(q, {quota: 32, booked: 23.5, remaining: 8.5, perMonth: 16, from: '01.10.2026', to: '31.12.2026', expires: '3'});
+  assert.strictEqual(f.parseQuotaText('Total: 18,476.25€ (73.90%)'), null);
+  console.log('month report ok');
+}

@@ -47,6 +47,10 @@ Ausführungsoberfläche beschränkt sich auf den Code in diesem Repository.
 * Der optionale API-Token liegt in `GM_setValue` (script-eigen, nicht im `localStorage` der GitLab-Seite), wird nur an
   das fest eingebaute `https://portal.beyonder.de` gesendet (nie an die konfigurierbare Portal-URL, auch nicht über
   einen importierten Konfig-Hash) und taucht weder in Export noch Debug-Infos auf.
+* Die händisch gepflegten internen Stundensätze (Kostensätze) liegen ebenfalls in `GM_setValue`, nie im `localStorage`. Die Kosten
+  stehen im Tooltip der Fortschrittsbalken (bei Screenshare beachten).
+* „Interne Sätze aus Admin laden“ folgt nur Links auf dem Portal-Host (fremde Hosts werden abgelehnt), liest nur und speichert ausschließlich die Sätze der Rollen des Projekts in `GM_setValue`.
+* Escalation-Limits und Stundenkontingent werden nur gelesen (Portal-Seiten mit Browser-Login); gespeichert werden nur die Stufen (SP, Stunden) je Projekt in `localStorage`, keine Beträge.
 * Die Portal-Base-URL wird beim Speichern und Lesen validiert: nur `https:`, keine Zugangsdaten in der URL.
 * Portal-Antworten werden als Text geparst und nie als HTML in die Seite eingefügt; Stundenwerte werden auf einen
   plausiblen Bereich begrenzt, die Antwortgröße ist gedeckelt. Login-Seiten werden erkannt und als „nicht angemeldet“

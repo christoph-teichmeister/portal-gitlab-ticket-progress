@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.11.14
+// @version      2026.11.15
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -25,7 +25,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.11.14';
+  const SCRIPT_VERSION = '2026.11.15';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -125,7 +125,7 @@
       '.ambient-btn{min-width:24px;min-height:24px;box-sizing:border-box}' +
       '#ambient-progress-toolbar button:focus-visible,#ambient-progress-toolbar summary:focus-visible,' +
       '#ambient-progress-toolbar input:focus-visible,#ambient-progress-toolbar textarea:focus-visible,' +
-      '#ambient-progress-settings button:focus-visible,#ambient-progress-settings summary:focus-visible,' +
+      '#ambient-progress-finance button:focus-visible,#ambient-progress-finance select:focus-visible,#ambient-progress-settings button:focus-visible,#ambient-progress-settings summary:focus-visible,' +
       '#ambient-progress-settings input:focus-visible,#ambient-progress-settings textarea:focus-visible,' +
       '.ambient-btn:focus-visible,.ambient-mr-badge:focus-visible,.ambient-progress-bar:focus-visible,' +
       '.board-card[data-ambient-hold]{opacity:.6;transition:opacity .15s}.board-card[data-ambient-hold]:hover{opacity:.85}' +
@@ -186,14 +186,21 @@
       '.ambient-split-label{min-width:0;max-width:100%;flex:0 1 auto}' +
       // seit dem GitLab-Update ohne #js-injected-page-breadcrumbs: MR-Buttons und Toolbar in die Breadcrumb-Zeile holen;
       // bei schmalem Fenster kürzen sich die Breadcrumbs, unsere Buttons bleiben rechts
-      '#js-vue-page-breadcrumbs-wrapper:has(>#js-my-mr-links,>#ambient-progress-toolbar){display:flex;align-items:center;gap:.25rem}' +
+      '#js-vue-page-breadcrumbs-wrapper:has(>#js-my-mr-links,>#ambient-progress-toolbar){display:flex;align-items:center;gap:0}' +
       '#js-vue-page-breadcrumbs-wrapper:has(>#js-my-mr-links,>#ambient-progress-toolbar)>nav.gl-breadcrumbs{flex:1 1 auto;min-width:0}' +
       '#js-my-mr-links,#js-vue-page-breadcrumbs-wrapper>#ambient-progress-toolbar{flex:0 0 auto}' +
       '#js-my-mr-links{margin-left:auto}' +
       // Meilenstein-Chip direkt hinter den Breadcrumbs: Breadcrumbs wachsen nicht mehr, der Chip schiebt die Buttons nach rechts
       '#js-vue-page-breadcrumbs-wrapper:has(>#ambient-milestone-sp)>nav.gl-breadcrumbs{flex:0 1 auto}' +
       '#ambient-milestone-sp{display:flex;flex:1 1 auto;flex-wrap:wrap;align-items:center;gap:.4rem;min-width:0;margin-left:.5rem}' +
-      '.ambient-milestone-sp-chip{padding:.1rem .6rem;border:1px solid var(--gl-border-color-default,#4c4b51);border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;color:var(--gl-text-color-subtle,#89888d)}' +
+      '.ambient-milestone-sp-chip{display:inline-flex;align-items:stretch;overflow:hidden;border:1px solid var(--gl-border-color-default,#4c4b51);border-radius:999px;font-size:12px;font-weight:600;line-height:1.2;white-space:nowrap;cursor:pointer;color:var(--gl-text-color-subtle,#89888d);transition:background-color .15s ease,border-color .15s ease}' +
+      '.ambient-milestone-sp-chip:hover{background:var(--gl-background-color-strong,rgba(255,255,255,.06))}' +
+      '.ambient-ms-part{display:inline-flex;align-items:center;gap:.35rem;padding:.2rem .65rem}' +
+      '.ambient-ms-part+.ambient-ms-part{border-left:1px solid var(--gl-border-color-default,#4c4b51)}' +
+      '.ambient-ms-name{color:var(--gl-text-color-default,#ececef)}' +
+      '.ambient-ms-cost.ambient-cost-ok{background:rgba(45,161,96,.16)}' +
+      '.ambient-ms-cost.ambient-cost-tight{background:rgba(171,97,0,.2)}' +
+      '.ambient-ms-cost.ambient-cost-over{background:rgba(221,43,14,.18)}' +
       '.ambient-milestone-sp-chip.is-over{color:var(--gl-text-color-danger,#dd2b0e);border-color:currentColor}' +
       '.ambient-milestone-sp-chip.is-equal{color:var(--gl-text-color-success,#108548);border-color:currentColor}' +
       '.ambient-split-label>span:first-child{flex:0 0 auto}' +
@@ -204,6 +211,7 @@
       '[data-testid="board-list-header"] .ambient-split-label{margin-right:.5rem !important}' +
       // Zähler mit Median/SP-Summe nie stauchen: lange Spalten-Labels kürzen sich (Ellipse) statt dass „Σ 13 SP" umbricht
       '[data-testid="board-list-header"] [data-testid="issue-count-badge"]:has(.ambient-column-sp,.ambient-column-avg){flex-shrink:0}' +
+      '.ambient-column-sp{column-gap:.3em}' +
       // Titel füllt die Kartenbreite, damit der Schätzungs-Badge (float) ganz rechts steht – links von GitLabs
       // Verschiebe-Menü, das beim Hover in der reservierten rechten Ecke erscheint
       '.board-card-title:has(.ambient-estimate-badge){flex-grow:1;padding-bottom:.375rem}' +
@@ -225,12 +233,16 @@
       // transformierter Vorfahre position: fixed bricht. Platz für den Scrollbalken immer reservieren (sonst springt die
       // Breite zwischen Reitern), horizontal abschneiden (Einschieben der Reiter). Geschlossen: aus Tab-Reihenfolge und
       // Screenreader-Baum (visibility), fährt nach rechts hinaus ohne Ausblenden.
-      "#ambient-progress-settings{position:fixed;top:49px;right:0;bottom:0;z-index:260;display:flex;flex-direction:column;" +
+      "#ambient-progress-settings,#ambient-progress-finance{position:fixed;top:49px;right:0;bottom:0;z-index:260;display:flex;flex-direction:column;" +
       "width:clamp(480px,42vw,720px);max-width:100vw;padding:0;font-size:14px;box-sizing:border-box;" +
       "background:" + THEME_BG + ";color:" + THEME_FG + ";border-left:1px solid var(--gl-border-color-default,#4c4b51);" +
       "border-radius:12px 0 0 0;box-shadow:-8px 0 24px rgba(15,23,42,.35);overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;" +
       "transform:translateX(calc(100% + 32px));visibility:hidden;pointer-events:none;transition:transform .25s ease-in,visibility 0s linear .25s}" +
-      '#ambient-progress-settings.ambient-open{transform:none;visibility:visible;pointer-events:auto;transition:transform .25s ease-out,visibility 0s}' +
+      // Panel offen: Board lässt sich um die Panelbreite weiter nach rechts scrollen, die letzte Spalte liegt dann nicht darunter
+      "#ambient-progress-finance{width:clamp(560px,62vw,1180px)}" +
+      "body:has(#ambient-progress-settings.ambient-open) .boards-list{padding-right:clamp(480px,42vw,720px) !important;transition:padding-right .25s ease}" +
+      "body:has(#ambient-progress-finance.ambient-open) .boards-list{padding-right:clamp(560px,62vw,1180px) !important;transition:padding-right .25s ease}" +
+      '#ambient-progress-settings.ambient-open,#ambient-progress-finance.ambient-open{transform:none;visibility:visible;pointer-events:auto;transition:transform .25s ease-out,visibility 0s}' +
       // Einstellungs-Panel: Trennlinien zwischen Zeilen einer Karte, Zeilen- und Tab-Hover
       '#ambient-progress-settings [role=alert]:empty{display:none}' +
       '#ambient-progress-settings .ambient-setting-list>*+*:not(.ambient-row-extra){border-top:1px solid var(--gl-border-color-default,#4c4b51)}' +
@@ -238,6 +250,9 @@
       // Segment-Umschalter (Unterreiter, Sprache): gewählter Knopf per aria-pressed
       '.ambient-seg{display:flex;flex:0 0 auto;gap:2px;padding:3px;border-radius:8px;border:1px solid var(--gl-border-color-default,#4c4b51)}' +
       '.ambient-seg>button{min-height:32px;padding:.2rem .75rem;border:0;border-radius:6px;background:transparent;color:inherit;font-size:.85rem;font-weight:500;white-space:nowrap;cursor:pointer;opacity:.7}' +
+      '.ambient-seg>button{transition:background-color .15s ease,opacity .15s ease}' +
+      '.ambient-seg>button:hover{opacity:1;background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
+      '.ambient-seg>button[aria-pressed=true]:hover{background:var(--gl-control-background-color-hover,rgba(128,128,128,.24))}' +
       '.ambient-seg>button[aria-pressed=true]{background:var(--gl-background-color-strong,rgba(128,128,128,.14));opacity:1}' +
       '.ambient-seg-fill>button{flex:1 1 0;padding:.2rem .5rem}' +
       '#ambient-progress-settings .ambient-tab{display:inline-flex;align-items:center;gap:.4rem;min-height:44px;padding:0 .75rem;border:0;border-radius:6px 6px 0 0;background:transparent;color:inherit;font-size:.9rem;white-space:nowrap;cursor:pointer;font-weight:400;opacity:.75}' +
@@ -247,23 +262,149 @@
       '.ambient-tab-badge-warning{background:#e9be74;color:#1f1e24}' +
       '#ambient-progress-settings .ambient-tab:hover{background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
       '#ambient-progress-settings code{padding:0.1rem 0.4rem;border-radius:4px;background:var(--gl-background-color-strong,rgba(128,128,128,.14))}' +
-      // Toast oben rechts; Farbe je data-variant (info ist Standard)
-      '#ambient-progress-toast{position:fixed;top:1rem;right:1rem;z-index:1050;max-width:320px;padding:.75rem 1.25rem;' +
-      'border-radius:10px;box-shadow:0 15px 40px rgba(15,23,42,.35);font-size:.85rem;font-weight:600;line-height:1.4;' +
-      'overflow:hidden;pointer-events:none;background:#0f172a;color:#d1d5db;transform:translateX(110%);opacity:0;' +
-      'transition:transform .35s ease,opacity .35s ease}' +
-      '#ambient-progress-toast.ambient-toast-visible{transform:none;opacity:1}' +
-      '#ambient-progress-toast[data-variant=warning]{background:#fbbf24;color:#1f2937}' +
-      '#ambient-progress-toast[data-variant=success]{background:#10b981;color:#0f172a}' +
+      // Toast im GitLab-Stil (Pajamas): dunkle Fläche, 4px-Radius, unten rechts, Status als Icon-Punkt (info ist Standard)
+      '#ambient-progress-toast{position:fixed;bottom:2rem;right:1.5rem;z-index:1050;display:flex;align-items:flex-start;gap:.75rem;' +
+      'max-width:min(480px,calc(100vw - 3rem));padding:.875rem .75rem .875rem 1rem;border-radius:4px;' +
+      'box-shadow:0 4px 16px rgba(0,0,0,.4);font-size:1rem;font-weight:400;line-height:1.5;' +
+      'background:#333238;color:#fbfafd;transform:translateX(2rem);opacity:0;pointer-events:none;' +
+      'transition:transform .25s ease,opacity .25s ease}' +
+      '#ambient-progress-toast.ambient-toast-visible{transform:none;opacity:1;pointer-events:auto}' +
+      '#ambient-progress-toast .ambient-toast-icon{flex:none;width:22px;height:22px;margin-top:1px;border-radius:50%;' +
+      'background:#428fdc;color:#333238;font-size:14px;font-weight:700;line-height:22px;text-align:center}' +
+      '#ambient-progress-toast .ambient-toast-icon::before{content:"i"}' +
+      '#ambient-progress-toast[data-variant=success] .ambient-toast-icon{background:#2da160}' +
+      '#ambient-progress-toast[data-variant=success] .ambient-toast-icon::before{content:"\\2713"}' +
+      '#ambient-progress-toast[data-variant=warning] .ambient-toast-icon{background:#e9be74}' +
+      '#ambient-progress-toast[data-variant=warning] .ambient-toast-icon::before{content:"!"}' +
+      '#ambient-progress-toast .ambient-toast-text{flex:1;min-width:0;padding-top:.125rem;overflow-wrap:anywhere}' +
+      '#ambient-progress-toast .ambient-toast-close{flex:none;width:24px;height:24px;padding:0;border:0;border-radius:4px;' +
+      'background:transparent;color:inherit;font-size:16px;line-height:24px;cursor:pointer;opacity:.75}' +
+      '#ambient-progress-toast .ambient-toast-close:hover,#ambient-progress-toast .ambient-toast-close:focus-visible{' +
+      'opacity:1;background:rgba(255,255,255,.16)}' +
       // Fortschrittsbalken: Segmente nebeneinander (float), Text darübergelegt; Füll-Animation nur bei frisch geladenen Daten
       // flex:1 1 0 + min-width:0: Balken schrumpft mit der Zeile; Text bleibt einzeilig (Ellipsis), Label wird per Container Query kürzer
       '.ambient-bar{position:relative;height:16px;border-radius:999px;overflow:hidden;background:var(--gl-background-color-default,#18171d);flex:1 1 0;min-width:0;container-type:inline-size}' +
       '.ambient-bar-text span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}' +
+      '.ambient-cost-warning{display:flex;flex-direction:column;gap:.25rem;padding:.5rem .7rem;border:1px solid var(--gl-text-color-danger,#dd2b0e);border-radius:6px;color:var(--gl-text-color-danger,#dd2b0e);font-size:.85rem;font-weight:500}' +
+      '.ambient-cost-warning[hidden]{display:none}' +
+      'input[aria-invalid="true"]{border-color:var(--gl-text-color-danger,#dd2b0e) !important;box-shadow:0 0 0 1px var(--gl-text-color-danger,#dd2b0e)}' +
+      '.ambient-collapse{display:grid;grid-template-rows:0fr;opacity:0;margin-top:-.8rem;visibility:hidden;transition:grid-template-rows .24s ease,opacity .2s ease,margin-top .24s ease,visibility 0s .24s}' +
+      '.ambient-collapse[data-open]{grid-template-rows:1fr;opacity:1;margin-top:0;visibility:visible;transition:grid-template-rows .24s ease,opacity .2s ease .04s,margin-top .24s ease,visibility 0s}' +
+      '.ambient-collapse-inner{overflow:hidden;min-height:0}' +
+      '.ambient-limit-fill{position:absolute;top:0;bottom:0;left:0;z-index:1;opacity:.55;pointer-events:none;transition:width .3s ease}' +
+      '.ambient-limit-fill.ambient-cost-ok{background:#2da160}.ambient-limit-fill.ambient-cost-tight{background:#c17d10}.ambient-limit-fill.ambient-cost-over{background:#dd2b0e}' +
+      '.ambient-limit-warn{position:absolute;top:0;bottom:0;width:2px;background:var(--gl-text-color-default,#ececef);opacity:.45;z-index:2;pointer-events:none}' +
+      '.ambient-quota-pill.ambient-cost-ok{color:var(--gl-text-color-success,#108548)}' +
+      '.ambient-be-marker{position:absolute;top:0;bottom:0;width:2px;background:var(--gl-text-color-danger,#dd2b0e);z-index:2;pointer-events:none}' +
+      '.ambient-be-marker.is-beyond{right:0;width:6px;background:repeating-linear-gradient(to bottom,var(--gl-text-color-danger,#dd2b0e) 0 3px,transparent 3px 6px)}' +
+      '.ambient-bar-lossy{box-shadow:inset 0 0 0 2px var(--gl-text-color-danger,#dd2b0e)}' +
+      '.ambient-margin-pill{font-size:11px;font-weight:600;white-space:nowrap;padding:0 .4em;color:var(--gl-text-color-default,#ececef)}' +
+      '.ambient-fin-loading{display:flex;flex-direction:column;align-items:center;gap:.75rem;padding:3rem 0;color:var(--gl-text-color-subtle,rgba(128,128,128,.95))}' +
+      '.ambient-spinner{width:28px;height:28px;border:3px solid var(--gl-border-color-default,#4c4b51);border-top-color:#1f75cb;border-radius:50%;animation:ambient-spin .8s linear infinite}' +
+      '@keyframes ambient-spin{to{transform:rotate(360deg)}}' +
+      '.ambient-fin-steps{display:flex;flex-direction:column;gap:.9rem;width:min(22rem,100%)}' +
+      '.ambient-fin-overall{width:min(22rem,100%);height:6px}' +
+      '.ambient-fin-fill{transition:width .25s ease}' +
+      '.ambient-fin-step{display:flex;align-items:flex-start;gap:.7rem;opacity:.5;transition:opacity .2s}' +
+      '.ambient-fin-step[data-state=active],.ambient-fin-step[data-state=done]{opacity:1}' +
+      '.ambient-fin-step-icon{flex:0 0 18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;line-height:1}' +
+      '.ambient-fin-step[data-state=pending] .ambient-fin-step-icon::before{content:"";width:9px;height:9px;border:2px solid currentColor;border-radius:50%;opacity:.5}' +
+      '.ambient-fin-step[data-state=done] .ambient-fin-step-icon::before{content:"✓";color:var(--gl-text-color-success,#108548);font-weight:700}' +
+      '.ambient-fin-step[data-state=active] .ambient-fin-step-icon::before{content:"";width:14px;height:14px;border:2px solid var(--gl-border-color-default,#4c4b51);border-top-color:#1f75cb;border-radius:50%;animation:ambient-spin .8s linear infinite}' +
+      '.ambient-fin-step-text{flex:1 1 auto;display:flex;flex-direction:column;gap:.35rem;min-width:0;text-align:left}' +
+      '.ambient-fin-step-line{display:flex;justify-content:space-between;gap:1rem;font-size:.9rem}' +
+      '.ambient-fin-step-line>:first-child{flex:1 1 auto;min-width:0}' +
+      '.ambient-fin-roles-loader .ambient-fin-steps{flex:1 1 auto;width:auto}' +
+      '.ambient-fin-step-count{flex:0 0 auto;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--gl-text-color-subtle,rgba(128,128,128,.95))}' +
+      '.ambient-fin-step-track{height:4px;visibility:hidden}' +
+      '.ambient-fin-step[data-state=active] .ambient-fin-step-track{visibility:visible}' +
+      '.ambient-fin-loading.is-complete{animation:ambient-complete-out .3s ease .5s forwards}' +
+      '.ambient-fin-loading.is-complete .ambient-fin-overall .ambient-fin-fill{background:var(--gl-status-success-icon-color,#2da160) !important;box-shadow:0 0 10px rgba(45,161,96,.7)}' +
+      '.ambient-fin-loading.is-complete .ambient-fin-step-icon::before{animation:ambient-pop .4s ease}' +
+      '@keyframes ambient-pop{0%{transform:scale(.3)}60%{transform:scale(1.5)}100%{transform:scale(1)}}' +
+      '@keyframes ambient-complete-out{to{opacity:0;transform:scale(.96)}}' +
+      '.ambient-fin-roles-loader{padding:.75rem 1rem;border:1px solid var(--gl-border-color-default,#4c4b51);border-radius:8px;flex-direction:row;gap:1rem;align-items:center}' +
+      '.ambient-fin-roles-loader .ambient-fin-overall{display:none}' +
+      '.ambient-fin-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem}' +
+      '.ambient-fin-tile{display:flex;flex-direction:column;gap:.15rem;padding:.8rem 1rem;border:1px solid var(--gl-border-color-default,#4c4b51);border-radius:8px}' +
+      '.ambient-fin-tile b{font-size:1.05rem;font-weight:600;white-space:nowrap}' +
+      '.ambient-fin-label{font-size:.78rem;color:var(--gl-text-color-subtle,rgba(128,128,128,.95));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '.ambient-fin-stack{position:relative;display:flex;height:24px;border-radius:999px;overflow:hidden;background:var(--gl-background-color-strong,rgba(128,128,128,.2))}' +
+      '.ambient-fin-seg{height:100%;min-width:2px;box-shadow:inset -1px 0 0 var(--gl-background-color-default,#18171d)}' +
+      '.ambient-fin-budget-mark{position:absolute;top:0;bottom:0;width:2px;background:var(--gl-text-color-danger,#dd2b0e)}' +
+      '.ambient-fin-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:.5rem}' +
+      '.ambient-fin-track{height:10px;border-radius:999px;background:var(--gl-background-color-strong,rgba(128,128,128,.2));overflow:hidden}' +
+      '.ambient-fin-fill{height:100%;border-radius:999px;background:#1f75cb}' +
+      '.ambient-fin-track.ambient-cost-ok .ambient-fin-fill{background:var(--gl-text-color-success,#108548)}' +
+      '.ambient-fin-track.ambient-cost-tight .ambient-fin-fill{background:#eab308}' +
+      '.ambient-fin-track.ambient-cost-over .ambient-fin-fill{background:var(--gl-text-color-danger,#dd2b0e)}' +
+      '.ambient-fin-row{display:grid;grid-template-columns:minmax(0,1.5fr) 3.8rem 5.4rem 6.4rem minmax(5rem,1fr);align-items:center;gap:1rem;padding:.8rem 1.1rem;border-top:1px solid var(--gl-border-color-default,#4c4b51)}' +
+      '.ambient-fin-row.is-head{border-top:0;padding-bottom:.6rem;font-size:.78rem;color:var(--gl-text-color-subtle,rgba(128,128,128,.95))}' +
+      '.ambient-listbox{position:relative}' +
+      '.ambient-listbox-btn{display:inline-flex;align-items:center;justify-content:space-between;gap:.6rem;min-width:11rem;text-align:left}' +
+      '.ambient-listbox-text{flex:1 1 auto;white-space:nowrap}' +
+      '.ambient-listbox-caret{width:.5rem;height:.5rem;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:translateY(-25%) rotate(45deg);opacity:.7;transition:transform .15s ease}' +
+      '.ambient-listbox-btn[aria-expanded="true"] .ambient-listbox-caret{transform:translateY(25%) rotate(-135deg)}' +
+      '.ambient-listbox-btn:disabled{opacity:.5;cursor:not-allowed !important}' +
+      '.ambient-listbox-menu{position:absolute;z-index:10;top:calc(100% + 4px);left:0;min-width:100%;max-height:16rem;overflow:auto;padding:.25rem;border:1px solid var(--gl-border-color-default,#4c4b51);border-radius:8px;background:var(--gl-background-color-overlay,var(--gl-dropdown-background-color,#2b2b2f));box-shadow:0 6px 18px rgba(0,0,0,.35)}' +
+      '.ambient-listbox-menu[hidden]{display:none}' +
+      '.ambient-multiselect{max-width:100%}.ambient-multiselect .ambient-listbox-btn{width:100%;max-width:26rem}.ambient-multiselect .ambient-listbox-text{overflow:hidden;text-overflow:ellipsis}.ambient-multiselect .ambient-listbox-menu{max-width:26rem}.ambient-listbox-item[aria-disabled=true]{opacity:.5}' +
+      '.ambient-listbox-heading{display:block;margin:.35rem -.25rem 0;padding:.55rem .85rem .25rem;border-top:1px solid var(--gl-border-color-default,#4c4b51);font-size:.7rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--gl-text-color-subtle,#89888d);cursor:default}' +
+      '.ambient-listbox-item{display:flex;align-items:center;gap:.5rem;padding:.4rem .6rem .4rem 1.6rem;border-radius:6px;white-space:nowrap;cursor:pointer;position:relative;outline:none}' +
+      '.ambient-listbox-item:hover,.ambient-listbox-item:focus{background:var(--gl-background-color-strong,rgba(255,255,255,.08))}' +
+      '.ambient-listbox-item[aria-selected="true"]{font-weight:600}' +
+      '.ambient-listbox-item[aria-selected="true"]::before{content:"✓";position:absolute;left:.5rem;font-size:.85em}' +
+      '#ambient-progress-finance select,#ambient-progress-finance label,#ambient-progress-finance button{cursor:pointer}' +
+      '#ambient-progress-finance select:disabled{cursor:not-allowed}' +
+      '#ambient-progress-finance .ambient-listbox-btn:focus-visible,#ambient-progress-finance .ambient-listbox-item:focus-visible{outline:2px solid var(--gl-focus-ring-outer-color,#428fdc);outline-offset:1px}' +
+      '.ambient-fin-delta{display:grid;grid-template-columns:1.3em 1fr;align-items:center;font-variant-numeric:tabular-nums;font-size:.9rem;white-space:nowrap}' +
+      '.ambient-fin-delta>:first-child{font-size:.7em;text-align:left}' +
+      '.ambient-fin-delta .val{text-align:right}' +
+      '.ambient-fin-tone.is-up{color:var(--gl-text-color-danger,#dd2b0e)}' +
+      '.ambient-fin-tone.is-down{color:var(--gl-text-color-success,#108548)}' +
+      '.ambient-fin-delta.is-up{color:var(--gl-text-color-danger,#dd2b0e)}' +
+      '.ambient-fin-delta.is-down{color:var(--gl-text-color-success,#108548)}' +
+      '.ambient-fin-delta.is-flat{color:var(--gl-text-color-subtle,rgba(128,128,128,.95))}' +
+      '.ambient-fin-row>*{min-width:0}' +
+      '.ambient-fin-link{margin-left:.4rem;color:var(--gl-text-color-subtle,#a1a1aa);text-decoration:none;opacity:.7}' +
+      '.ambient-fin-link:hover{opacity:1;color:var(--gl-text-color-link,#4da3ff);text-decoration:none}' +
+      '.ambient-fin-name{display:flex;align-items:center;min-width:0;white-space:nowrap}' +
+      '.ambient-fin-name>.ambient-fin-dot,.ambient-fin-name>.ambient-fin-link{flex:0 0 auto}' +
+      '.ambient-fin-card .ambient-fin-role{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '.ambient-fin-row.is-month{grid-template-columns:minmax(0,1.5fr) 3.8rem 4.8rem 5.4rem 6.6rem 3.4rem}' +
+      '.ambient-fin-row.is-compare{grid-template-columns:minmax(0,1.2fr) 3.8rem 5.4rem 6.6rem minmax(5rem,1.4fr)}' +
+      '.ambient-fin-stack.is-mini{height:12px}' +
+      '.ambient-fin-card{border:1px solid var(--gl-border-color-default,#4c4b51);border-radius:10px;padding:.35rem 0;overflow:hidden}' +
+      '.ambient-fin-card .ambient-fin-role,.ambient-fin-card select{margin-top:.15rem}' +
+      '.ambient-fin-row .num{text-align:right;font-variant-numeric:tabular-nums}' +
+      '.ambient-fin-role{font-size:.78rem;color:var(--gl-text-color-subtle,rgba(128,128,128,.95));overflow-wrap:anywhere}' +
+      '.ambient-fin-share{display:flex;flex-direction:column;gap:.15rem;font-size:.78rem}' +
+      '.ambient-fin-note{padding:0 .25rem;line-height:1.45;font-size:.8rem;color:var(--gl-text-color-subtle,rgba(128,128,128,.95))}' +
+      '.ambient-fin-error{color:var(--gl-text-color-danger,#dd2b0e)}' +
+      '.ambient-header-btn[hidden]{display:none}' +
+      '.ambient-panel-body{display:grid;grid-template-rows:1fr;opacity:1;transition:grid-template-rows .22s ease,opacity .18s ease}' +
+      '.ambient-subsection{display:flex;flex-direction:column;gap:.6rem}' +
+      '.ambient-subsection+.ambient-subsection{border-top:1px solid var(--gl-border-color-default,rgba(255,255,255,.14));padding-top:.9rem}' +
+      '.ambient-subsection>h4{margin:0;font-size:.82rem;font-weight:600;color:var(--gl-text-color-subtle,#a09fa6)}' +
+      '.ambient-panel-inner{display:flex;flex-direction:column;gap:.8rem;min-height:0}' +
+      '.ambient-panel-head{cursor:pointer;transition:margin-bottom .22s ease}' +
+      '.ambient-panel-card:not([data-collapsed])>.ambient-panel-head{margin-bottom:.8rem}' +
+      '.ambient-panel-card[data-collapsed]{cursor:pointer}' +
+      '.ambient-panel-card{transition:background-color .15s ease,border-color .15s ease}' +
+      '.ambient-panel-card:has(>.ambient-panel-head:hover),.ambient-panel-card[data-collapsed]:hover{background-color:var(--gl-control-background-color-hover,rgba(255,255,255,.05)) !important;border-color:var(--gl-border-color-strong,rgba(255,255,255,.28)) !important}' +
+      '.ambient-panel-card[data-collapsed] .ambient-panel-body{grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows .22s ease,opacity .18s ease,visibility 0s .22s}' +
+      '.ambient-panel-card[data-collapsed] .ambient-panel-inner,.ambient-panel-card[data-animating] .ambient-panel-inner{overflow:hidden}' +
+      '.ambient-panel-toggle{display:flex;align-items:center;gap:.5rem;padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer;text-align:left}' +
+      '.ambient-panel-chevron::before{content:"▸";display:inline-block;width:1em;font-size:.8em;transition:transform .2s ease;transform:rotate(90deg)}' +
+      '.ambient-panel-card[data-collapsed] .ambient-panel-chevron::before{transform:none}' +
+      '.ambient-cost-ok{color:var(--gl-text-color-success,#108548)}' +
+      '.ambient-cost-tight{color:#eab308}' +
+      '.ambient-cost-over{color:var(--gl-text-color-danger,#dd2b0e)}' +
       '.ambient-label-short{display:none}' +
       '@container (max-width:170px){.ambient-label-full{display:none}.ambient-label-short{display:inline}}' +
       '.ambient-bar-fill{height:100%;float:left}' +
       '.ambient-bar-spent:hover{background:var(--ambient-hover) !important}' +
-      '.ambient-bar-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 8px;pointer-events:none;color:#000}' +
+      '.ambient-bar-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 8px;pointer-events:none;color:#000;z-index:3}' +
       '.ambient-bar-grow{animation:ambient-grow .7s cubic-bezier(.22,1,.36,1)}' +
       '.ambient-bar-shrink{animation:ambient-shrink .7s cubic-bezier(.22,1,.36,1)}' +
       '.ambient-bar-animate{animation:ambient-fade-in .4s ease .3s backwards}' +
@@ -306,7 +447,7 @@
       // Geladene Werte blenden ein, statt hart aufzutauchen
       '@keyframes ambient-fade-in{from{opacity:0}}' +
       '.ambient-fade-in{animation:ambient-fade-in .35s ease-out}' +
-      '@media (prefers-reduced-motion: reduce){#ambient-progress-toolbar *,#ambient-progress-settings,#ambient-progress-settings *,#ambient-progress-toast{transition:none !important}.ambient-skeleton,.ambient-fade-in,.ambient-bar-grow,.ambient-bar-shrink,.ambient-bar-animate{animation:none}}';
+      '@media (prefers-reduced-motion: reduce){.ambient-collapse{transition:none !important}#ambient-progress-toolbar *,#ambient-progress-settings,#ambient-progress-settings *,#ambient-progress-finance,#ambient-progress-finance *,#ambient-progress-toast{transition:none !important}.ambient-skeleton,.ambient-spinner,.ambient-fin-step-icon::before,.ambient-fin-loading.is-complete,.ambient-fade-in,.ambient-bar-grow,.ambient-bar-shrink,.ambient-bar-animate{animation:none}}';
     (document.head || document.documentElement).appendChild(style);
   }
 
@@ -502,7 +643,8 @@
     issuePortalButtons: 'issueDetail',
     issueActions: 'issueDetail',
     mrPortalButtons: 'mrPageProgress',
-    mrActions: 'mrPageProgress'
+    mrActions: 'mrPageProgress',
+    milestoneCost: 'milestoneSp'
   };
   let features = readFeatures();
   let debugEnabled = features.debug === true; // Default: aus
@@ -519,7 +661,16 @@
   }
 
   // Default an; Unter-Features nur aktiv, wenn das Eltern-Feature aktiv ist
+  // Vorschau im Anzeige-Tab: das gerade überfahrene, ausgeschaltete Feature (samt Eltern) wird nur zur Ansicht mitgezeichnet
+  let previewForceKey = null;
+  const FEATURE_NEEDS = {costPill: 'progress', costMarker: 'progress', costTooltip: 'progress', columnCost: 'columnSp'}; // Geld-Anzeigen hängen am Element, in dem sie stehen
+  function inPreviewForce(key) {
+    for (let k = previewForceKey; k; k = FEATURE_PARENTS[k] || FEATURE_NEEDS[k]) if (k === key) return true;
+    return false;
+  }
+
   function isFeatureOn(key) {
+    if (previewForceKey && inPreviewForce(key)) return true;
     if (!showEnabled) return false; // „Anzeigen" ist Hauptschalter für alles
     // Board ohne Schätzungen (Tab „Dieses Board“): kein Badge, auch kein rotes „? SP“
     if (key === 'estimateBadge' && currentScanContext && currentScanContext.projectSettings.estimateEnabled === false) return false;
@@ -594,7 +745,7 @@
     'MR-Schnellzugriff': 'MR quick access',
     'Anzeige': 'Display',
     'Dieses Board': 'This board',
-    'Erweitert': 'Advanced',
+    'Global': 'Global',
     'Experimente': 'Experiments',
     'Aktiv': 'Active',
     'Pausiert': 'Paused',
@@ -666,6 +817,18 @@
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
     el.setAttribute('aria-atomic', 'true');
+    const icon = document.createElement('span');
+    icon.className = 'ambient-toast-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.className = 'ambient-toast-text';
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'ambient-toast-close';
+    close.setAttribute('aria-label', 'Schließen');
+    close.textContent = '\u00d7';
+    close.addEventListener('click', hideToast);
+    el.append(icon, label, close);
     document.body.appendChild(el);
     toastElement = el;
     return el;
@@ -687,11 +850,23 @@
     const isAlert = variant === 'warning';
     el.setAttribute('role', isAlert ? 'alert' : 'status');
     el.setAttribute('aria-live', isAlert ? 'assertive' : 'polite');
-    el.textContent = text;
+    el.querySelector('.ambient-toast-text').textContent = text;
     void el.offsetWidth;
     el.classList.add('ambient-toast-visible');
     clearTimeout(toastHideTimer);
     toastHideTimer = setTimeout(hideToast, Math.max(duration, text.length * 60));
+  }
+
+  // Debug-Auslöser: je Klick die nächste Variante
+  let toastDemoIndex = 0;
+  function showToastDemo() {
+    const variants = [
+      ['info', 'Info: Cache geleert, aktualisiere…'],
+      ['success', 'Erfolg: „Schließen“ auf #123 ausgeführt'],
+      ['warning', 'Warnung: Portal-Requests blockiert (Status 403) – bitte Portal-Base URL prüfen.']
+    ];
+    const v = variants[toastDemoIndex++ % variants.length];
+    showToast({text: v[1], variant: v[0]});
   }
 
   function showPortalWarningToast() {
@@ -1411,7 +1586,30 @@
     }
 
     barOuter.appendChild(textLayer);
-    describeBar(barOuter, ariaLabel);
+    const costInfo = progressData.costInfo;
+    describeBar(barOuter, ariaLabel + (isFeatureOn('costTooltip') ? costTooltipSuffix(costInfo, costInfo && costInfo.sp) : ''));
+    if (costInfo && costInfo.breakEvenHours !== null && isFeatureOn('costMarker')) {
+      const scale = extractHourNumber(progressData.spent) + extractHourNumber(progressData.remaining); // Skala nur mit Stundenbudget
+      if (costInfo.hours > costInfo.breakEvenHours) barOuter.classList.add('ambient-bar-lossy');
+      if (costInfo.timeLimit && !(scale > 0)) { // Zeitabrechnung ohne Stundenbudget im Portal: Füllstand gegen das Limit über dem Balken
+        const tl = costInfo.timeLimit;
+        const fill = document.createElement('div');
+        fill.className = 'ambient-limit-fill ' + tl.tone;
+        fill.style.width = Math.min(100, tl.hours / tl.limit * 100) + '%';
+        barOuter.insertBefore(fill, textLayer);
+        const warnMark = document.createElement('div');
+        warnMark.className = 'ambient-limit-warn';
+        warnMark.style.left = Math.min(100, tl.warn / tl.limit * 100) + '%';
+        barOuter.appendChild(warnMark);
+      }
+      if (scale > 0) { // jenseits der Skala (Break-even später als das Stundenbudget): gestrichelt am rechten Rand
+        const marker = document.createElement('div');
+        const beyond = costInfo.breakEvenHours > scale;
+        marker.className = 'ambient-be-marker' + (beyond ? ' is-beyond' : '');
+        if (!beyond) marker.style.left = (costInfo.breakEvenHours / scale * 100) + '%';
+        barOuter.appendChild(marker);
+      }
+    }
     return barOuter;
   }
 
@@ -1482,12 +1680,38 @@
   }
 
   // Zeile „Timesheet-Button | Balken | Portal-Button" (Karte, Ticket, MR); Optik je Ort über className
+  // Pille neben dem Balken: mit Erlös Marge bzw. „Kosten / Erlös“ (Ampel), ohne Erlös (keine SP, externer Modus) nur die Kosten
+  function createMarginPill(info) {
+    if (!info) return null;
+    const pill = createTextSpan('');
+    if (info.timeLimit) { // Zeitabrechnung: gebuchte Stunden / maximale Stunden für die SP
+      const tl = info.timeLimit;
+      if (tl.redundant) return null; // der Balken zeigt dasselbe, Details stehen im Tooltip
+      pill.textContent = formatHours(tl.hours) + ' / ' + formatHours(tl.limit) + ' h';
+      pill.className = 'ambient-margin-pill ' + tl.tone;
+      pill.title = 'Gebucht ' + formatHours(tl.hours) + ' h von maximal ' + formatHours(tl.limit) + ' h für ' + info.sp + ' SP (Warnung ab ' + formatHours(tl.warn) + ' h, ' +
+        (tl.fromPortal ? 'Limits aus dem Portal' : 'Standard ' + formatHours(tl.limit / info.sp) + ' h pro SP') + '). Kosten ' + formatEuro(info.cost);
+      return pill;
+    }
+    if (info.margin === null) {
+      pill.textContent = formatEuro(info.cost);
+      pill.className = 'ambient-margin-pill';
+      pill.title = 'Kosten ' + formatEuro(info.cost) + ' (kein Erlös: keine SP im Titel oder externer Modus)';
+      return pill;
+    }
+    pill.textContent = info.split ? formatEuro(info.cost) + ' / ' + formatEuro(info.revenue) : formatSignedEuro(info.margin);
+    pill.className = 'ambient-margin-pill ' + costTone(info.cost, info.revenue);
+    pill.title = 'Marge ' + formatSignedEuro(info.margin) + ': Erlös ' + formatEuro(info.revenue) + ' − Kosten ' + formatEuro(info.cost);
+    return pill;
+  }
+
   function buildProgressRow(className, progressData, barStyles, portalUrl, timesheetUrl, buttonsFeature) {
     const row = document.createElement('div');
     row.className = className;
     [
       createTimesheetButton(timesheetUrl, null, buttonsFeature),
       createProgressBarElements(progressData, barStyles),
+      isFeatureOn('costPill') ? createMarginPill(progressData.costInfo) : null,
       createPortalLinkButton(portalUrl, null, buttonsFeature)
     ].forEach(function (el) {
       if (el) row.appendChild(el);
@@ -1504,6 +1728,7 @@
       }
       return null;
     }
+    if (entry.data && !entry.data.notFound && entry.data.hoursByEmployee === undefined) return null; // Cache aus einer Version vor den Kosten: einmal neu laden
     return entry.data;
   }
 
@@ -1553,6 +1778,7 @@
       ttl: ttl || undefined
     };
     scheduleProgressCachePersist();
+    scheduleMilestoneChipRefresh();
   }
 
   // Leert nur die Einträge des aktuellen Boards – andere Boards behalten ihren Cache
@@ -1613,7 +1839,24 @@
       portalWarning: !storedProjectConfig || storedProjectConfig.portalWarning !== false,
       closedDays: clampClosedDays(storedProjectConfig && storedProjectConfig.closedDays),
       milestoneSp: normalizeMilestoneSp(storedProjectConfig && storedProjectConfig.milestoneSp),
-      milestoneSpFilterOnly: Boolean(storedProjectConfig && storedProjectConfig.milestoneSpFilterOnly)
+      milestoneSpFilterOnly: Boolean(storedProjectConfig && storedProjectConfig.milestoneSpFilterOnly),
+      costMode: storedProjectConfig && storedProjectConfig.costMode === 'external' ? 'external' : 'internal',
+      costShow: Boolean(storedProjectConfig && storedProjectConfig.costShow),
+      financePeriod: (storedProjectConfig && storedProjectConfig.financePeriod) || 'all', // 'all' | 'current' | 'YYYY-MM' | 'last:N' | 'year' | 'custom'
+      timeLimits: Boolean(storedProjectConfig && storedProjectConfig.timeLimits), // Zeitabrechnung: Stunden gegen das SP-Limit
+      hoursPerSp: storedProjectConfig && Number(storedProjectConfig.hoursPerSp) > 0 ? Number(storedProjectConfig.hoursPerSp) : DEFAULT_HOURS_PER_SP,
+      escalationLimits: Array.isArray(storedProjectConfig && storedProjectConfig.escalationLimits) ? storedProjectConfig.escalationLimits : [],
+      financeFrom: (storedProjectConfig && storedProjectConfig.financeFrom) || '', // Eigene Spanne: erster/letzter Monat 'YYYY-MM'
+      financeTo: (storedProjectConfig && storedProjectConfig.financeTo) || '',
+      financeCompare: storedProjectConfig && storedProjectConfig.financeCompare !== undefined ? Number(storedProjectConfig.financeCompare) || 0 : 3,
+      costHistoryRoles: Array.isArray(storedProjectConfig && storedProjectConfig.costHistoryRoles) ? storedProjectConfig.costHistoryRoles : [],
+      costRoleOverrides: (storedProjectConfig && typeof storedProjectConfig.costRoleOverrides === 'object' && storedProjectConfig.costRoleOverrides) || {},
+      projectInternal: Boolean(storedProjectConfig && storedProjectConfig.projectInternal), // Portal-Kategorie „Internal“: kein Verkauf, nur Kosten
+      costSplit: Boolean(storedProjectConfig && storedProjectConfig.costSplit), // true: „Kosten / Erlös“ statt Marge als Summe
+      spPrice: Number(storedProjectConfig && storedProjectConfig.spPrice) > 0 ? Number(storedProjectConfig.spPrice) : null,
+      // Story-Point-basierte Abrechnung: nur dann zählen Erlös, Marge und Break-even; alte Configs mit Preis gelten als „ja“
+      spPricing: storedProjectConfig && storedProjectConfig.spPricing !== undefined ? Boolean(storedProjectConfig.spPricing) : Number(storedProjectConfig && storedProjectConfig.spPrice) > 0,
+      costPeople: Array.isArray(storedProjectConfig && storedProjectConfig.costPeople) ? storedProjectConfig.costPeople : []
     };
   }
 
@@ -1834,7 +2077,8 @@
   }
 
   // Zahl aus "16.25h" / "72,25h" / "1.234,5h" / "1,234.5h" extrahieren; unplausible Werte → null
-  function extractHourNumber(text) {
+  // Zahl aus Text wie „97,200.00€“ oder „43.50 hrs.“ (US- und DE-Format), ohne Obergrenze
+  function parseLooseNumber(text) {
     if (!text) return null;
     const m = String(text).match(/-?\d[\d.,]*/);
     if (!m) return null;
@@ -1851,8 +2095,12 @@
     }
     token = token.replace(/\.(?=.*\.)/g, ''); // mehrere Punkte: nur der letzte bleibt
     const v = parseFloat(token);
-    if (!Number.isFinite(v) || Math.abs(v) > MAX_HOURS_VALUE) return null;
-    return v;
+    return Number.isFinite(v) ? v : null;
+  }
+
+  function extractHourNumber(text) {
+    const v = parseLooseNumber(text);
+    return v === null || Math.abs(v) > MAX_HOURS_VALUE ? null : v;
   }
 
   // Zahl oder Text → „6.5h"; auf zwei Nachkommastellen gerundet (keine Float-Reste wie 6.4999999h)
@@ -2264,10 +2512,11 @@
     theme.styles.animate = animateFill;
     const loadedAt = Number(cardElem.getAttribute('data-ambient-loaded-at'));
 
-    const row = buildProgressRow('ambient-progress-row', progressData, theme.styles,
+    const row = buildProgressRow('ambient-progress-row', Object.assign({}, progressData, {costInfo: costInfoForCard(cardElem, progressData)}), theme.styles,
       cardElem.getAttribute('data-ambient-progress-url'), cardElem.getAttribute('data-ambient-timesheet-url'));
     if (loadedAt) row.querySelector('.ambient-progress-bar').title += ' · ' + formatLoadedAgo(loadedAt);
     container.appendChild(row);
+    attachQuotaPill(row, currentScanContext && currentScanContext.projectSettings, currentScanContext && currentScanContext.projectSettings && currentScanContext.projectSettings.projectId);
     appendExtraProjectRows(cardElem, container, theme);
   }
 
@@ -2350,9 +2599,12 @@
           colors: Object.assign({}, BAR_COLORS, EXTRA_BAR_COLORS[idx % EXTRA_BAR_COLORS.length]),
           animate: false
         });
-        const row = buildProgressRow('ambient-progress-row ambient-extra-row', data, styles,
+        // Extra-Projekt (z. B. Wartung): Budget wird mit den externen Tagessätzen verbraucht, nicht mit internen Kosten
+        const extraCost = ps.costShow && data.hoursByEmployee ? buildCostInfo(data.hoursByEmployee, ps.costPeople, readInternalRates(ps.projectKey), 'external', null, null) : null;
+        const row = buildProgressRow('ambient-progress-row ambient-extra-row', extraCost ? Object.assign({}, data, {costInfo: extraCost}) : data, styles,
           buildPortalUrl(ps, issueIid, pid), buildTimesheetUrl(ps, issueIid, pid));
         row.setAttribute('data-pid', pid);
+        attachQuotaPill(row, ps, pid, true);
         const bar = row.querySelector('.ambient-progress-bar');
         bar.title = 'Portal-Projekt ' + pid + ': ' + bar.title;
         container.appendChild(row);
@@ -3222,12 +3474,13 @@
   function fetchColumnSp(projectPath, query) {
     return memoPromise(columnSpCache, projectPath + '?' + query, 5 * 60 * 1000, function () {
       const patterns = getEstimatePatterns();
-      const total = {sp: 0, issues: 0, missing: 0, truncated: false};
+      const total = {sp: 0, issues: 0, missing: 0, truncated: false, iids: []};
       function loadPage(page) {
         return glApi(projectPath, '/issues?' + query + '&per_page=100&page=' + page, 'SP-Summe').then(function (issues) {
           issues.forEach(function (issue) {
             const estimate = parseEstimate(issue.title || '', patterns);
             total.issues++;
+            total.iids.push(issue.iid);
             if (estimate.kind === 'sp') total.sp += parseFloat(estimate.label.replace(',', '.')) || 0;
             else if (estimate.kind === 'none') total.missing++;
           });
@@ -3262,7 +3515,8 @@
       return !(node.classList && /\bambient-/.test(node.className));
     }).map(function (node) { return node.textContent; }).join('').trim();
     const query = buildColumnIssueQuery(window.location.search, columnLabel);
-    const key = query + '|' + gitlabCount;
+    const price = projectSettings.costShow ? effectiveSpPrice(projectSettings) : null; // Wert der Spalte = SP × VP, nur mit „Kosten anzeigen“
+    const key = query + '|' + gitlabCount + '|' + (projectSettings.costShow ? 'c' : '');
     if (el && el.getAttribute('data-ambient-key') === key) return;
     if (!el) {
       el = document.createElement('span');
@@ -3273,10 +3527,32 @@
     el.setAttribute('data-ambient-key', key);
     fetchColumnSp(projectSettings.projectPath, query).then(function (total) {
       if (el.getAttribute('data-ambient-key') !== key) return; // inzwischen neu angestoßen
-      el.textContent = 'Σ ' + (total.truncated ? '≥ ' : '') + (Math.round(total.sp * 10) / 10) + ' SP';
-      el.title = 'Story Points aller ' + total.issues + ' Tickets dieser Spalte (auch nicht geladene, mit Board-Filtern)' +
+      const sp = Math.round(total.sp * 10) / 10;
+      const spText = 'Σ ' + (total.truncated ? '≥ ' : '') + sp + ' SP';
+      const baseTitle = 'Story Points aller ' + total.issues + ' Tickets dieser Spalte (auch nicht geladene, mit Board-Filtern)' +
         (total.missing ? ', ' + total.missing + ' ohne Schätzung' : '') +
         (total.truncated ? '. Nur die ersten ' + COLUMN_SP_MAX_PAGES * 100 + ' Tickets gezählt.' : '');
+      // „Σ 12 SP · <echte Kosten> / <SP × VP>“; ohne VP nur die Kosten. Kosten kommen aus dem Fortschritts-Cache und trudeln nach: bei Cache-Schreibzugriffen nachziehen
+      el._ambientUpdate = function () {
+        const costOn = projectSettings.costShow && isFeatureOn('columnCost');
+        const price = costOn ? effectiveSpPrice(projectSettings) : null;
+        const mc = costOn && projectSettings.costPeople.length ? milestoneCostFromCache(projectSettings, total.iids || [], effectiveCostMode(projectSettings)) : {covered: 0, cost: 0};
+        el.textContent = spText;
+        let title = baseTitle;
+        if (mc.covered) {
+          const partial = mc.covered < total.issues;
+          const value = price ? sp * price : null;
+          const costSpan = createTextSpan('· ' + (partial ? '≥ ' : '') + formatEuroShort(mc.cost, 1000));
+          if (value) costSpan.className = costTone(mc.cost, value);
+          el.appendChild(costSpan);
+          if (value) el.appendChild(createTextSpan('/ ' + formatEuroShort(value, 1000)));
+          title = 'Kosten ' + formatEuro(mc.cost) + (value ? ' von ' + formatEuro(value) + ' Wert (' + sp + ' SP × ' + formatEuro(price) + ')' : '') +
+            ', aus den Buchungen von ' + mc.covered + ' von ' + total.issues + ' Tickets, deren Fortschritt geladen ist. ' + baseTitle;
+        }
+        el.title = title;
+      };
+      if (milestoneChips.indexOf(el) < 0) milestoneChips.push(el);
+      el._ambientUpdate();
     }).catch(function (err) {
       warn('SP-Summe fehlgeschlagen:', err);
       el.remove();
@@ -3304,6 +3580,39 @@
     return (name ? 'milestone=' + encodeURIComponent(name) + '&' : '') + 'state=all';
   }
 
+  const milestoneChips = []; // Chips mit _ambientUpdate, für das Nachziehen der Kosten
+  let milestoneChipTimer = null;
+
+  function scheduleMilestoneChipRefresh() {
+    if (milestoneChipTimer || !milestoneChips.length) return;
+    milestoneChipTimer = setTimeout(function () {
+      milestoneChipTimer = null;
+      for (let i = milestoneChips.length - 1; i >= 0; i--) {
+        if (!milestoneChips[i].isConnected) milestoneChips.splice(i, 1);
+        else milestoneChips[i]._ambientUpdate();
+      }
+    }, 400);
+  }
+
+  // Kosten des Meilensteins aus dem Fortschritts-Cache (nur Tickets, deren Buchungen schon geladen wurden): {cost, covered}
+  function milestoneCostFromCache(projectSettings, iids, mode) {
+    const wanted = {};
+    iids.forEach(function (iid) { wanted[iid] = true; });
+    const suffix = '|' + (projectSettings.projectKey || projectSettings.projectPath) + ':';
+    const rates = readInternalRates(projectSettings.projectKey);
+    const seen = {};
+    let cost = 0;
+    Object.keys(progressCache).forEach(function (key) {
+      const at = key.lastIndexOf(suffix);
+      const iid = at >= 0 ? key.slice(at + suffix.length) : '';
+      const data = progressCache[key] && progressCache[key].data;
+      if (!wanted[iid] || seen[iid] || !data || !data.hoursByEmployee) return;
+      seen[iid] = true;
+      cost += computeTicketCost(data.hoursByEmployee, projectSettings.costPeople, rates, mode || 'internal').cost;
+    });
+    return {cost: cost, covered: Object.keys(seen).length};
+  }
+
   function milestoneSpLabel(entry) {
     return entry.name || 'Gesamt';
   }
@@ -3328,14 +3637,15 @@
     } else if (el.parentNode !== wrapper) {
       wrapper.appendChild(el);
     }
-    const key = JSON.stringify(entries);
+    const key = JSON.stringify(entries) + [projectSettings.costShow, isFeatureOn('milestoneCost'), projectSettings.costSplit, effectiveSpPrice(projectSettings), effectiveCostMode(projectSettings)].join('|') + (projectSettings.costPeople.length);
     if (el.getAttribute('data-ambient-key') === key) return;
     el.setAttribute('data-ambient-key', key);
     el.textContent = '';
     entries.forEach(function (entry) {
       const chip = document.createElement('span');
       chip.className = 'ambient-milestone-sp-chip';
-      chip.textContent = milestoneSpLabel(entry) + ' …';
+      chip.appendChild(createTextSpan(milestoneSpLabel(entry) + ' …', {}));
+      chip.firstChild.className = 'ambient-ms-part ambient-ms-name';
       chip.addEventListener('click', function () { // neu laden statt 5 Minuten Cache abzuwarten
         delete columnSpCache[projectSettings.projectPath + '?' + milestoneSpQuery(entry.name)];
         el.removeAttribute('data-ambient-key');
@@ -3345,16 +3655,50 @@
       fetchColumnSp(projectSettings.projectPath, milestoneSpQuery(entry.name)).then(function (total) {
         if (chip.parentNode !== el) return; // inzwischen neu aufgebaut
         const sp = Math.round(total.sp * 10) / 10;
-        chip.textContent = milestoneSpLabel(entry) + ': ' + (total.truncated ? '≥ ' : '') + sp + ' / ' + entry.sold + ' SP';
         chip.classList.toggle('is-over', sp > entry.sold);
         chip.classList.toggle('is-equal', sp === entry.sold);
-        chip.title = sp + ' SP im Board (' + total.issues + ' Tickets, offen und geschlossen' + (entry.name ? '' : ', ganzes Projekt') + ') von ' + entry.sold + ' verkauften SP' +
+        const spText = (total.truncated ? '≥ ' : '') + sp + ' / ' + entry.sold + ' SP';
+        const baseTitle = sp + ' SP im Board (' + total.issues + ' Tickets, offen und geschlossen' + (entry.name ? '' : ', ganzes Projekt') + ') von ' + entry.sold + ' verkauften SP' +
           (sp > entry.sold ? ': ' + Math.round((sp - entry.sold) * 10) / 10 + ' SP zu viel' :
             sp < entry.sold ? ': noch ' + Math.round((entry.sold - sp) * 10) / 10 + ' SP frei' : '') +
-          (total.missing ? '. ' + total.missing + ' Tickets ohne Schätzung' : '') + '. Klick: neu laden.';
+          (total.missing ? '. ' + total.missing + ' Tickets ohne Schätzung' : '');
+        // Kosten kommen aus dem Fortschritts-Cache und trudeln nach dem Chip ein: bei jedem neuen Eintrag nachziehen
+        chip._ambientUpdate = function () {
+          let costText = '';
+          let costTitle = '';
+          let costCost = 0;
+          let costRevenue = 0;
+          if (projectSettings.costShow && isFeatureOn('milestoneCost') && effectiveSpPrice(projectSettings) && effectiveCostMode(projectSettings) !== 'external' && projectSettings.costPeople.length) {
+            const mc = milestoneCostFromCache(projectSettings, total.iids);
+            if (mc.covered) {
+              const revenue = entry.sold * effectiveSpPrice(projectSettings);
+              costCost = mc.cost;
+              costRevenue = revenue;
+              costText = (projectSettings.costSplit ? formatEuro(mc.cost) + ' / ' + formatEuro(revenue) : 'Marge ' + formatSignedEuro(revenue - mc.cost));
+              costTitle = '. Kosten bisher ' + formatEuro(mc.cost) + ' von ' + formatEuro(revenue) + ' Erlös (Marge ' + formatSignedEuro(revenue - mc.cost) +
+                '), aus den Buchungen von ' + mc.covered + ' von ' + total.issues + ' Tickets, deren Fortschritt geladen ist';
+            }
+          }
+          // zwei Segmente wie ein GitLab-Badge: Name, SP, (Kosten mit Ampel-Hintergrund)
+          chip.textContent = '';
+          const namePart = createTextSpan(milestoneSpLabel(entry));
+          namePart.className = 'ambient-ms-part ambient-ms-name';
+          const spPart = createTextSpan(spText);
+          spPart.className = 'ambient-ms-part ambient-ms-sp';
+          chip.appendChild(namePart);
+          chip.appendChild(spPart);
+          if (costText) {
+            const figure = createTextSpan(costText);
+            figure.className = 'ambient-ms-part ambient-ms-cost ' + costTone(costCost, costRevenue);
+            chip.appendChild(figure);
+          }
+          chip.title = baseTitle + costTitle + '. Klick: neu laden.';
+        };
+        milestoneChips.push(chip);
+        chip._ambientUpdate();
       }).catch(function (err) {
         warn('Meilenstein-SP fehlgeschlagen:', err);
-        if (chip.parentNode === el) chip.textContent = milestoneSpLabel(entry) + ': ?';
+        if (chip.parentNode === el) { chip.textContent = ''; const failed = createTextSpan(milestoneSpLabel(entry) + ': ?'); failed.className = 'ambient-ms-part ambient-ms-name'; chip.appendChild(failed); }
       });
     });
   }
@@ -3600,9 +3944,14 @@
   }
 
   // Pipeline-Status am MR-Badge (Experiment)
+  // Grün/Rot/Gelb wie die SP-Pillen (GitLab-Variablen), Blau für laufend, Grau für neutral
+  const PIPELINE_OK = 'var(--gl-text-color-success, #108548)';
+  const PIPELINE_BAD = 'var(--gl-text-color-danger, #dd2b0e)';
+  const PIPELINE_WARN = '#eab308';
+  const PIPELINE_RUN = 'var(--gl-text-color-link, #1f75cb)';
   const PIPELINE_COLORS = {
-    success: '#22c55e', failed: '#ef4444', running: '#3b82f6', pending: '#3b82f6', created: '#3b82f6',
-    preparing: '#3b82f6', waiting_for_resource: '#3b82f6', manual: '#f59e0b', canceled: '#8e8e93',
+    success: PIPELINE_OK, failed: PIPELINE_BAD, running: PIPELINE_RUN, pending: PIPELINE_RUN, created: PIPELINE_RUN,
+    preparing: PIPELINE_RUN, waiting_for_resource: PIPELINE_RUN, manual: PIPELINE_WARN, canceled: '#8e8e93',
     skipped: '#8e8e93', scheduled: '#8e8e93'
   };
   const mrPipelineRequests = {}; // projectPath#mrIid → Promise<string|null>
@@ -3688,6 +4037,11 @@
 
   // Die jüngsten Buchungen (neueste zuerst) für Chip und Verlauf; ohne erkennbare Tabelle leer
   function parseBookingsFromHtml(htmlText) {
+    return parseBookingRows(htmlText).sort(function (a, b) { return b.ts - a.ts; }).slice(0, ACTIVITY_BOOKINGS_MAX);
+  }
+
+  // Alle Buchungszeilen der Ticket-Detailseite (ungekürzt, unsortiert)
+  function parseBookingRows(htmlText) {
     try {
       const doc = new DOMParser().parseFromString(htmlText, 'text/html');
       const table = Array.from(doc.querySelectorAll('table')).find(function (tbl) {
@@ -3706,10 +4060,278 @@
         const ts = parseBookingDate(cell(row, iDate));
         if (ts) bookings.push({ts: ts, title: cell(row, iTitle).slice(0, 80), employee: cell(row, iEmployee), hours: cell(row, iHours)});
       });
-      return bookings.sort(function (a, b) { return b.ts - a.ts; }).slice(0, ACTIVITY_BOOKINGS_MAX);
+      return bookings;
     } catch (e) {
       return [];
     }
+  }
+
+  // Stunden je Mitarbeiter über alle Buchungen: {Name: Stunden}; Grundlage der Kostenrechnung
+  function sumHoursByEmployee(bookings) {
+    const sums = {};
+    (bookings || []).forEach(function (b) {
+      const hours = extractHourNumber(b.hours);
+      if (!b.employee || hours === null) return;
+      sums[b.employee] = Math.round(((sums[b.employee] || 0) + hours) * 1000) / 1000;
+    });
+    return sums;
+  }
+
+  /******************************************************************
+   * Kostensätze: Rollen + Tagessatz aus der Portal-Projektseite, interne €/h pflegt man selbst
+   ******************************************************************/
+  const GM_KEY_INTERNAL_RATES = 'ambientProgressInternalRatesByProject';
+  const HOURS_PER_DAY = 8; // ponytail: feste 8h/Tag für Tagessatz → Stundensatz, konfigurierbar wenn ein Projekt anders rechnet
+
+  // Interne Sätze sind vertraulich und gelten je Projekt: wie der API-Token script-eigen in GM_*, nie in localStorage (andere Scripte der GitLab-Seite könnten es lesen)
+  function readAllInternalRates() {
+    try {
+      const parsed = JSON.parse(GM_getValue(GM_KEY_INTERNAL_RATES, '{}') || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function readInternalRates(projectKey) {
+    const rates = readAllInternalRates()[projectKey];
+    return rates && typeof rates === 'object' ? rates : {};
+  }
+
+  function writeInternalRates(projectKey, rates) {
+    try {
+      const all = readAllInternalRates();
+      all[projectKey] = rates;
+      GM_setValue(GM_KEY_INTERNAL_RATES, JSON.stringify(all));
+    } catch (e) {
+      error('Interne Sätze konnten nicht gespeichert werden:', e);
+    }
+  }
+
+  // Tabelle „Name | Role | Role in project | daily rate | …" (auch deutsch) → [{name, role, projectRole, daily}]
+  function parseProjectPeopleFromHtml(htmlText) {
+    try {
+      const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+      const people = [];
+      Array.from(doc.querySelectorAll('table')).forEach(function (table) {
+        if (table.querySelector('table')) return; // äußere Layout-Tabelle: ihre th/tr gehören der inneren
+        const heads = Array.from(table.querySelectorAll('th')).map(function (th) { return th.textContent.trim().toLowerCase(); });
+        const iName = heads.findIndex(function (h) { return /^(name)$/.test(h); });
+        const iRole = heads.findIndex(function (h) { return /^(role|rolle)$/.test(h); });
+        const iProjectRole = heads.findIndex(function (h) { return /^(role in project|rolle im projekt)/.test(h); });
+        const iDaily = heads.findIndex(function (h) { return /^(daily rate|tagessatz)/.test(h); });
+        if (iName < 0 || iRole < 0 || iDaily < 0) return;
+        table.querySelectorAll('tr').forEach(function (row) {
+          if (row.querySelector('th') || !row.cells[iDaily]) return;
+          const name = row.cells[iName].textContent.trim();
+          const role = row.cells[iRole].textContent.trim();
+          if (!name || !role || role === '-') return;
+          const daily = extractHourNumber(row.cells[iDaily].textContent);
+          people.push({
+            name: name,
+            role: role,
+            projectRole: iProjectRole >= 0 && row.cells[iProjectRole] ? row.cells[iProjectRole].textContent.trim() : role,
+            daily: daily
+          });
+        });
+      });
+      return people;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // Satz einer Person in €/h: intern aus der gepflegten Rollen-Tabelle, extern aus Tagessatz ÷ 8; null = unbekannt
+  function personHourlyRate(person, internalRates, mode) {
+    if (!person) return null;
+    if (mode === 'external') return person.daily > 0 ? person.daily / HOURS_PER_DAY : null;
+    const rate = Number((internalRates || {})[person.role]);
+    return Number.isFinite(rate) && rate > 0 ? rate : null;
+  }
+
+  // Kosten eines Tickets aus Stunden je Mitarbeiter; missing = Namen ohne Person im Projekt oder ohne Satz (zählen nicht mit)
+  function computeTicketCost(hoursByEmployee, people, internalRates, mode) {
+    const byName = {};
+    (people || []).forEach(function (p) { byName[p.name.toLowerCase()] = p; });
+    let cost = 0;
+    const missing = [];
+    Object.keys(hoursByEmployee || {}).forEach(function (name) {
+      const rate = personHourlyRate(byName[name.trim().toLowerCase()], internalRates, mode);
+      if (rate === null) missing.push(name);
+      else cost += hoursByEmployee[name] * rate;
+    });
+    return {cost: Math.round(cost * 100) / 100, missing: missing};
+  }
+
+  function formatEuro(value) {
+    return Math.round(value).toLocaleString('de-DE') + ' €';
+  }
+
+  // Interne Projekte rechnen immer mit internen Sätzen (ein Kundentagessatz existiert dort nicht)
+  function effectiveCostMode(ps) {
+    return ps.projectInternal ? 'internal' : ps.costMode;
+  }
+
+  // Preis pro SP nur bei Story-Point-basierter Abrechnung, sonst gibt es keinen Erlös
+  function effectiveSpPrice(ps) {
+    if (ps.projectInternal) return null; // interne Projekte verkaufen nichts
+    return ps.spPricing && ps.spPrice > 0 ? ps.spPrice : null;
+  }
+
+  // Kosten, Erlös (nur intern: SP × €/SP), Marge und Break-even-Stunden eines Tickets; null = nichts zu zeigen
+  function buildCostInfo(hoursByEmployee, people, internalRates, mode, sp, spPrice) {
+    if (!hoursByEmployee || !people || !people.length) return null;
+    const result = computeTicketCost(hoursByEmployee, people, internalRates, mode);
+    const hours = Object.keys(hoursByEmployee).reduce(function (sum, name) {
+      return result.missing.indexOf(name) >= 0 ? sum : sum + hoursByEmployee[name];
+    }, 0);
+    const revenue = mode !== 'external' && sp > 0 && spPrice > 0 ? sp * spPrice : null;
+    const avgRate = hours > 0 ? result.cost / hours : 0;
+    return {
+      mode: mode, cost: result.cost, hours: hours, missing: result.missing, revenue: revenue,
+      margin: revenue === null ? null : Math.round((revenue - result.cost) * 100) / 100,
+      breakEvenHours: revenue !== null && avgRate > 0 ? Math.round(revenue / avgRate * 10) / 10 : null
+    };
+  }
+
+  const EMPLOYEE_PATH = /^\/account\/employee\/detail\/\d+\/?$/; // nur dieser Portal-Pfad wird je Person nachgeladen
+
+  // Portal „Financial data“ (/management/project/financial-rows/load/<ID>/): Budgets und Stunden je Mitarbeiter (auch deutsch)
+  function parseProjectFinanceFromHtml(htmlText) {
+    const result = {budget: null, accumulated: null, residual: null, portalInternalCost: null, quota: null, hours: []};
+    try {
+      const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+      doc.querySelectorAll('tr').forEach(function (row) {
+        if (row.cells.length !== 2) return;
+        const key = row.cells[0].textContent.trim().toLowerCase();
+        if (/^(hour quota|stundenkontingent|kontingent)/.test(key)) result.quota = parseQuotaText(row.cells[1].textContent);
+        const value = parseLooseNumber(row.cells[1].textContent);
+        if (value === null) return;
+        if (/^(initial budget|initialbudget|anfangsbudget|ausgangsbudget)/.test(key)) result.budget = value;
+        else if (/^(accumulated budget|gesamtbudget|kumuliertes budget)/.test(key)) result.accumulated = value;
+        else if (/^(residual budget|restbudget)/.test(key)) result.residual = value;
+        else if (/^(costs \(internal\)|kosten \(intern)/.test(key)) result.portalInternalCost = value;
+      });
+      Array.from(doc.querySelectorAll('table')).forEach(function (table) {
+        if (table.querySelector('table')) return;
+        const heads = Array.from(table.querySelectorAll('th')).map(function (th) { return th.textContent.trim().toLowerCase(); });
+        const iName = heads.indexOf('name');
+        const iTotal = heads.findIndex(function (h) { return /^(total|gesamt|summe)/.test(h); });
+        if (iName < 0 || iTotal < 0 || !heads.some(function (h) { return /billable|abrechenbar/.test(h); })) return;
+        table.querySelectorAll('tr').forEach(function (row) {
+          if (row.querySelector('th') || !row.cells[iTotal]) return;
+          const name = row.cells[iName].textContent.trim();
+          const hours = parseLooseNumber(row.cells[iTotal].textContent);
+          const link = row.cells[iName].querySelector('a');
+          const href = link ? link.getAttribute('href') || '' : '';
+          if (name && hours !== null) result.hours.push({name: name, hours: hours, path: EMPLOYEE_PATH.test(href) ? href : ''});
+        });
+      });
+    } catch (e) {
+      // leeres Ergebnis
+    }
+    return result;
+  }
+
+  // Zeilen des Finanz-Dashboards: Stunden × Satz je Person, absteigend nach Kosten; Rolle unbekannt → Override aus der Auswahl
+  function buildFinanceRows(hours, people, roleOverrides, internalRates, mode) {
+    const byName = {};
+    (people || []).forEach(function (p) { byName[p.name.toLowerCase()] = p; });
+    let total = 0;
+    const rows = (hours || []).map(function (entry) {
+      let person = byName[entry.name.toLowerCase()];
+      const overrideRole = (roleOverrides || {})[entry.name];
+      if (overrideRole) {
+        const sameRole = (people || []).filter(function (p) { return p.role === overrideRole && p.daily > 0; })[0];
+        person = {name: entry.name, role: overrideRole, daily: sameRole ? sameRole.daily : null};
+      }
+      const rate = personHourlyRate(person, internalRates, mode);
+      const cost = rate === null ? null : Math.round(entry.hours * rate * 100) / 100;
+      if (cost !== null) total += cost;
+      return {name: entry.name, role: person ? person.role : null, known: Boolean(person), hours: entry.hours, rate: rate, cost: cost};
+    });
+    rows.sort(function (a, b) { return (b.cost || 0) - (a.cost || 0) || b.hours - a.hours; });
+    return {rows: rows, total: Math.round(total * 100) / 100, missing: rows.filter(function (r) { return r.cost === null; }).length};
+  }
+
+  // Ampel für Kosten gegen Erlös: grün, gelb ab WARN_PCT % des Erlöses, rot ab 100 %
+  function costTone(cost, revenue) {
+    if (!(revenue > 0)) return '';
+    const used = cost / revenue * 100;
+    return used >= 100 ? 'ambient-cost-over' : used >= WARN_PCT ? 'ambient-cost-tight' : 'ambient-cost-ok';
+  }
+
+  // Kompakt für enge Stellen: 10.800 → „10,8k €“, ab 1 Mio. „1,2M €“, darunter ganz
+  function formatEuroShort(value, from) {
+    const abs = Math.abs(value);
+    const compact = function (n, unit) { return (Math.round(n * 10) / 10).toLocaleString('de-DE', {maximumFractionDigits: 1}) + unit + ' €'; };
+    if (abs >= 1000000) return compact(value / 1000000, 'M');
+    if (abs >= (from || 10000)) return compact(value / 1000, 'k');
+    return formatEuro(value);
+  }
+
+  // „27.11.2026, 00:14“ für den Datenstand
+  function formatStand(ts) {
+    return new Date(ts).toLocaleString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+  }
+
+  function formatHours(value) {
+    return (Math.round(value * 10) / 10).toLocaleString('de-DE', {maximumFractionDigits: 1});
+  }
+
+  function formatSignedEuro(value) {
+    return (value > 0 ? '+' : value < 0 ? '−' : '') + formatEuro(Math.abs(value));
+  }
+
+  // Tooltip-Zusatz: „Kosten (intern): 1.234 € · Erlös 3 SP: 2.000 € · Marge +766 € · Break-even 27h"
+  function costTooltipSuffix(info, sp) {
+    if (!info) return '';
+    let text = ' · Kosten (' + (info.mode === 'external' ? 'extern' : 'intern') + '): ' + formatEuro(info.cost);
+    if (info.timeLimit) text += ' · Zeitlimit ' + sp + ' SP: ' + formatHours(info.timeLimit.limit) + ' h (Warnung ab ' + formatHours(info.timeLimit.warn) + ' h)';
+    if (info.revenue !== null) {
+      text += ' · Erlös ' + sp + ' SP: ' + formatEuro(info.revenue) + ' · Marge ' + formatSignedEuro(info.margin);
+      if (info.breakEvenHours !== null) text += ' · Break-even ' + info.breakEvenHours + 'h';
+    }
+    if (info.missing.length) text += ' (ohne Satz: ' + info.missing.join(', ') + ')';
+    return text;
+  }
+
+  // SP des Tickets: Badge (Titel gekürzt) oder Titeltext der Karte
+  function getCardSp(cardElem) {
+    const badge = cardElem.querySelector('.ambient-estimate-badge');
+    const fromBadge = badge && /SP$/.test(badge.dataset.label || '') ? extractHourNumber(badge.dataset.label) : null;
+    if (fromBadge !== null) return fromBadge;
+    const title = cardElem.querySelector(SEL.cardTitleLink);
+    const parsed = title ? parseEstimate(title.textContent, getEstimatePatterns()) : null;
+    return parsed && parsed.kind === 'sp' ? extractHourNumber(parsed.label) : null;
+  }
+
+  // Kosteninfo für eine Karte; nur mit eingeschaltetem „Kosten anzeigen“ und geladenen Rollen
+  function costInfoForCard(cardElem, progressData) {
+    const ps = currentScanContext && currentScanContext.projectSettings;
+    // Vorschau im Anzeige-Tab: Beispielwerte, damit die Geld-Schalter sichtbar sind (auch ohne „Kosten anzeigen“)
+    if (cardElem.ambientPreview) return {mode: 'internal', cost: 420, hours: 3.5, missing: [], revenue: 900, margin: 480, breakEvenHours: 7.5, sp: 3, split: Boolean(ps && ps.costSplit)};
+    if (!ps || !ps.costShow || !progressData || !progressData.hoursByEmployee) return null;
+    const sp = getCardSp(cardElem);
+    let info = buildCostInfo(progressData.hoursByEmployee, ps.costPeople, readInternalRates(ps.projectKey), effectiveCostMode(ps), sp, effectiveSpPrice(ps));
+    if (ps.timeLimits && !ps.projectInternal && sp > 0) { // Zeitabrechnung: Stunden gegen das SP-Limit, Kosten bleiben im Tooltip (auch ohne Sätze)
+      const hours = Object.keys(progressData.hoursByEmployee).reduce(function (sum, name) { return sum + progressData.hoursByEmployee[name]; }, 0);
+      const limit = buildTimeLimit(hours, sp, ps.escalationLimits, ps.hoursPerSp);
+      if (limit) {
+        info = info || {mode: effectiveCostMode(ps), cost: 0, hours: hours, missing: [], revenue: null, margin: null, breakEvenHours: null};
+        info.timeLimit = limit;
+        const scale = extractHourNumber(progressData.spent) + extractHourNumber(progressData.remaining);
+        limit.redundant = scale > 0 && Math.abs(scale - limit.limit) < 0.05; // Balken zeigt dieselbe Grenze schon (Portal-Stundenbudget = Limit)
+        info.breakEvenHours = limit.limit;
+        info.hours = hours;
+      }
+      ensureEscalationLimits(ps);
+    }
+    if (info) {
+      info.sp = sp;
+      info.split = ps.costSplit;
+    }
+    return info;
   }
 
   /******************************************************************
@@ -3750,10 +4372,11 @@
     const remaining = Number(entry.remaining) > 0 ? formatBookedHoursDisplay(entry.remaining) : null;
     const over = Number(entry.over) > 0 ? formatBookedHoursDisplay(entry.over) : null;
     // Buchungen für den Aktivitäts-Chip; das Portal zensiert Titel dort, wo es das auch in der Liste tut ("[censored]")
-    const bookings = (Array.isArray(entry.bookings) ? entry.bookings : []).map(function (b) {
+    const allBookings = (Array.isArray(entry.bookings) ? entry.bookings : []).map(function (b) {
       return {ts: parseBookingDate(b.date), title: String(b.title || '').slice(0, 80), employee: String(b.employee || ''), hours: formatBookedHoursDisplay(b.hours) || ''};
-    }).filter(function (b) { return b.ts; }).sort(function (a, b) { return b.ts - a.ts; }).slice(0, ACTIVITY_BOOKINGS_MAX);
-    return {spent: booked, remaining: remaining, over: over, booked: booked, bookedLabel: 'Booked Hours', bookings: bookings};
+    }).filter(function (b) { return b.ts; });
+    const bookings = allBookings.slice().sort(function (a, b) { return b.ts - a.ts; }).slice(0, ACTIVITY_BOOKINGS_MAX);
+    return {spent: booked, remaining: remaining, over: over, booked: booked, bookedLabel: 'Booked Hours', bookings: bookings, hoursByEmployee: sumHoursByEmployee(allBookings)};
   }
 
   // ponytail: Token "mock" liefert Fake-Daten, solange der Endpunkt nicht live ist; mit dem Endpunkt entfernen
@@ -3879,7 +4502,9 @@
               resolve(null);
               return;
             }
-            progressData.bookings = parseBookingsFromHtml(response.responseText);
+            const bookingRows = parseBookingRows(response.responseText);
+            progressData.bookings = bookingRows.slice().sort(function (a, b) { return b.ts - a.ts; }).slice(0, ACTIVITY_BOOKINGS_MAX);
+            progressData.hoursByEmployee = sumHoursByEmployee(bookingRows);
             log('Progress-Daten erhalten für Issue', issueIid, progressData);
             resolve(progressData);
           },
@@ -3901,6 +4526,18 @@
     };
     promise.then(cleanup, cleanup);
     return promise;
+  }
+
+  // Karten sofort aus dem Cache neu zeichnen (z. B. nach Änderung der Kosten-Einstellungen), ohne Portal-Anfrage
+  function rerenderProgressFromCache() {
+    const ps = currentScanContext && currentScanContext.projectSettings;
+    if (!ps) return;
+    document.querySelectorAll(SEL.boardCard).forEach(function (cardElem) {
+      const iid = getIssueIidFromCard(cardElem);
+      const key = iid ? buildProgressCacheKey(ps, iid) : null;
+      const cached = key ? getProgressCacheEntry(key) : null;
+      if (cached && !cached.notFound && cardElem.querySelector('.ambient-progress-row')) injectProgressIntoCard(cardElem, cached);
+    });
   }
 
   const fetchRetryState = {}; // cacheKey → {attempts, retryAt}
@@ -5367,6 +6004,1563 @@
     return icon;
   }
 
+  /******************************************************************
+   * Monatsberichte: Timesheets je Zeitraum + Level-Historie je Person (Preis nach dem Level zum Buchungsdatum)
+   ******************************************************************/
+  const LS_KEY_LEVEL_HISTORY = 'ambientProgressLevelHistory';
+  const LEVEL_HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
+  const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+
+  // „1:30“ (Std:Min) → 1.5; sonst als Dezimalzahl
+  function parseHoursHM(text) {
+    const m = /^\s*(\d+):(\d{2})\s*$/.exec(String(text || ''));
+    return m ? Number(m[1]) + Number(m[2]) / 60 : parseLooseNumber(text);
+  }
+
+  function monthKeyOf(ts) {
+    const d = new Date(ts);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+  function addMonthsKey(key, n) {
+    const parts = key.split('-');
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1 + n, 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+  function monthLabel(key) {
+    const parts = key.split('-');
+    return MONTH_NAMES[Number(parts[1]) - 1] + ' ' + parts[0];
+  }
+
+  // Datumsfilter des Portals: TT/MM/JJJJ (Anfang des ersten bis Ende des letzten Monats)
+  function monthRangeParams(firstKey, lastKey) {
+    const first = firstKey.split('-');
+    const last = lastKey.split('-');
+    const endDay = new Date(Number(last[0]), Number(last[1]), 0).getDate();
+    return {start: '01/' + first[1] + '/' + first[0], end: String(endDay).padStart(2, '0') + '/' + last[1] + '/' + last[0]};
+  }
+
+  // Tab „NewPay-Level History“ des Mitarbeiterprofils: [{from: ts, role}] neueste zuerst
+  function parseLevelHistoryFromHtml(htmlText) {
+    try {
+      const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+      const entries = [];
+      Array.from(doc.querySelectorAll('table')).forEach(function (table) {
+        const heads = Array.from(table.querySelectorAll('th')).map(function (th) { return th.textContent.trim().toLowerCase(); });
+        const iFrom = heads.findIndex(function (h) { return /^(valid from|gültig ab)/.test(h); });
+        const iLevel = heads.findIndex(function (h) { return /level/.test(h); });
+        if (iFrom < 0 || iLevel < 0) return;
+        table.querySelectorAll('tbody tr').forEach(function (row) {
+          const from = parseBookingDate(row.cells[iFrom] ? row.cells[iFrom].textContent : '');
+          const role = row.cells[iLevel] ? row.cells[iLevel].textContent.trim() : '';
+          if (from && role) entries.push({from: from, role: role});
+        });
+      });
+      return entries.sort(function (a, b) { return b.from - a.from; });
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // Rolle zum Datum: jüngster Eintrag mit „gültig ab“ ≤ Datum; davor der älteste, ohne Historie die aktuelle Rolle
+  function roleAtDate(history, ts, fallbackRole) {
+    if (!history || !history.length) return fallbackRole || null;
+    for (let i = 0; i < history.length; i++) {
+      if (history[i].from <= ts) return history[i].role;
+    }
+    return history[history.length - 1].role;
+  }
+
+  // Timesheets → Monat → Person: Stunden und Kosten. rows: [{name, path, ts, hours}], histories: {path: [{from, role}]}
+  function buildMonthReport(rows, histories, people, roleOverrides, internalRates, mode) {
+    const byName = {};
+    (people || []).forEach(function (p) { byName[p.name.toLowerCase()] = p; });
+    const months = {};
+    const rolesSeen = {};
+    rows.forEach(function (row) {
+      const key = monthKeyOf(row.ts);
+      const month = months[key] || (months[key] = {hours: 0, cost: 0, persons: {}});
+      const known = byName[row.name.toLowerCase()];
+      const role = (roleOverrides || {})[row.name] || roleAtDate(histories[row.path], row.ts, known && known.role);
+      if (role) rolesSeen[role] = true;
+      let rate = null;
+      if (role) {
+        const person = mode === 'external'
+          ? known || (people || []).filter(function (p) { return p.role === role && p.daily > 0; })[0]
+          : {role: role};
+        rate = personHourlyRate(person && {role: role, daily: person.daily}, internalRates, mode);
+      }
+      const entry = month.persons[row.name] || (month.persons[row.name] = {hours: 0, cost: 0, role: role, missing: false});
+      entry.hours += row.hours;
+      entry.role = role || entry.role;
+      month.hours += row.hours;
+      if (rate === null) entry.missing = true;
+      else {
+        entry.cost += row.hours * rate;
+        month.cost += row.hours * rate;
+      }
+    });
+    Object.keys(months).forEach(function (key) {
+      months[key].cost = Math.round(months[key].cost * 100) / 100;
+      Object.keys(months[key].persons).forEach(function (name) {
+        months[key].persons[name].cost = Math.round(months[key].persons[name].cost * 100) / 100;
+      });
+    });
+    return {months: months, roles: Object.keys(rolesSeen)};
+  }
+
+  // --- Zeitabrechnung: Stundenlimit je Ticket aus den Escalation-Limits des Portals (SP → Warn-/Eskalationsstunden)
+  const DEFAULT_HOURS_PER_SP = 8;
+
+  // Formularwerte der Portal-Seite (story_point_configuration-N-story_points | hours_warning | hours_escalation) → [{sp, warn, limit}] aufsteigend
+  function escalationLimitsFromFields(fields) {
+    const byIndex = {};
+    (fields || []).forEach(function (f) {
+      const m = /story_point_configuration-(\d+)-(story_points|hours_warning|hours_escalation)$/.exec(String(f.name || ''));
+      const value = Number(String(f.value).replace(',', '.'));
+      if (!m || !Number.isFinite(value)) return;
+      (byIndex[m[1]] = byIndex[m[1]] || {})[m[2]] = value;
+    });
+    return Object.keys(byIndex).map(function (i) {
+      const e = byIndex[i];
+      return {sp: e.story_points, warn: e.hours_warning, limit: e.hours_escalation};
+    }).filter(function (e) { return Number.isFinite(e.sp) && Number.isFinite(e.limit); })
+      .sort(function (a, b) { return a.sp - b.sp; });
+  }
+
+  // Limit für ein Ticket mit sp Story Points: Stufe der Tabelle, dazwischen linear, darüber/darunter mit der Steigung der nächsten Stufe;
+  // ohne Tabelle sp × hoursPerSp (Standard 1 SP = 8 h), Warnung bei WARN_PCT des Limits
+  function limitForSp(table, sp, hoursPerSp) {
+    const perSp = hoursPerSp > 0 ? hoursPerSp : DEFAULT_HOURS_PER_SP;
+    const steps = (table || []).filter(function (e) { return e.limit > 0; });
+    if (!(sp > 0)) return null;
+    if (!steps.length) return {limit: sp * perSp, warn: sp * perSp * WARN_PCT / 100, fromPortal: false};
+    const exact = steps.filter(function (e) { return e.sp === sp; })[0];
+    if (exact) return {limit: exact.limit, warn: exact.warn > 0 ? exact.warn : exact.limit * WARN_PCT / 100, fromPortal: true};
+    const anchors = [{sp: 0, warn: 0, limit: 0}].concat(steps);
+    const lower = anchors.filter(function (e) { return e.sp < sp; }).pop();
+    const upper = anchors.filter(function (e) { return e.sp > sp; })[0];
+    let a = lower;
+    let b = upper;
+    if (!upper) { a = anchors[anchors.length - 2]; b = anchors[anchors.length - 1]; } // über der größten Stufe: weiter mit deren Steigung
+    const at = function (field) { return a[field] + (b[field] - a[field]) * (sp - a.sp) / (b.sp - a.sp); };
+    return {limit: Math.round(at('limit') * 100) / 100, warn: Math.round(at('warn') * 100) / 100, fromPortal: true};
+  }
+
+  // Stand eines Tickets gegen sein Stundenlimit: grün bis zur Warnschwelle, gelb ab dort, rot ab dem Eskalationslimit
+  function buildTimeLimit(hours, sp, table, hoursPerSp) {
+    const lim = limitForSp(table, sp, hoursPerSp);
+    if (!lim) return null;
+    const used = Math.round(hours * 100) / 100;
+    return {hours: used, limit: lim.limit, warn: lim.warn, fromPortal: lim.fromPortal, tone: used >= lim.limit ? 'ambient-cost-over' : used >= lim.warn ? 'ambient-cost-tight' : 'ambient-cost-ok'};
+  }
+
+  // Wartungsprojekt: Zeile „Hour quota“ der Financial data („Remaining: 8.50 h Quota 32 h · booked 23.50 h 01.10.2026 – 31.12.2026 16 h per month …“)
+  function parseQuotaText(text) {
+    const t = String(text || '').replace(/\s+/g, ' ');
+    const num = function (re) { const m = re.exec(t); return m ? parseLooseNumber(m[1]) : null; };
+    const quota = num(/(?:quota|kontingent)\s*:?\s*([\d.,]+)\s*h/i);
+    if (!(quota > 0)) return null;
+    const booked = num(/(?:booked|gebucht)\s*:?\s*([\d.,]+)\s*h/i);
+    const remaining = num(/(?:remaining|verbleibend|rest)\s*:?\s*(-?[\d.,]+)\s*h/i);
+    const period = /(\d{2}\.\d{2}\.\d{4})\s*[–-]\s*(\d{2}\.\d{2}\.\d{4})/.exec(t);
+    return {
+      quota: quota,
+      booked: booked !== null ? booked : remaining !== null ? quota - remaining : 0,
+      remaining: remaining !== null ? remaining : booked !== null ? quota - booked : quota,
+      perMonth: num(/([\d.,]+)\s*h\s*(?:per month|pro monat)/i),
+      from: period ? period[1] : '', to: period ? period[2] : '',
+      expires: (/expires every (\d+) months?/i.exec(t) || /verfällt alle (\d+) monate/i.exec(t) || [])[1] || ''
+    };
+  }
+
+  // Anzahl Monate von first bis last (beide einschließlich, 'YYYY-MM')
+  function monthSpanLength(first, last) {
+    const a = first.split('-');
+    const b = last.split('-');
+    return (Number(b[0]) - Number(a[0])) * 12 + (Number(b[1]) - Number(a[1])) + 1;
+  }
+
+  // Zeitraum-Auswahl → {first, last, len} in Monaten, null = Gesamt. period: 'all' | 'current' | 'YYYY-MM' | 'last:N' | 'year' | 'custom' (from/to)
+  function resolvePeriodSpan(period, nowKey, from, to) {
+    if (!period || period === 'all') return null;
+    let first = period;
+    let last = period;
+    if (period === 'current') { first = nowKey; last = nowKey; }
+    else if (/^last:\d+$/.test(period)) { first = addMonthsKey(nowKey, -(Number(period.slice(5)) - 1)); last = nowKey; }
+    else if (period === 'year') { first = nowKey.slice(0, 4) + '-01'; last = nowKey; }
+    else if (period === 'custom') {
+      first = from || nowKey;
+      last = to || nowKey;
+      if (first > last) { const t = first; first = last; last = t; }
+    }
+    return {first: first, last: last, len: monthSpanLength(first, last)};
+  }
+
+  // Monate eines Berichts über eine Spanne summieren (Personen: Stunden und Kosten addiert, jüngste Rolle); undefined ohne Buchungen
+  function sumMonthSpan(months, first, last) {
+    const total = {hours: 0, cost: 0, persons: {}};
+    let found = false;
+    for (let key = first; key <= last; key = addMonthsKey(key, 1)) {
+      const m = months[key];
+      if (!m) continue;
+      found = true;
+      total.hours += m.hours;
+      total.cost += m.cost;
+      Object.keys(m.persons).forEach(function (name) {
+        const src = m.persons[name];
+        const dst = total.persons[name] || (total.persons[name] = {hours: 0, cost: 0, role: '', missing: false});
+        dst.hours += src.hours;
+        dst.cost += src.cost;
+        dst.role = src.role || dst.role;
+        dst.missing = dst.missing || src.missing;
+      });
+    }
+    if (!found) return undefined;
+    total.cost = Math.round(total.cost * 100) / 100;
+    Object.keys(total.persons).forEach(function (name) { total.persons[name].cost = Math.round(total.persons[name].cost * 100) / 100; });
+    return total;
+  }
+
+  const timesheetCache = {}; // key → {at, rows}
+
+  // Alle Timesheets des Projekts im Zeitraum (50 je Seite), über den Portal-Limiter
+  function fetchTimesheetRows(projectSettings, firstKey, lastKey, onProgress) {
+    const base = getPortalBaseUrl(projectSettings);
+    if (!base || !projectSettings.projectId) return Promise.reject({message: 'Portal-URL und Projekt-ID in den Einstellungen eintragen'});
+    const cacheKey = projectSettings.projectId + '|' + firstKey + '|' + lastKey;
+    const cached = timesheetCache[cacheKey];
+    if (cached && Date.now() - cached.at < FINANCE_CACHE_MS) return Promise.resolve(cached.rows);
+    const range = monthRangeParams(firstKey, lastKey);
+    const pageUrl = function (offset) {
+      return base + '/management/timesheet/table-grid/data/?1=1&project=' + encodeURIComponent(String(projectSettings.projectId)) +
+        '&start_date=' + encodeURIComponent(range.start) + '&end_date=' + encodeURIComponent(range.end) + '&limit=50&offset=' + offset;
+    };
+    const getPage = function (offset) {
+      return portalLimiter(function () {
+        return new Promise(function (resolve, reject) {
+          GM_xmlhttpRequest({
+            method: 'GET',
+            url: pageUrl(offset),
+            withCredentials: true,
+            timeout: PORTAL_REQUEST_TIMEOUT_MS,
+            onload: function (response) {
+              if (response.status !== 200) return reject({message: 'Portal antwortet mit ' + response.status});
+              if (looksLikeLoginPage(response)) return reject({message: 'Portal verlangt Login'});
+              try {
+                resolve(JSON.parse(response.responseText));
+              } catch (e) {
+                reject({message: 'Timesheet-Antwort ist kein JSON'});
+              }
+            },
+            onerror: function () { reject({message: 'Netzwerkfehler'}); },
+            ontimeout: function () { reject({message: 'Zeitüberschreitung'}); }
+          });
+        });
+      });
+    };
+    const toRows = function (results) {
+      return (results || []).map(function (r) {
+        const link = /href="?(\/account\/employee\/detail\/\d+\/?)/.exec(String(r.employee || ''));
+        return {name: String(r.employee_name || '').trim(), path: link ? link[1] : '', ts: parseBookingDate(r.start_date), hours: parseHoursHM(r.hours_spent)};
+      }).filter(function (r) { return r.name && r.ts && r.hours !== null; });
+    };
+    return getPage(0).then(function (first) {
+      const total = Number(first.count) || 0;
+      const offsets = [];
+      for (let o = 50; o < total && o < 50 * 200; o += 50) offsets.push(o); // ponytail: max. 10.000 Timesheets je Bericht
+      let done = 1;
+      if (onProgress) onProgress(done, offsets.length + 1, total);
+      return Promise.all(offsets.map(function (offset) {
+        return getPage(offset).then(function (page) {
+          done += 1;
+          if (onProgress) onProgress(done, offsets.length + 1, total);
+          return page;
+        });
+      })).then(function (pages) {
+        const rows = toRows(first.results).concat.apply([], pages.map(function (page) { return toRows(page.results); }));
+        timesheetCache[cacheKey] = {at: Date.now(), rows: rows};
+        return rows;
+      });
+    });
+  }
+
+  // Level-Historie einer Person (24 h im localStorage; Rollen sind kein Geheimnis); ohne Zugriff leer → aktuelle Rolle
+  function fetchLevelHistory(projectSettings, path) {
+    const cache = storageRead(LS_KEY_LEVEL_HISTORY, {});
+    const hit = cache[path];
+    if (hit && Date.now() - hit.at < LEVEL_HISTORY_TTL_MS) return Promise.resolve(hit.entries);
+    const base = getPortalBaseUrl(projectSettings);
+    if (!base || !EMPLOYEE_PATH.test(path)) return Promise.resolve([]);
+    return portalLimiter(function () {
+      return new Promise(function (resolve) {
+        GM_xmlhttpRequest({
+          method: 'GET',
+          url: base + path.replace(/\/?$/, '/') + 'tab/new-pay-history/',
+          headers: {'HX-Request': 'true'},
+          withCredentials: true,
+          timeout: PORTAL_REQUEST_TIMEOUT_MS,
+          onload: function (response) {
+            if (response.status !== 200 || looksLikeLoginPage(response)) return resolve([]);
+            const entries = parseLevelHistoryFromHtml(response.responseText);
+            const next = storageRead(LS_KEY_LEVEL_HISTORY, {});
+            next[path] = {at: Date.now(), entries: entries};
+            storageWrite(LS_KEY_LEVEL_HISTORY, next);
+            resolve(entries);
+          },
+          onerror: function () { resolve([]); },
+          ontimeout: function () { resolve([]); }
+        });
+      });
+    });
+  }
+
+  const FINANCE_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="Finanzen"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M10.2 6.2A2.6 2.6 0 0 0 8 5.2c-1.2 0-2.2.8-2.2 2.8s1 2.8 2.2 2.8a2.6 2.6 0 0 0 2.2-1M5 7.3h3.6M5 8.7h3.6"/></g></svg>';
+  const FINANCE_CACHE_MS = 30 * 60 * 1000; // „Neu laden“ umgeht den Cache
+  const financeStore = {}; // projectId → {loaded, monthData}
+  const FINANCE_COLORS = ['#1f75cb', '#10b981', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#ef4444', '#84cc16', '#6366f1', '#f97316'];
+
+  function fetchProjectFinance(projectSettings) {
+    const base = getPortalBaseUrl(projectSettings);
+    if (!base || !projectSettings.projectId) return Promise.reject({message: 'Portal-URL und Projekt-ID in den Einstellungen eintragen'});
+    return new Promise(function (resolve, reject) {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: base + '/management/project/financial-rows/load/' + encodeURIComponent(String(projectSettings.projectId)) + '/',
+        headers: {'HX-Request': 'true'},
+        withCredentials: true,
+        timeout: PORTAL_REQUEST_TIMEOUT_MS,
+        onload: function (response) {
+          if (response.status !== 200) return reject({message: 'Portal antwortet mit ' + response.status});
+          if (looksLikeLoginPage(response)) return reject({message: 'Portal verlangt Login'});
+          const data = parseProjectFinanceFromHtml(response.responseText);
+          if (!data.hours.length) return reject({message: 'Keine Tabelle „Hours per employee“ gefunden'});
+          resolve(data);
+        },
+        onerror: function () { reject({message: 'Netzwerkfehler'}); },
+        ontimeout: function () { reject({message: 'Zeitüberschreitung'}); }
+      });
+    });
+  }
+
+  // --- Escalation-Limits (Zeitabrechnung) und Stundenkontingent (Wartung) aus dem Portal
+  const escalationTried = {}; // projectKey → true: pro Seitenaufruf nur ein automatischer Versuch
+
+  // Formular „Edit escalation limits“ des Projekts → [{sp, warn, limit}]; leer = nichts gepflegt (dann gilt Standard-h pro SP)
+  function fetchEscalationLimits(projectSettings) {
+    const base = getPortalBaseUrl(projectSettings);
+    if (!base || !projectSettings.projectId) return Promise.reject({message: 'Portal-URL und Projekt-ID in den Einstellungen eintragen'});
+    return fetchPortalPage('/management/project/' + encodeURIComponent(String(projectSettings.projectId)) + '/ticket-story-points/escalation-limits', base).then(function (html) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const fields = Array.from(doc.querySelectorAll('input:not([type=hidden])')).map(function (i) { return {name: i.getAttribute('name'), value: i.value}; });
+      return escalationLimitsFromFields(fields);
+    });
+  }
+
+  // Automatisch einmal laden, wenn die Zeitabrechnung an ist und noch keine Tabelle gespeichert wurde
+  function ensureEscalationLimits(ps) {
+    if (!ps || !ps.timeLimits || (ps.escalationLimits && ps.escalationLimits.length) || escalationTried[ps.projectKey]) return;
+    escalationTried[ps.projectKey] = true;
+    fetchEscalationLimits(ps).then(function (table) {
+      if (!table.length) return;
+      ps.escalationLimits = table;
+      writeProjectConfigEntry(ps.projectKey, {escalationLimits: table});
+      rerenderProgressFromCache();
+    }).catch(function (err) { warn('Escalation-Limits nicht ladbar:', err); });
+  }
+
+  const quotaCache = {};
+
+  // Stundenkontingent eines Portal-Projekts (Wartung) aus den Financial data; null ohne Kontingent. 10 min im Speicher.
+  function fetchProjectQuota(projectSettings, pid) {
+    const base = getPortalBaseUrl(projectSettings);
+    if (!base || !pid) return Promise.resolve(null);
+    return memoPromise(quotaCache, String(pid), 10 * 60 * 1000, function () {
+      return new Promise(function (resolve) {
+        GM_xmlhttpRequest({
+          method: 'GET',
+          url: base + '/management/project/financial-rows/load/' + encodeURIComponent(String(pid)) + '/',
+          headers: {'HX-Request': 'true'},
+          withCredentials: true,
+          timeout: PORTAL_REQUEST_TIMEOUT_MS,
+          onload: function (response) {
+            if (response.status !== 200 || looksLikeLoginPage(response)) return resolve(null);
+            resolve(parseProjectFinanceFromHtml(response.responseText));
+          },
+          onerror: function () { resolve(null); },
+          ontimeout: function () { resolve(null); }
+        });
+      });
+    });
+  }
+
+  function createQuotaPill(quota) {
+    const pill = createTextSpan(formatHours(quota.booked) + ' / ' + formatHours(quota.quota) + ' h');
+    pill.className = 'ambient-margin-pill ambient-quota-pill ' + costTone(quota.booked, quota.quota);
+    pill.title = 'Stundenkontingent: ' + formatHours(quota.booked) + ' h gebucht von ' + formatHours(quota.quota) + ' h, noch ' + formatHours(quota.remaining) + ' h' +
+      (quota.from ? ' (' + quota.from + ' – ' + quota.to + ')' : '') + (quota.perMonth ? ', ' + formatHours(quota.perMonth) + ' h pro Monat' : '') +
+      (quota.expires ? ', verfällt alle ' + quota.expires + ' Monate' : '');
+    return pill;
+  }
+
+  // Kontingent-Pille an eine Balkenzeile hängen (Wartungsprojekte); ersetzt dort die Kosten-Pille
+  function attachQuotaPill(row, ps, pid, isExtra) {
+    if (!ps || !ps.costShow || !pid || !isFeatureOn('costPill')) return;
+    fetchProjectQuota(ps, pid).then(function (fin) {
+      if (!fin || !row.isConnected) return;
+      const quota = fin.quota;
+      if (!quota) { // nur Extra-Zeilen (Wartung); Hauptzeile bleibt unverändert. Budget statt Kontingent: Verbrauch steht schon in der Pille, Restbudget des Portals anhängen
+        const pill = isExtra ? row.querySelector('.ambient-margin-pill') : null;
+        if (pill && fin.residual !== null) {
+          pill.textContent += ' · Rest ' + formatEuro(fin.residual);
+          pill.title = 'Budgetverbrauch dieser Zeile (externe Tagessätze) · Restbudget des Projekts laut Portal: ' + formatEuro(fin.residual);
+        }
+        return;
+      }
+      Array.prototype.slice.call(row.querySelectorAll('.ambient-margin-pill')).forEach(function (el) { el.remove(); });
+      const link = row.querySelector('.ambient-icon-btn:last-child');
+      const pill = createQuotaPill(quota);
+      if (link) row.insertBefore(pill, link);
+      else row.appendChild(pill);
+    });
+  }
+
+  // Rolle einer Person aus ihrem Portal-Profil (Zeile „Level“); null wenn nicht lesbar
+  function fetchEmployeeRole(projectSettings, path) {
+    const base = getPortalBaseUrl(projectSettings);
+    if (!base || !EMPLOYEE_PATH.test(path)) return Promise.resolve(null);
+    return new Promise(function (resolve) {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: base + path,
+        withCredentials: true,
+        timeout: PORTAL_REQUEST_TIMEOUT_MS,
+        onload: function (response) {
+          if (response.status !== 200 || looksLikeLoginPage(response)) return resolve(null);
+          try {
+            const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+            const row = Array.from(doc.querySelectorAll('tr')).filter(function (tr) {
+              return tr.cells.length === 2 && /^(level|rolle)$/i.test(tr.cells[0].textContent.trim());
+            })[0];
+            resolve(row ? row.cells[1].textContent.trim() || null : null);
+          } catch (e) {
+            resolve(null);
+          }
+        },
+        onerror: function () { resolve(null); },
+        ontimeout: function () { resolve(null); }
+      });
+    });
+  }
+
+  // --- Interne Sätze aus dem Django-Admin des Portals (nur Staff). Keine feste Admin-URL: der Weg wird über Links gefunden
+  // (Portal-Seite → Link „Django Admin“ → Admin-Startseite → Link der Level-Kostensätze → Tabelle).
+  const ADMIN_PAGE_LIMIT = 5;
+
+  // Portal-Seite als Text laden (Browser-Login); nur auf dem Portal-Host, sonst gehen Cookies an fremde Ziele
+  function fetchPortalPage(url, base) {
+    let target;
+    try {
+      target = new URL(url, base + '/');
+      if (target.origin !== new URL(base).origin) return Promise.reject({message: 'Link zeigt auf einen fremden Host'});
+    } catch (e) {
+      return Promise.reject({message: 'Ungültiger Link'});
+    }
+    return new Promise(function (resolve, reject) {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: target.href,
+        withCredentials: true,
+        timeout: PORTAL_REQUEST_TIMEOUT_MS,
+        onload: function (response) {
+          if (looksLikeLoginPage(response)) return reject({message: 'Nicht im Portal angemeldet'});
+          if (response.status === 403 || response.status === 404) return reject({message: 'Kein Zugriff (nur für Portal-Staff)'});
+          if (response.status !== 200) return reject({message: 'Portal antwortete mit ' + response.status});
+          const text = String(response.responseText || '');
+          if (text.length > MAX_PORTAL_RESPONSE_CHARS) return reject({message: 'Antwort zu groß'});
+          resolve(text);
+        },
+        onerror: function () { reject({message: 'Portal nicht erreichbar'}); },
+        ontimeout: function () { reject({message: 'Zeitüberschreitung'}); }
+      });
+    });
+  }
+
+  // Erster Link der Seite, den test(Text, href) akzeptiert
+  function findPageLink(htmlText, test) {
+    const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+    const hit = Array.from(doc.querySelectorAll('a[href]')).filter(function (a) { return test(a.textContent.trim(), a.getAttribute('href')); })[0];
+    return hit ? hit.getAttribute('href') : null;
+  }
+
+  // Zeilen {level, role, internal} → {'Rolle (Level X)': €/h}; Sätze ≤ 0 zählen als nicht gepflegt
+  function adminRatesFromRows(rows) {
+    const rates = {};
+    rows.forEach(function (row) {
+      const rate = Number(String(row.internal).replace(/\s/g, '').replace(',', '.'));
+      if (row.role && row.level && rate > 0) rates[row.role.trim() + ' (Level ' + row.level.trim() + ')'] = rate;
+    });
+    return rates;
+  }
+
+  function parseAdminRateRows(htmlText) {
+    const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+    const table = doc.querySelector('#result_list') || doc.querySelector('table');
+    if (!table) return [];
+    const heads = Array.from(table.querySelectorAll('thead th')).map(function (th) { return th.textContent.trim(); });
+    const iLevel = heads.findIndex(function (h) { return /^level$/i.test(h); });
+    const iRole = heads.findIndex(function (h) { return /project role|^role$/i.test(h); });
+    const iInternal = heads.findIndex(function (h) { return /internal cost/i.test(h); });
+    if (iLevel < 0 || iRole < 0 || iInternal < 0) return [];
+    return Array.from(table.querySelectorAll('tbody tr')).map(function (tr) {
+      const cell = function (i) { return tr.children[i] ? tr.children[i].textContent.trim() : ''; };
+      return {level: cell(iLevel), role: cell(iRole), internal: cell(iInternal)};
+    });
+  }
+
+  function fetchAdminRates(projectSettings) {
+    const base = getPortalBaseUrl(projectSettings);
+    if (!base || !projectSettings.projectId) return Promise.reject({message: 'Portal-URL und Projekt-ID in den Einstellungen eintragen'});
+    return fetchPortalPage('/management/project/detail/' + encodeURIComponent(String(projectSettings.projectId)) + '/', base).then(function (html) {
+      const adminHref = findPageLink(html, function (text) { return /django\s*admin/i.test(text); });
+      if (!adminHref) throw {message: 'Im Portal gibt es keinen „Django Admin“-Link (kein Staff-Zugang?)'};
+      return fetchPortalPage(adminHref, base);
+    }).then(function (indexHtml) {
+      const listHref = findPageLink(indexHtml, function (text, href) {
+        return /role.?level/i.test(href) && !/history|\/add\/|\/\d+\//i.test(href) && /cost|rate|level/i.test(text + href);
+      });
+      if (!listHref) throw {message: 'Im Admin keine Level-Kostensätze gefunden'};
+      const rows = [];
+      const loadPage = function (page) {
+        const url = new URL(listHref, base + '/');
+        if (page > 1) url.searchParams.set('p', String(page - 1)); // Djangos Paginierung zählt ab 0
+        return fetchPortalPage(url.href, base).then(function (html) {
+          parseAdminRateRows(html).forEach(function (row) { rows.push(row); });
+          const hasNext = page < ADMIN_PAGE_LIMIT && new DOMParser().parseFromString(html, 'text/html').querySelector('.paginator a[href*="p=' + page + '"]');
+          return hasNext ? loadPage(page + 1) : rows;
+        });
+      };
+      return loadPage(1);
+    }).then(function (rows) {
+      const rates = adminRatesFromRows(rows);
+      if (!Object.keys(rates).length) throw {message: 'Im Admin keine Sätze gefunden (Tabellenspalten geändert?)'};
+      return rates;
+    });
+  }
+
+  // Wer Stunden gebucht hat, aber nicht in der Personentabelle des Projekts steht, bekommt die Rolle aus dem Profil; sie landet bei den
+  // Rollen der Kostensätze (extra: true), damit Karten, Sätze-Tabelle und Dashboard sie gleich behandeln
+  function loadMissingPeople(projectSettings, hours, onProgress) {
+    const known = {};
+    projectSettings.costPeople.forEach(function (p) { known[p.name.toLowerCase()] = true; });
+    const missing = hours.filter(function (h) { return h.path && !known[h.name.toLowerCase()]; });
+    let done = 0;
+    let added = false;
+    if (onProgress) onProgress(0, missing.length);
+    // über den Portal-Limiter (5 parallel): bei internen Projekten sind es schnell 30 Profile à ~300 KB
+    return Promise.all(missing.map(function (h) {
+      return portalLimiter(function () { return fetchEmployeeRole(projectSettings, h.path); }).then(function (role) {
+        done += 1;
+        if (onProgress) onProgress(done, missing.length);
+        if (!role) return;
+        const sameRole = projectSettings.costPeople.filter(function (p) { return p.role === role && p.daily > 0; })[0];
+        projectSettings.costPeople = projectSettings.costPeople.concat({name: h.name, role: role, projectRole: role, daily: sameRole ? sameRole.daily : null, extra: true});
+        writeProjectConfigEntry(projectSettings.projectKey, {costPeople: projectSettings.costPeople}); // gleich merken: nächstes Öffnen ist sofort fertig
+        added = true;
+      });
+    })).then(function () { return added; });
+  }
+
+  const LOADING_DONE_MS = 800;
+
+  // Ladeanzeige mit Schritten (Finanzdaten → Timesheets → Level-Historien …): Häkchen, Spinner, Zähler und Gesamtbalken
+  function createLoadingSteps(defs) {
+    const el = document.createElement('div');
+    el.className = 'ambient-fin-loading';
+    el.setAttribute('role', 'status');
+    const overall = document.createElement('div');
+    overall.className = 'ambient-fin-track ambient-fin-overall';
+    const overallFill = document.createElement('div');
+    overallFill.className = 'ambient-fin-fill';
+    overall.appendChild(overallFill);
+    const list = document.createElement('div');
+    list.className = 'ambient-fin-steps';
+    const steps = {};
+    defs.forEach(function (def) {
+      const row = document.createElement('div');
+      row.className = 'ambient-fin-step';
+      row.dataset.state = 'pending';
+      const icon = document.createElement('span');
+      icon.className = 'ambient-fin-step-icon';
+      const text = document.createElement('div');
+      text.className = 'ambient-fin-step-text';
+      const line = document.createElement('div');
+      line.className = 'ambient-fin-step-line';
+      const label = createTextSpan(def.label);
+      const count = createTextSpan('');
+      count.className = 'ambient-fin-step-count';
+      line.appendChild(label);
+      line.appendChild(count);
+      const track = document.createElement('div');
+      track.className = 'ambient-fin-track ambient-fin-step-track';
+      const fill = document.createElement('div');
+      fill.className = 'ambient-fin-fill';
+      track.appendChild(fill);
+      text.appendChild(line);
+      text.appendChild(track);
+      row.appendChild(icon);
+      row.appendChild(text);
+      list.appendChild(row);
+      fill.style.transition = 'none'; // der Balken läuft über die Animationsschleife unten
+      steps[def.id] = {row: row, count: count, fill: fill, target: 0, shown: 0, finishing: false, settled: false};
+    });
+    overallFill.style.transition = 'none';
+    el.appendChild(overall);
+    el.appendChild(list);
+
+    // Angezeigter Fortschritt läuft dem echten hinterher: ohne neue Meldung kriecht er langsam weiter (nie eingefroren),
+    // ein fertiger Schritt läuft zügig bis 100 % zu Ende, bevor das Häkchen kommt. complete() wartet darauf.
+    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let raf = 0;
+    let last = 0;
+    let waiters = [];
+    function paintBars() {
+      let sum = 0;
+      defs.forEach(function (def) {
+        const st = steps[def.id];
+        st.fill.style.width = (st.shown * 100).toFixed(1) + '%';
+        sum += st.shown;
+      });
+      overallFill.style.width = (sum / defs.length * 100).toFixed(1) + '%';
+    }
+    function flushIfSettled() {
+      if (!defs.every(function (def) { return steps[def.id].settled; })) return;
+      if (!waiters.length) return;
+      const done = waiters;
+      waiters = [];
+      if (!reduced) el.classList.add('is-complete'); // Abschluss-Animation (fix LOADING_DONE_MS), danach öffnet das Dashboard
+      setTimeout(function () { done.forEach(function (resolve) { resolve(); }); }, reduced ? 0 : LOADING_DONE_MS);
+    }
+    function frame(now) {
+      raf = 0;
+      const dt = Math.min(64, last ? now - last : 16.7) / 16.7;
+      last = now;
+      let running = false;
+      defs.forEach(function (def) {
+        const st = steps[def.id];
+        if (st.settled || (!st.finishing && st.row.dataset.state !== 'active')) return;
+        if (st.finishing) {
+          st.shown = Math.min(1, st.shown + Math.max((1 - st.shown) * 0.3, 0.03) * dt);
+          if (st.shown >= 0.999) {
+            st.shown = 1;
+            st.settled = true;
+            st.row.dataset.state = 'done';
+            return;
+          }
+        } else if (st.shown < st.target) {
+          st.shown = Math.min(st.target, st.shown + Math.max((st.target - st.shown) * 0.18, 0.004) * dt); // aufholen
+        } else {
+          const ceiling = st.target > 0 ? Math.min(0.95, st.target + 0.1) : 0.9; // weiterkriechen, solange nichts Neues kommt
+          st.shown += (ceiling - st.shown) * 0.008 * dt;
+        }
+        running = true;
+      });
+      paintBars();
+      if (running && el.isConnected) raf = requestAnimationFrame(frame);
+      else flushIfSettled();
+    }
+    function kick() {
+      if (reduced) {
+        defs.forEach(function (def) { if (steps[def.id].finishing) { steps[def.id].shown = 1; steps[def.id].settled = true; steps[def.id].row.dataset.state = 'done'; } });
+        paintBars();
+        flushIfSettled();
+      } else if (!raf) { last = 0; raf = requestAnimationFrame(frame); }
+    }
+    return {
+      element: el,
+      progress: function (id, done, total) { // total unbekannt (0): nur Spinner, der Balken kriecht
+        const step = steps[id];
+        if (step.finishing) return;
+        step.row.dataset.state = 'active';
+        step.target = total > 0 ? Math.min(1, done / total) : 0;
+        step.count.textContent = total > 0 ? done.toLocaleString('de-DE') + ' / ' + total.toLocaleString('de-DE') : '';
+        kick();
+      },
+      finish: function (id) {
+        const step = steps[id];
+        step.finishing = true;
+        if (step.row.dataset.state === 'pending') step.row.dataset.state = 'active';
+        kick();
+      },
+      // alles zu Ende laufen lassen (auch Schritte, die nie gemeldet haben); löst danach auf, spätestens nach 2 s
+      complete: function () {
+        defs.forEach(function (def) { if (!steps[def.id].finishing) steps[def.id].finishing = true; if (steps[def.id].row.dataset.state === 'pending') steps[def.id].row.dataset.state = 'active'; });
+        return new Promise(function (resolve) {
+          waiters.push(resolve);
+          setTimeout(resolve, 2000);
+          kick();
+        });
+      }
+    };
+  }
+
+  // Finanz-Dashboard als zweites Seitenpanel (wie die Einstellungen): wer verbraucht wie viel vom Budget, mit den Kostensätzen aus den Einstellungen
+  // Kleine Auswahlliste im GitLab-Look (GitLabs GlCollapsibleListbox ist eine Vue-Komponente, hier nicht nutzbar).
+  // entries: [[value, label]] oder {heading: 'Text'} als Gruppenüberschrift mit Trennlinie; liefert {element, value, disabled, onChange(fn)}
+  function createListbox(ariaLabel, entries) {
+    const options = entries.filter(function (e) { return Array.isArray(e); });
+    const root = document.createElement('div');
+    root.className = 'ambient-listbox';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn gl-button btn-default btn-md ambient-listbox-btn';
+    button.setAttribute('aria-haspopup', 'listbox');
+    button.setAttribute('aria-expanded', 'false');
+    button.setAttribute('aria-label', ariaLabel);
+    const text = document.createElement('span');
+    text.className = 'ambient-listbox-text';
+    const caret = document.createElement('span');
+    caret.className = 'ambient-listbox-caret';
+    caret.setAttribute('aria-hidden', 'true');
+    button.appendChild(text);
+    button.appendChild(caret);
+    const menu = document.createElement('div');
+    menu.className = 'ambient-listbox-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.hidden = true;
+    root.appendChild(button);
+    root.appendChild(menu);
+
+    let current = options[0][0];
+    let handler = null;
+    const items = [];
+    entries.forEach(function (e) {
+      if (!Array.isArray(e)) {
+        const heading = createTextSpan(e.heading);
+        heading.className = 'ambient-listbox-heading';
+        heading.setAttribute('role', 'presentation');
+        menu.appendChild(heading);
+        return;
+      }
+      const item = document.createElement('div');
+      item.className = 'ambient-listbox-item';
+      item.setAttribute('role', 'option');
+      item.tabIndex = -1;
+      item.dataset.value = String(e[0]);
+      item.appendChild(createTextSpan(e[1]));
+      item.addEventListener('click', function () { choose(e[0], true); });
+      menu.appendChild(item);
+      items.push(item);
+    });
+    function paint() {
+      items.forEach(function (item, i) {
+        const on = String(options[i][0]) === String(current);
+        item.setAttribute('aria-selected', String(on));
+        if (on) text.textContent = options[i][1];
+      });
+    }
+    function setMenu(open) {
+      menu.hidden = !open;
+      button.setAttribute('aria-expanded', String(open));
+      if (open) {
+        const sel = items.filter(function (i) { return i.getAttribute('aria-selected') === 'true'; })[0];
+        if (sel) { sel.focus(); sel.scrollIntoView({block: 'nearest'}); }
+        document.addEventListener('mousedown', outside, true);
+      } else document.removeEventListener('mousedown', outside, true);
+    }
+    function outside(event) { if (!root.contains(event.target)) setMenu(false); }
+    function choose(value, notify) {
+      const changed = String(value) !== String(current);
+      current = value;
+      paint();
+      setMenu(false);
+      button.focus();
+      if (changed && notify && handler) handler();
+    }
+    button.addEventListener('click', function () { setMenu(menu.hidden); });
+    menu.addEventListener('keydown', function (event) {
+      const i = items.indexOf(document.activeElement);
+      if (event.key === 'ArrowDown') items[Math.min(items.length - 1, i + 1)].focus();
+      else if (event.key === 'ArrowUp') items[Math.max(0, i - 1)].focus();
+      else if (event.key === 'Enter' || event.key === ' ') { if (i >= 0) choose(options[i][0], true); }
+      else if (event.key === 'Escape') { setMenu(false); button.focus(); event.stopPropagation(); }
+      else if (event.key === 'Tab') setMenu(false);
+      else return;
+      event.preventDefault();
+    });
+    paint();
+    return {
+      element: root,
+      get value() { return String(current); },
+      set value(v) { current = v; paint(); },
+      get disabled() { return button.disabled; },
+      set disabled(d) { button.disabled = d; if (d) setMenu(false); },
+      onChange: function (fn) { handler = fn; }
+    };
+  }
+
+  // Dropdown mit Mehrfachauswahl (statt Pillen-Meer): Menü bleibt offen, Knopf fasst die Auswahl zusammen
+  // isOn(key) → bool, onToggle(key); setOptions([{key, text, disabled}]) füllt das Menü
+  function createMultiselect(ariaLabel, emptyText, isOn, onToggle) {
+    const root = document.createElement('div');
+    root.className = 'ambient-listbox ambient-multiselect';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn gl-button btn-default btn-md ambient-listbox-btn';
+    button.setAttribute('aria-haspopup', 'listbox');
+    button.setAttribute('aria-expanded', 'false');
+    button.setAttribute('aria-label', ariaLabel);
+    const text = document.createElement('span');
+    text.className = 'ambient-listbox-text';
+    const caret = document.createElement('span');
+    caret.className = 'ambient-listbox-caret';
+    caret.setAttribute('aria-hidden', 'true');
+    button.appendChild(text);
+    button.appendChild(caret);
+    const menu = document.createElement('div');
+    menu.className = 'ambient-listbox-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.setAttribute('aria-multiselectable', 'true');
+    menu.hidden = true;
+    root.appendChild(button);
+    root.appendChild(menu);
+    let options = [];
+    let items = [];
+
+    function paint() {
+      const names = options.filter(function (o) { return isOn(o.key); }).map(function (o) { return o.text; });
+      text.textContent = !options.length ? emptyText : !names.length ? 'Keine ausgewählt' : names.length <= 2 ? names.join(', ') : names.length + ' ausgewählt';
+      text.title = names.join(', ');
+      items.forEach(function (item, i) { item.setAttribute('aria-selected', String(isOn(options[i].key))); });
+      button.disabled = !options.length || options.every(function (o) { return o.disabled; });
+    }
+    function setMenu(open) {
+      menu.hidden = !open;
+      button.setAttribute('aria-expanded', String(open));
+      if (open) {
+        if (items[0]) items[0].focus();
+        document.addEventListener('mousedown', outside, true);
+      } else document.removeEventListener('mousedown', outside, true);
+    }
+    function outside(event) { if (!root.contains(event.target)) setMenu(false); }
+    function toggle(i) {
+      if (options[i].disabled) return;
+      onToggle(options[i].key);
+      paint();
+    }
+    button.addEventListener('click', function () { setMenu(menu.hidden); });
+    menu.addEventListener('keydown', function (event) {
+      const i = items.indexOf(document.activeElement);
+      if (event.key === 'ArrowDown') items[Math.min(items.length - 1, i + 1)].focus();
+      else if (event.key === 'ArrowUp') items[Math.max(0, i - 1)].focus();
+      else if (event.key === 'Enter' || event.key === ' ') { if (i >= 0) toggle(i); }
+      else if (event.key === 'Escape') { setMenu(false); button.focus(); event.stopPropagation(); }
+      else if (event.key === 'Tab') setMenu(false);
+      else return;
+      event.preventDefault();
+    });
+    return {
+      element: root,
+      setOptions: function (next) {
+        options = next;
+        menu.textContent = '';
+        items = options.map(function (o, i) {
+          const item = document.createElement('div');
+          item.className = 'ambient-listbox-item';
+          item.setAttribute('role', 'option');
+          item.tabIndex = -1;
+          item.appendChild(createTextSpan(o.text));
+          item.addEventListener('click', function () { toggle(i); });
+          menu.appendChild(item);
+          return item;
+        });
+        paint();
+      }
+    };
+  }
+
+  function createFinanceDrawer(projectSettings, onOpen) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.title = 'Finanzen';
+    button.setAttribute('aria-label', 'Finanz-Dashboard');
+    button.setAttribute('aria-haspopup', 'dialog');
+    button.setAttribute('aria-expanded', 'false');
+    button.setAttribute('aria-controls', 'ambient-progress-finance');
+    button.className = 'btn gl-button btn-default btn-md btn-default-tertiary btn-icon ambient-header-btn';
+    button.appendChild(createHeaderIcon(FINANCE_ICON_SVG));
+    button.hidden = !projectSettings.costShow || !isFeatureOn('financeButton'); // ohne „Kosten anzeigen“ gibt es kein Finanz-Dashboard
+
+    const panel = document.createElement('div');
+    panel.id = 'ambient-progress-finance';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', 'Finanz-Dashboard');
+    const header = document.createElement('div');
+    applyStyles(header, {display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.9rem 1.25rem', position: 'sticky', top: '0', zIndex: '2', background: THEME_BG, borderBottom: SETTINGS_BORDER});
+    const titleBox = document.createElement('div');
+    applyStyles(titleBox, {flex: '1 1 auto', minWidth: '0', display: 'flex', flexDirection: 'column'});
+    titleBox.appendChild(createTextSpan('Finanzen', {fontSize: '1.05rem', fontWeight: '600'}));
+    titleBox.appendChild(createTextSpan(projectSettings.projectPath || '', {fontSize: '0.78rem', color: SETTINGS_SUBTLE_TEXT}));
+    const reload = document.createElement('button');
+    reload.type = 'button';
+    reload.textContent = 'Neu laden';
+    reload.className = 'ambient-btn btn gl-button btn-default btn-sm';
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.title = 'Schließen';
+    close.setAttribute('aria-label', 'Schließen');
+    close.className = 'ambient-btn btn gl-button btn-default btn-default-tertiary btn-icon btn-sm';
+    close.innerHTML = '<svg class="gl-button-icon gl-icon s16" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+    [titleBox, reload, close].forEach(function (el) { header.appendChild(el); });
+    const content = document.createElement('div');
+    applyStyles(content, {display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '1.5rem 1.5rem 2rem'});
+    panel.appendChild(header);
+    panel.appendChild(content);
+
+    // Daten überleben ein Neuaufbauen der Toolbar (SPA-Navigation): Speicher pro Projekt
+    const store = financeStore[projectSettings.projectId] || (financeStore[projectSettings.projectId] = {loaded: null, monthData: null});
+    let open = false;
+
+    function tile(label, value, title, tone) {
+      const el = document.createElement('div');
+      el.className = 'ambient-fin-tile';
+      el.title = title ? label + ' – ' + title : label;
+      el.appendChild(createTextSpan(label));
+      el.firstChild.className = 'ambient-fin-label';
+      const b = document.createElement('b');
+      b.textContent = value;
+      if (tone) b.classList.add('ambient-fin-tone', tone);
+      el.appendChild(b);
+      return el;
+    }
+
+    function roleSelect(name) { // Rolle unbekannter Personen von Hand wählen (aus den Rollen der Sätze-Tabelle)
+      const select = document.createElement('select');
+      select.className = FORM_INPUT_CLASSES;
+      select.setAttribute('aria-label', 'Rolle von ' + name);
+      select.appendChild(new Option('Rolle wählen …', ''));
+      const roles = {};
+      projectSettings.costPeople.forEach(function (p) { roles[p.role] = true; });
+      Object.keys(readInternalRates(projectSettings.projectKey)).forEach(function (r) { roles[r] = true; });
+      Object.keys(roles).sort().forEach(function (role) { select.appendChild(new Option(role, role)); });
+      select.value = projectSettings.costRoleOverrides[name] || '';
+      select.addEventListener('change', function () {
+        if (select.value) projectSettings.costRoleOverrides[name] = select.value;
+        else delete projectSettings.costRoleOverrides[name];
+        writeProjectConfigEntry(projectSettings.projectKey, {costRoleOverrides: projectSettings.costRoleOverrides});
+        render();
+      });
+      return select;
+    }
+
+    // Link zur vorgefilterten Timesheet-Tabelle im Portal (Projekt + Person + Zeitraum)
+    function timesheetLink(name, range) {
+      const base = getPortalBaseUrl(projectSettings);
+      const sources = (store.loaded ? store.loaded.data.hours : []).concat(store.monthData ? store.monthData.rows : []);
+      const hit = sources.filter(function (r) { return r.name === name && r.path; })[0];
+      const id = hit && /(\d+)\/?$/.exec(hit.path);
+      if (!base || !projectSettings.projectId || !id) return null;
+      const a = document.createElement('a');
+      a.href = base + '/management/timesheet/?1=1&project=' + encodeURIComponent(String(projectSettings.projectId)) + '&employee=' + id[1] +
+        '&start_date=' + encodeURIComponent(range ? range.start : '01/01/2015') + (range ? '&end_date=' + encodeURIComponent(range.end) : '');
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.className = 'ambient-fin-link';
+      a.textContent = '↗';
+      a.title = 'Buchungen von ' + name + ' im Portal ansehen';
+      a.setAttribute('aria-label', a.title);
+      return a;
+    }
+
+    function renderTotal() {
+      content.textContent = '';
+      if (!store.loaded) return;
+      const data = store.loaded.data;
+      const mode = effectiveCostMode(projectSettings);
+      const model = buildFinanceRows(data.hours, projectSettings.costPeople, projectSettings.costRoleOverrides, readInternalRates(projectSettings.projectKey), mode);
+      const budget = data.budget;
+      const modeText = mode === 'external' ? 'extern (Tagessatz ÷ 8)' : 'intern';
+      const share = function (cost) { return budget > 0 ? cost / budget * 100 : null; };
+
+      const summary = document.createElement('div');
+      summary.className = 'ambient-fin-summary';
+      summary.appendChild(tile('Budget', budget === null ? '—' : formatEuro(budget),
+        budget === null ? 'Kein „Initial budget“ im Portal (Abrechnung nach Aufwand?)' : data.accumulated !== null && data.accumulated !== budget ? 'Initial budget; Gesamt inkl. Nachträgen: ' + formatEuro(data.accumulated) : 'Initial budget'));
+      const costTile = tile('Kosten (' + modeText + ')', formatEuro(model.total), model.missing ? model.missing + ' Personen ohne Satz sind nicht enthalten' : '');
+      if (budget > 0) costTile.querySelector('b').className = costTone(model.total, budget);
+      summary.appendChild(costTile);
+      const restTile = tile('Rest', budget === null ? '—' : formatSignedEuro(budget - model.total));
+      if (budget > 0) restTile.querySelector('b').className = costTone(model.total, budget); // gleiche Ampel wie die Kosten
+      summary.appendChild(restTile);
+      if (data.quota) { // Wartungsprojekt: Stundenkontingent über die ganze Breite
+        const q = data.quota;
+        const quotaTile = tile('Stundenkontingent' + (q.from ? ' ' + q.from + ' – ' + q.to : ''), formatHours(q.booked) + ' / ' + formatHours(q.quota) + ' h · noch ' + formatHours(q.remaining) + ' h' + (q.perMonth ? ' · ' + formatHours(q.perMonth) + ' h pro Monat' : ''),
+          q.expires ? 'Kontingent verfällt alle ' + q.expires + ' Monate' : '');
+        quotaTile.querySelector('b').className = costTone(q.booked, q.quota);
+        quotaTile.style.gridColumn = '1 / -1';
+        summary.appendChild(quotaTile);
+      }
+      content.appendChild(summary);
+
+      if (budget > 0) { // Balken = Budget, Segmente = Personen (nach Kosten), Rest bleibt frei; über Budget: Skala wächst, roter Strich am Budget
+        const basis = Math.max(budget, model.total);
+        const stack = document.createElement('div');
+        stack.className = 'ambient-fin-stack';
+        stack.setAttribute('role', 'img');
+        stack.setAttribute('aria-label', Math.round(share(model.total) * 10) / 10 + ' % des Budgets verbraucht');
+        model.rows.forEach(function (r, i) {
+          if (!r.cost) return;
+          const seg = document.createElement('div');
+          seg.className = 'ambient-fin-seg';
+          seg.style.width = r.cost / basis * 100 + '%';
+          seg.style.background = FINANCE_COLORS[i % FINANCE_COLORS.length];
+          seg.title = r.name + ': ' + formatEuro(r.cost) + ' (' + (Math.round(share(r.cost) * 10) / 10).toLocaleString('de-DE') + ' % des Budgets)';
+          stack.appendChild(seg);
+        });
+        if (model.total > budget) {
+          const mark = document.createElement('div');
+          mark.className = 'ambient-fin-budget-mark';
+          mark.style.left = budget / basis * 100 + '%';
+          mark.title = 'Budget ' + formatEuro(budget);
+          stack.appendChild(mark);
+        }
+        content.appendChild(stack);
+      }
+
+      const table = document.createElement('div');
+      table.className = 'ambient-fin-card';
+      const head = document.createElement('div');
+      head.className = 'ambient-fin-row is-head';
+      ['Person', 'Stunden', '€/h ' + (mode === 'external' ? 'extern' : 'intern'), 'Kosten ' + (mode === 'external' ? 'extern' : 'intern'), budget > 0 ? 'Anteil am Budget' : ''].forEach(function (text, i) {
+        const cell = createTextSpan(text);
+        if (i > 0 && i < 4) cell.className = 'num';
+        head.appendChild(cell);
+      });
+      table.appendChild(head);
+      const maxShare = model.rows.reduce(function (m, r) { return Math.max(m, r.cost && budget > 0 ? share(r.cost) : 0); }, 0);
+      model.rows.forEach(function (r) {
+        const row = document.createElement('div');
+        row.className = 'ambient-fin-row';
+        const who = document.createElement('div');
+        const nameLine = document.createElement('span');
+        nameLine.className = 'ambient-fin-name';
+        if (r.cost) {
+          const dot = document.createElement('span');
+          dot.className = 'ambient-fin-dot';
+          dot.style.background = FINANCE_COLORS[model.rows.indexOf(r) % FINANCE_COLORS.length];
+          nameLine.appendChild(dot);
+        }
+        nameLine.appendChild(createTextSpan(r.name, {overflow: 'hidden', textOverflow: 'ellipsis', minWidth: '0'}));
+        const tsLink = timesheetLink(r.name, null);
+        if (tsLink) nameLine.appendChild(tsLink);
+        who.appendChild(nameLine);
+        if (r.known || projectSettings.costRoleOverrides[r.name]) {
+          const role = createTextSpan(r.role || '');
+          role.className = 'ambient-fin-role';
+          who.appendChild(role);
+        } else {
+          who.appendChild(roleSelect(r.name));
+        }
+        who.style.display = 'flex';
+        who.style.flexDirection = 'column';
+        row.appendChild(who);
+        [r.hours.toLocaleString('de-DE', {maximumFractionDigits: 2}), r.rate === null ? '—' : r.rate.toLocaleString('de-DE', {maximumFractionDigits: 2}), r.cost === null ? '—' : formatEuro(r.cost)].forEach(function (text) {
+          const cell = createTextSpan(text);
+          cell.className = 'num';
+          row.appendChild(cell);
+        });
+        const shareCell = document.createElement('div');
+        shareCell.className = 'ambient-fin-share';
+        if (r.cost !== null && budget > 0) {
+          shareCell.appendChild(createTextSpan((Math.round(share(r.cost) * 10) / 10).toLocaleString('de-DE') + ' %'));
+          const track = document.createElement('div');
+          track.className = 'ambient-fin-track';
+          const fill = document.createElement('div');
+          fill.className = 'ambient-fin-fill';
+          fill.style.width = (maxShare > 0 ? share(r.cost) / maxShare * 100 : 0) + '%'; // relativ zum größten Anteil, damit Unterschiede sichtbar bleiben
+          track.appendChild(fill);
+          shareCell.appendChild(track);
+        }
+        row.appendChild(shareCell);
+        table.appendChild(row);
+      });
+      content.appendChild(table);
+
+      const notes = [];
+      if (!projectSettings.costPeople.length) notes.push('Keine Rollen geladen: unter Einstellungen → Kostensätze „Rollen aus Portal laden“.');
+      if (mode !== 'external' && model.rows.some(function (r) { return r.known && r.rate === null; })) notes.push('Für manche Rollen fehlt der interne Satz (Einstellungen → Kostensätze).');
+      if (model.rows.some(function (r) { return !r.known && !projectSettings.costRoleOverrides[r.name]; })) notes.push('Personen ohne Rolle im Projekt: Rolle oben wählen, dann zählen sie mit.');
+      if (data.portalInternalCost !== null) notes.push('Zum Abgleich: das Portal nennt interne Kosten von ' + formatEuro(data.portalInternalCost) + '.');
+      notes.push('Stand ' + formatStand(store.loaded.at) + ' Uhr, Sätze und Modus aus den Einstellungen (Kostensätze).');
+      notes.forEach(function (text) {
+        const note = createTextSpan(text);
+        note.className = 'ambient-fin-note';
+        content.appendChild(note);
+      });
+    }
+
+    // --- Zeitraum: Gesamt (Portal-Summen) oder ein Monat mit Vergleich zu den Vormonaten (Timesheets + Level-Historie)
+    function periodSpan() {
+      return resolvePeriodSpan(projectSettings.financePeriod, monthKeyOf(Date.now()), projectSettings.financeFrom, projectSettings.financeTo);
+    }
+    function spanLabel(sp) { return sp.len === 1 ? monthLabel(sp.first) : monthLabel(sp.first) + ' – ' + monthLabel(sp.last); }
+    function prevSpanOf(sp) { return {first: addMonthsKey(sp.first, -sp.len), last: addMonthsKey(sp.first, -1), len: sp.len}; }
+    // Erster zu ladender Monat: bei einem Monat die Vergleichsmonate (+1 für das Δ der ältesten Zeile), bei einer Spanne die Vorperiode
+    function loadFirst(sp) { return addMonthsKey(sp.first, -(sp.len === 1 ? loadSpan() : sp.len)); }
+    function windowKey(sp) { return loadFirst(sp) + '|' + sp.last; }
+
+    const controls = document.createElement('div');
+    applyStyles(controls, {display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem 1.25rem', padding: '0.8rem 1.5rem', borderBottom: SETTINGS_BORDER});
+    function labeledControl(label, box) {
+      const wrap = document.createElement('div');
+      applyStyles(wrap, {display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem'});
+      wrap.appendChild(createTextSpan(label, {color: SETTINGS_SUBTLE_TEXT}));
+      wrap.appendChild(box.element);
+      return wrap;
+    }
+    const nowKey = monthKeyOf(Date.now());
+    const monthOptions = [];
+    const pastMonths = [];
+    for (let i = 0; i < 24; i++) {
+      const key = addMonthsKey(nowKey, -i);
+      monthOptions.push([key, monthLabel(key)]);
+      if (i >= 1 && i <= 12) pastMonths.push([key, monthLabel(key)]);
+    }
+    const periodOptions = [
+      ['all', 'Gesamt (ganzes Projekt)'],
+      {heading: 'Zeitraum'},
+      ['current', 'Dieser Monat (' + monthLabel(nowKey) + ')'], ['last:3', 'Letzte 3 Monate'], ['last:6', 'Letzte 6 Monate'], ['last:12', 'Letzte 12 Monate'],
+      ['year', 'Dieses Jahr (' + nowKey.slice(0, 4) + ')'], ['custom', 'Eigene Spanne …'],
+      {heading: 'Einzelner Monat'}
+    ].concat(pastMonths);
+    const periodSelect = createListbox('Zeitraum', periodOptions);
+    const fromSelect = createListbox('Spanne von', monthOptions);
+    const toSelect = createListbox('Spanne bis', monthOptions);
+    const compareSelect = createListbox('Vergleich mit Vormonaten', [[0, 'Kein Vergleich'], [1, 'nur Vormonat'], [3, 'letzte 3 Monate'], [6, 'letzte 6 Monate'], [12, 'letzte 12 Monate']]);
+    const customBox = document.createElement('div');
+    applyStyles(customBox, {display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem'});
+    customBox.appendChild(createTextSpan('von', {color: SETTINGS_SUBTLE_TEXT}));
+    customBox.appendChild(fromSelect.element);
+    customBox.appendChild(createTextSpan('bis', {color: SETTINGS_SUBTLE_TEXT}));
+    customBox.appendChild(toSelect.element);
+    function syncControls() {
+      periodSelect.value = projectSettings.financePeriod;
+      compareSelect.value = String(projectSettings.financeCompare);
+      fromSelect.value = projectSettings.financeFrom || addMonthsKey(monthKeyOf(Date.now()), -2);
+      toSelect.value = projectSettings.financeTo || monthKeyOf(Date.now());
+      customBox.hidden = projectSettings.financePeriod !== 'custom';
+    }
+    function saveControls() {
+      projectSettings.financePeriod = periodSelect.value;
+      projectSettings.financeCompare = Number(compareSelect.value);
+      projectSettings.financeFrom = fromSelect.value;
+      projectSettings.financeTo = toSelect.value;
+      writeProjectConfigEntry(projectSettings.projectKey, {financePeriod: projectSettings.financePeriod, financeCompare: projectSettings.financeCompare, financeFrom: projectSettings.financeFrom, financeTo: projectSettings.financeTo});
+      syncControls();
+      load(false);
+    }
+    periodSelect.onChange(saveControls);
+    fromSelect.onChange(saveControls);
+    toSelect.onChange(saveControls);
+    // Nur der Vergleich geändert: der Rest des Dashboards bleibt stehen, nur der Verlauf lädt (falls nötig) nach
+    compareSelect.onChange(function () {
+      projectSettings.financeCompare = Number(compareSelect.value);
+      writeProjectConfigEntry(projectSettings.projectKey, {financeCompare: projectSettings.financeCompare});
+      const sp = periodSpan();
+      const head = content.querySelector('.ambient-fin-verlauf-head');
+      const covered = sp && store.monthData && store.monthData.key === windowKey(sp);
+      if (!sp || !head || !store.loaded) return load(false);
+      if (covered) return renderMonth();
+      const oldBodies = Array.prototype.slice.call(content.querySelectorAll('.ambient-fin-verlauf-body'));
+      const keepHeight = oldBodies.reduce(function (sum, n) { return sum + n.offsetHeight; }, 0); // Platz halten, damit die Seite darunter nicht springt
+      oldBodies.forEach(function (n) { n.remove(); });
+      const loader = createLoadingSteps([{id: 'timesheets', label: 'Timesheet-Buchungen'}, {id: 'levels', label: 'Level-Historien der Personen'}]);
+      loader.element.classList.add('ambient-fin-verlauf-body', 'ambient-fin-roles-loader');
+      loader.element.style.minHeight = keepHeight + 'px';
+      loader.element.style.boxSizing = 'border-box';
+      loader.element.style.alignContent = 'center';
+      head.parentNode.insertBefore(loader.element, head.nextSibling);
+      loadMonthData(sp, loader).then(function () {
+        registerHistoryRoles(monthModel().report.roles);
+        return loader.complete();
+      }).then(renderMonth).catch(showError);
+    });
+    controls.appendChild(labeledControl('Zeitraum', periodSelect));
+    controls.appendChild(customBox);
+    syncControls();
+    panel.insertBefore(controls, content);
+
+
+    // Tooltip der Δ-Zellen: Stunden-Differenz und womit verglichen wird
+    function hoursDeltaTitle(curHours, prevHours, prevLabel) {
+      const d = Math.round((curHours - prevHours) * 100) / 100;
+      const fmt = function (n) { return n.toLocaleString('de-DE', {maximumFractionDigits: 2}); };
+      return 'Δ gegenüber ' + prevLabel + ': ' + (d > 0 ? '+' : '') + fmt(d) + ' h (' + fmt(prevHours) + ' h → ' + fmt(curHours) + ' h)';
+    }
+
+    function deltaText(cur, prev) {
+      if (prev === undefined || prev === null) return '—';
+      const d = cur - prev;
+      if (Math.abs(d) < 0.5) return '±0 €';
+      return (d > 0 ? '▲ ' : '▼ ') + formatSignedEuro(d);
+    }
+
+    // Δ-Zelle: Pfeil in fester Spalte, Betrag rechtsbündig, damit alle Zeilen untereinander stehen; Kosten steigen = rot, sinken = grün
+    function deltaCell(cur, prev, title) {
+      const cell = document.createElement('span');
+      cell.className = 'ambient-fin-delta';
+      if (title) cell.title = title;
+      const arrow = document.createElement('span');
+      const value = document.createElement('span');
+      value.className = 'val';
+      if (prev === undefined || prev === null) {
+        cell.classList.add('is-flat');
+        value.textContent = '—';
+      } else {
+        const d = cur - prev;
+        if (Math.abs(d) < 0.5) {
+          cell.classList.add('is-flat');
+          arrow.textContent = '▬';
+          value.textContent = '±0 €';
+        } else {
+          cell.classList.add(d > 0 ? 'is-up' : 'is-down');
+          arrow.textContent = d > 0 ? '▲' : '▼';
+          value.textContent = formatSignedEuro(d);
+        }
+      }
+      cell.appendChild(arrow);
+      cell.appendChild(value);
+      return cell;
+    }
+
+    function monthModel() {
+      const sp = periodSpan();
+      const report = buildMonthReport(store.monthData.rows, store.monthData.histories, projectSettings.costPeople, projectSettings.costRoleOverrides, readInternalRates(projectSettings.projectKey), effectiveCostMode(projectSettings));
+      const names = {};
+      Object.keys(report.months).forEach(function (key) {
+        Object.keys(report.months[key].persons).forEach(function (name) { names[name] = (names[name] || 0) + report.months[key].persons[name].cost; });
+      });
+      const order = Object.keys(names).sort(function (a, b) { return names[b] - names[a]; }); // stabile Farben über alle Monate
+      return {sp: sp, report: report, order: order};
+    }
+
+    function renderMonth() {
+      content.textContent = '';
+      if (!store.loaded || !store.monthData) return;
+      const model = monthModel();
+      const mode = effectiveCostMode(projectSettings);
+      const modeText = mode === 'external' ? 'extern' : 'intern';
+      const budget = store.loaded.data.budget;
+      const empty = {hours: 0, cost: 0, persons: {}};
+      const sp = model.sp;
+      const label = spanLabel(sp);
+      const prevSpan = prevSpanOf(sp);
+      const prevLabel = spanLabel(prevSpan);
+      const cur = sumMonthSpan(model.report.months, sp.first, sp.last) || empty;
+      const prev = sumMonthSpan(model.report.months, prevSpan.first, prevSpan.last);
+      const color = function (name) { return FINANCE_COLORS[model.order.indexOf(name) % FINANCE_COLORS.length]; };
+
+      const summary = document.createElement('div');
+      summary.className = 'ambient-fin-summary';
+      summary.appendChild(tile('Budget', budget === null ? '—' : formatEuro(budget), 'Initial budget des ganzen Projekts'));
+      summary.appendChild(tile('Kosten ' + label + ' (' + modeText + ')', formatEuro(cur.cost), cur.hours.toLocaleString('de-DE', {maximumFractionDigits: 2}) + ' Stunden'));
+      summary.appendChild(tile(sp.len === 1 ? 'Δ zum ' + prevLabel : 'Δ zur Vorperiode', prev ? deltaText(cur.cost, prev.cost) : '—', prev ? hoursDeltaTitle(cur.hours, prev.hours, prevLabel) : 'Keine Buchungen in ' + prevLabel, prev && Math.abs(cur.cost - prev.cost) >= 0.5 ? (cur.cost > prev.cost ? 'is-up' : 'is-down') : null));
+      content.appendChild(summary);
+
+      const people = Object.keys(cur.persons).filter(function (n) { return cur.persons[n].hours > 0; })
+        .sort(function (a, b) { return cur.persons[b].cost - cur.persons[a].cost || cur.persons[b].hours - cur.persons[a].hours; });
+
+      if (budget > 0) { // Balken = Budget, Segmente = Personen dieses Monats
+        const basis = Math.max(budget, cur.cost);
+        const stack = document.createElement('div');
+        stack.className = 'ambient-fin-stack';
+        stack.setAttribute('role', 'img');
+        stack.setAttribute('aria-label', Math.round(cur.cost / budget * 1000) / 10 + ' % des Budgets in ' + label);
+        people.forEach(function (name) {
+          if (!cur.persons[name].cost) return;
+          const seg = document.createElement('div');
+          seg.className = 'ambient-fin-seg';
+          seg.style.width = cur.persons[name].cost / basis * 100 + '%';
+          seg.style.background = color(name);
+          seg.title = name + ': ' + formatEuro(cur.persons[name].cost) + ' (' + (Math.round(cur.persons[name].cost / budget * 1000) / 10).toLocaleString('de-DE') + ' % des Budgets)';
+          stack.appendChild(seg);
+        });
+        content.appendChild(stack);
+      }
+
+      // Personen, die in diesem Monat gebucht haben (wer nichts gebucht hat, fehlt)
+      const table = document.createElement('div');
+      table.className = 'ambient-fin-card';
+      const head = document.createElement('div');
+      head.className = 'ambient-fin-row is-month is-head';
+      ['Person', 'Stunden', 'Ø €/h ' + modeText, 'Kosten ' + modeText, sp.len === 1 ? 'Δ ' + monthLabel(prevSpan.first).split(' ')[0] : 'Δ Vorperiode', budget > 0 ? 'Anteil' : ''].forEach(function (text, i) {
+        const cell = createTextSpan(text);
+        if (i > 0 && i < 5) cell.className = 'num';
+        head.appendChild(cell);
+      });
+      table.appendChild(head);
+      if (!people.length) table.appendChild(createTextSpan('Keine Buchungen in diesem Zeitraum.', {padding: '.8rem 1.1rem', color: SETTINGS_SUBTLE_TEXT}));
+      people.forEach(function (name) {
+        const p = cur.persons[name];
+        const row = document.createElement('div');
+        row.className = 'ambient-fin-row is-month';
+        const who = document.createElement('div');
+        who.style.display = 'flex';
+        who.style.flexDirection = 'column';
+        const nameLine = document.createElement('span');
+        nameLine.className = 'ambient-fin-name';
+        const dot = document.createElement('span');
+        dot.className = 'ambient-fin-dot';
+        dot.style.background = color(name);
+        nameLine.appendChild(dot);
+        nameLine.appendChild(createTextSpan(name, {overflow: 'hidden', textOverflow: 'ellipsis', minWidth: '0'}));
+        const tsLink = timesheetLink(name, monthRangeParams(sp.first, sp.last));
+        if (tsLink) nameLine.appendChild(tsLink);
+        who.appendChild(nameLine);
+        if (p.role) {
+          const role = createTextSpan(p.role);
+          role.className = 'ambient-fin-role';
+          role.title = p.role;
+          who.appendChild(role);
+        } else {
+          who.appendChild(roleSelect(name));
+        }
+        row.appendChild(who);
+        const prevPerson = prev && prev.persons[name];
+        const avg = p.hours > 0 && !p.missing ? p.cost / p.hours : null;
+        [p.hours.toLocaleString('de-DE', {maximumFractionDigits: 2}), avg === null ? '—' : avg.toLocaleString('de-DE', {maximumFractionDigits: 2}), p.missing && !p.cost ? '—' : formatEuro(p.cost)].forEach(function (text, i) {
+          const cell = createTextSpan(text);
+          cell.className = 'num';
+          if (i === 1 && avg !== null) cell.title = 'Blended, wenn sich das Level im Monat geändert hat';
+          row.appendChild(cell);
+        });
+        row.appendChild(prevPerson
+          ? deltaCell(p.cost, prevPerson.cost, hoursDeltaTitle(p.hours, prevPerson.hours, prevLabel))
+          : createTextSpan('neu', {color: SETTINGS_SUBTLE_TEXT, textAlign: 'right', fontSize: '0.85rem'}));
+        row.appendChild(createTextSpan(budget > 0 && p.cost ? (Math.round(p.cost / budget * 1000) / 10).toLocaleString('de-DE') + ' %' : '', {fontSize: '0.85rem'}));
+        table.appendChild(row);
+      });
+      content.appendChild(table);
+
+      const n = projectSettings.financeCompare;
+      // Verlauf-Kopf mit der Vergleichsauswahl (wirkt nur auf den Verlauf), unter der Personentabelle; immer sichtbar, auch bei „Kein Vergleich“
+      const verlaufHead = document.createElement('div');
+      verlaufHead.className = 'ambient-fin-verlauf-head';
+      applyStyles(verlaufHead, {display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap'});
+      verlaufHead.appendChild(createTextSpan('Verlauf', {fontWeight: '600'}));
+      if (sp.len === 1) verlaufHead.appendChild(compareSelect.element); // bei einer Spanne zeigt der Verlauf deren Monate
+      content.appendChild(verlaufHead);
+      if (sp.len > 1 || n > 0) { // Verlauf: ein Balken je Monat in Personenfarben, Δ zum jeweiligen Vormonat
+        const keys = [];
+        const shown = sp.len > 1 ? sp.len : n === 1 ? 2 : n; // Spanne: alle ihre Monate; sonst gewählter Monat plus Vergleichsmonate
+        for (let i = 0; i < shown; i++) keys.push(addMonthsKey(sp.last, -i));
+        const maxCost = keys.reduce(function (m, k) { return Math.max(m, (model.report.months[k] || empty).cost); }, 0);
+        const cmp = document.createElement('div');
+        cmp.className = 'ambient-fin-card';
+        const chead = document.createElement('div');
+        chead.className = 'ambient-fin-row is-compare is-head';
+        ['Monat', 'Stunden', 'Kosten ' + modeText, 'Δ Vormonat', ''].forEach(function (text, i) {
+          const cell = createTextSpan(text);
+          if (i > 0 && i < 4) cell.className = 'num';
+          chead.appendChild(cell);
+        });
+        cmp.appendChild(chead);
+        keys.forEach(function (key) {
+          const m = model.report.months[key] || empty;
+          const before = model.report.months[addMonthsKey(key, -1)];
+          const row = document.createElement('div');
+          row.className = 'ambient-fin-row is-compare';
+          row.appendChild(createTextSpan(monthLabel(key)));
+          [m.hours.toLocaleString('de-DE', {maximumFractionDigits: 2}), formatEuro(m.cost)].forEach(function (text) {
+            const cell = createTextSpan(text);
+            cell.className = 'num';
+            row.appendChild(cell);
+          });
+          row.appendChild(deltaCell(m.cost, before ? before.cost : null, before ? hoursDeltaTitle(m.hours, before.hours, monthLabel(addMonthsKey(key, -1))) : ''));
+          const stack = document.createElement('div');
+          stack.className = 'ambient-fin-stack is-mini';
+          Object.keys(m.persons).sort(function (a, b) { return model.order.indexOf(a) - model.order.indexOf(b); }).forEach(function (name) {
+            if (!m.persons[name].cost) return;
+            const seg = document.createElement('div');
+            seg.className = 'ambient-fin-seg';
+            seg.style.width = (maxCost > 0 ? m.persons[name].cost / maxCost * 100 : 0) + '%';
+            seg.style.background = color(name);
+            seg.title = name + ': ' + formatEuro(m.persons[name].cost);
+            stack.appendChild(seg);
+          });
+          row.appendChild(stack);
+          cmp.appendChild(row);
+        });
+        cmp.classList.add('ambient-fin-verlauf-body');
+        content.appendChild(cmp);
+      }
+
+      const notes = [];
+      const noRate = Object.keys(cur.persons).filter(function (name) { return cur.persons[name].missing; });
+      if (noRate.length) notes.push('Ohne Satz (Rolle oder Satz fehlt, nicht in den Kosten): ' + noRate.join(', ') + '. Sätze unter Einstellungen → Kostensätze.');
+      notes.push('Preis nach dem Level zum Buchungsdatum (Level-Historie im Portal); ohne Historie zählt das aktuelle Level. Δ = Kosten gegenüber dem Vormonat.');
+      notes.push('Stand ' + formatStand(store.monthData.at) + ' Uhr.');
+      notes.forEach(function (text) {
+        const note = createTextSpan(text);
+        note.className = 'ambient-fin-note';
+        content.appendChild(note);
+      });
+    }
+
+    function render() {
+      if (periodSpan()) renderMonth();
+      else renderTotal();
+    }
+
+    // Rollen aus der Level-Historie, für die es noch keinen Satz-Eintrag gibt, erscheinen in der Sätze-Tabelle der Einstellungen
+    function registerHistoryRoles(roles) {
+      const known = {};
+      projectSettings.costPeople.forEach(function (p) { known[p.role] = true; });
+      projectSettings.costHistoryRoles.forEach(function (r) { known[r] = true; });
+      const fresh = roles.filter(function (r) { return !known[r]; });
+      if (!fresh.length) return;
+      projectSettings.costHistoryRoles = projectSettings.costHistoryRoles.concat(fresh);
+      writeProjectConfigEntry(projectSettings.projectKey, {costHistoryRoles: projectSettings.costHistoryRoles});
+      document.dispatchEvent(new Event('ambient-cost-people'));
+    }
+
+    function showLoading(defs) {
+      content.textContent = '';
+      const loader = createLoadingSteps(defs);
+      content.appendChild(loader.element);
+      return loader;
+    }
+
+    function showError(reason) {
+      content.textContent = '';
+      const error = createTextSpan('Fehlgeschlagen: ' + ((reason && reason.message) || 'unbekannt'));
+      error.className = 'ambient-fin-error';
+      content.appendChild(error);
+    }
+
+    // Monate vor dem gewählten, die geladen werden: alle angezeigten plus einer davor, damit auch die älteste Zeile ein Δ hat
+    function loadSpan() {
+      const n = projectSettings.financeCompare;
+      return n === 1 ? 2 : Math.max(n, 1);
+    }
+
+    function loadMonthData(sp, loader) {
+      const first = loadFirst(sp);
+      if (store.monthData && store.monthData.key === windowKey(sp) && Date.now() - store.monthData.at < FINANCE_CACHE_MS) {
+        loader.finish('timesheets');
+        loader.finish('levels');
+        return Promise.resolve();
+      }
+      loader.progress('timesheets', 0, 0);
+      return fetchTimesheetRows(projectSettings, first, sp.last, function (done, pages, total) { loader.progress('timesheets', Math.min(done * 50, total), total); }).then(function (rows) {
+        loader.finish('timesheets');
+        const paths = rows.map(function (r) { return r.path; }).filter(function (path, i, all) { return path && all.indexOf(path) === i; });
+        let done = 0;
+        loader.progress('levels', 0, paths.length);
+        return Promise.all(paths.map(function (path) {
+          return fetchLevelHistory(projectSettings, path).then(function (history) {
+            done += 1;
+            loader.progress('levels', done, paths.length);
+            return [path, history];
+          });
+        })).then(function (pairs) {
+          loader.finish('levels');
+          const histories = {};
+          pairs.forEach(function (pair) { histories[pair[0]] = pair[1]; });
+          store.monthData = {key: windowKey(sp), rows: rows, histories: histories, at: Date.now()};
+        });
+      });
+    }
+
+    function load(force) {
+      const sp = periodSpan();
+      const wantKey = sp ? windowKey(sp) : null; // Fenster ändert sich mit Zeitraum und Vergleich
+      if (!force && store.loaded && Date.now() - store.loaded.at < FINANCE_CACHE_MS && (!sp || (store.monthData && store.monthData.key === wantKey))) return render();
+      const loader = showLoading([{id: 'finance', label: 'Finanzdaten aus dem Portal'}].concat(sp
+        ? [{id: 'timesheets', label: 'Timesheet-Buchungen'}, {id: 'levels', label: 'Level-Historien der Personen'}] : []));
+      loader.progress('finance', 0, 0);
+      const finance = !force && store.loaded && Date.now() - store.loaded.at < FINANCE_CACHE_MS ? Promise.resolve(store.loaded.data) : fetchProjectFinance(projectSettings);
+      finance.then(function (data) {
+        store.loaded = {data: data, at: store.loaded && store.loaded.data === data ? store.loaded.at : Date.now()};
+        loader.finish('finance');
+        if (sp) {
+          if (force) store.monthData = null;
+          return loadMonthData(sp, loader).then(function () {
+            registerHistoryRoles(monthModel().report.roles);
+            return loader.complete().then(render); // Balken erst zu Ende laufen lassen
+          });
+        }
+        return loader.complete().then(afterTotal);
+      }).catch(showError);
+
+      function afterTotal() {
+        const data = store.loaded.data;
+        render(); // sofort zeigen, fehlende Rollen laden danach nach
+        const rolesLoader = createLoadingSteps([{id: 'roles', label: 'Rollen der Buchenden aus den Profilen'}]);
+        rolesLoader.element.className = 'ambient-fin-note ambient-fin-roles-loader';
+        content.insertBefore(rolesLoader.element, content.firstChild);
+        return loadMissingPeople(projectSettings, data.hours, function (done, total) {
+          if (!total) rolesLoader.element.remove();
+          else rolesLoader.progress('roles', done, total);
+        }).then(function (added) {
+          rolesLoader.element.remove();
+          if (added) {
+            render();
+            rerenderProgressFromCache();
+            document.dispatchEvent(new Event('ambient-cost-people')); // Sätze-Tabelle in den Einstellungen neu aufbauen
+          }
+        }).catch(showError);
+      }
+    }
+
+    function setOpen(next, restoreFocus) {
+      open = next;
+      if (next) {
+        const topbar = document.querySelector('header.super-topbar, header[class*="topbar"], .top-bar-fixed');
+        panel.style.top = (topbar ? Math.round(topbar.getBoundingClientRect().bottom) + 1 : 49) + 'px';
+        if (onOpen) onOpen();
+        load(false);
+      }
+      panel.classList.toggle('ambient-open', next);
+      button.setAttribute('aria-expanded', String(next));
+      if (next) close.focus();
+      else if (restoreFocus) button.focus();
+    }
+
+    button.addEventListener('click', function () { setOpen(!open, true); });
+    const onShowChanged = function () {
+      button.hidden = !projectSettings.costShow || !isFeatureOn('financeButton');
+      if (button.hidden) setOpen(false, false);
+    };
+    document.addEventListener('ambient-cost-show', onShowChanged);
+    close.addEventListener('click', function () { setOpen(false, true); });
+    reload.addEventListener('click', function () {
+      Object.keys(timesheetCache).forEach(function (k) { delete timesheetCache[k]; });
+      load(true);
+    });
+    const onDocumentClick = function (event) {
+      if (!open || !event.target.isConnected || button.contains(event.target) || panel.contains(event.target)) return;
+      setOpen(false, false);
+    };
+    const onKeydown = function (event) {
+      if (event.key === 'Escape' && open) setOpen(false, true);
+    };
+    document.addEventListener('click', onDocumentClick);
+    document.addEventListener('keydown', onKeydown);
+    document.body.appendChild(panel);
+    return {
+      button: button,
+      close: function () { if (open) setOpen(false, false); },
+      cleanup: function () {
+        document.removeEventListener('click', onDocumentClick);
+        document.removeEventListener('keydown', onKeydown);
+        document.removeEventListener('ambient-cost-show', onShowChanged);
+        panel.remove();
+      }
+    };
+  }
+
   let toolbarCleanup = null;
   function createToolbar(projectSettings) {
     const existing = document.getElementById('ambient-progress-toolbar');
@@ -5384,8 +7578,8 @@
     applyStyles(bar, {
       display: 'flex',
       alignItems: 'center',
-      gap: '1rem',
-      padding: '0',
+      gap: '0.25rem', // wie die MR-Links, damit alle Buttons gleich weit auseinander stehen
+      padding: '0 0.25rem 0 0.25rem',
       height: '42px',
       marginLeft: 'auto',
       fontSize: '13px',
@@ -5549,7 +7743,7 @@
     updateRateLimitWarningUI(getCachedRateLimitWarning());
 
     // Tabs (WAI-ARIA-Tabs: Pfeiltasten wechseln, nur der aktive Tab ist in der Tab-Reihenfolge)
-    const tabDefs = [['anzeige', t('Anzeige')], ['board', t('Dieses Board')], ['erweitert', t('Erweitert')],
+    const tabDefs = [['anzeige', t('Anzeige')], ['board', t('Dieses Board')], ['erweitert', t('Global')],
       ['labor', t('Experimente')]];
     const tabList = document.createElement('div');
     tabList.setAttribute('role', 'tablist');
@@ -5597,11 +7791,23 @@
     // gebündelt. Synchron blockierte das Neu-Rendern aller Karten den Klick spürbar.
     let rerenderTimer = null;
 
-    function scheduleRerender() {
+    // Reine Geld-Schalter bauen nichts neu auf: Pille/Marker/Tooltip kommen aus dem Fortschritts-Cache, Header und Chip aktualisieren sich selbst
+    function scheduleRerender(key) {
       clearTimeout(rerenderTimer);
       rerenderTimer = setTimeout(function () {
+        if (key === 'costPill' || key === 'costMarker' || key === 'costTooltip') {
+          rerenderProgressFromCache();
+          return;
+        }
+        if (key === 'columnCost' || key === 'milestoneCost' || key === 'financeButton') {
+          scheduleMilestoneChipRefresh();
+          document.dispatchEvent(new Event('ambient-cost-show'));
+          return;
+        }
         rerenderFeatures();
         if (refreshAgeHighlightSection) refreshAgeHighlightSection();
+        scheduleMilestoneChipRefresh(); // Kosten in Header und Chip hängen an Anzeige-Schaltern
+        document.dispatchEvent(new Event('ambient-cost-show')); // Finanz-Button ein-/ausblenden
       }, 120);
     }
 
@@ -5781,6 +7987,8 @@
     }
 
     document.body.appendChild(dropdown);
+    const finance = createFinanceDrawer(projectSettings, function () { setDropdownOpen(false, false); });
+    bar.appendChild(finance.button); // Reihenfolge: MR-Links, Finanzen, Einstellungen
     bar.appendChild(gearButton);
 
     let dropdownLocked = false;
@@ -5800,6 +8008,7 @@
       if (open && refreshAgeHighlightSection) refreshAgeHighlightSection();
       if (open) displayTab.refreshPreview();
       updateDropdownVisibility();
+      if (!open) setTimeout(function () { if (!dropdownLocked) resetSections(); }, 300); // nach dem Wegfahren des Panels, damit nichts sichtbar zuklappt
       if (open) {
         const firstFocusable = dropdown.querySelector('input, button, summary, textarea');
         if (firstFocusable) firstFocusable.focus();
@@ -5809,6 +8018,7 @@
     }
 
     gearButton.addEventListener('click', function () {
+      finance.close();
       setDropdownOpen(!dropdownLocked, true);
     });
     closeButton.addEventListener('click', function () {
@@ -5833,6 +8043,7 @@
     toolbarCleanup = function () {
       document.removeEventListener('click', onDocumentClick);
       document.removeEventListener('keydown', onDocumentKeydown);
+      finance.cleanup();
       dropdown.remove();
     };
 
@@ -5877,7 +8088,7 @@
       display: 'flex',
       alignItems: 'center',
       gap: '0.25rem',
-      padding: '0 0.25rem'
+      padding: '0 0 0 0.25rem' // rechts kein Padding: Abstand zur Toolbar kommt nur von deren gap
     });
 
     function makeMrIconLink(queryParam, badgeLabel, badgeColor, tooltip) {
@@ -6014,7 +8225,23 @@
   };
 
   // Gruppe: Überschrift (+ Zusatz rechts) über einer Karte, deren Zeilen per Stylesheet Trennlinien bekommen
-  function createSettingsGroup(title, aside) {
+  // fold: {key, open} macht die Gruppe einklappbar (beim Schließen des Menüs zurück auf Standard)
+  const sectionResets = []; // setzen aufgeklappte Karten und Gruppen beim Schließen des Menüs zurück
+  function resetSections() {
+    sectionResets.forEach(function (reset) { reset(); });
+  }
+
+  function createSettingsGroup(title, aside, fold) {
+    if (fold) { // einklappbar: dieselbe Karte wie unter „Dieses Board“, die Liste sitzt randlos darin
+      const card = createPanelCard(title, undefined, Boolean(fold.open));
+      const list = document.createElement('div');
+      list.className = 'ambient-setting-list';
+      applyStyles(list, {margin: '0 -1.1rem -1rem', overflow: 'hidden'});
+      const asideElement = createTextSpan(aside || '', {fontSize: '0.78rem', color: SETTINGS_SUBTLE_TEXT, marginLeft: 'auto', paddingRight: '0.25rem'});
+      card.head.appendChild(asideElement);
+      card.element.appendChild(list);
+      return {element: card.element, list: list, heading: card.head.querySelector('.ambient-panel-toggle'), aside: asideElement};
+    }
     const group = document.createElement('section');
     applyStyles(group, {display: 'flex', flexDirection: 'column', gap: '0.5rem'});
     const head = document.createElement('div');
@@ -6035,19 +8262,70 @@
   }
 
   // Karte mit Titel (rechts Platz für einen Status) und optionalem Erklärtext
-  function createPanelCard(title, text) {
+  // Einklappbare Karte: Kopf mit Pfeil bleibt, der Rest (alles, was Aufrufer anhängen) klappt weg; beim Schließen des Menüs wieder Standard
+  function createPanelCard(title, text, defaultOpen) {
     const card = document.createElement('section');
     applyStyles(card, CARD_STYLES);
-    applyStyles(card, {padding: '1rem 1.1rem', gap: '0.8rem'});
+    applyStyles(card, {padding: '1rem 1.1rem', gap: '0'});
+    card.className = 'ambient-panel-card';
+    // Inhalt wandert in einen Körper (grid 0fr↔1fr animiert die Höhe); Aufrufer hängen weiter an card.appendChild an
+    const body = document.createElement('div');
+    body.className = 'ambient-panel-body';
+    const inner = document.createElement('div');
+    inner.className = 'ambient-panel-inner';
+    body.appendChild(inner);
     const head = document.createElement('div');
+    head.className = 'ambient-panel-head';
     applyStyles(head, {display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem'});
     const heading = document.createElement('h3');
-    heading.textContent = title;
     applyStyles(heading, {margin: '0', fontSize: '0.95rem', fontWeight: '600'});
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'ambient-panel-toggle';
+    const chevron = createTextSpan('');
+    chevron.className = 'ambient-panel-chevron';
+    toggle.appendChild(chevron);
+    toggle.appendChild(document.createTextNode(title));
+    heading.appendChild(toggle);
     head.appendChild(heading);
     card.appendChild(head);
-    if (text) card.appendChild(createTextSpan(text, FIELD_HINT_STYLES));
+    card.appendChild(body);
+    card.appendChild = function (node) { return inner.appendChild(node); };
+    if (text) inner.appendChild(createTextSpan(text, FIELD_HINT_STYLES));
+
+    function setOpen(open) {
+      card.toggleAttribute('data-collapsed', !open);
+      toggle.setAttribute('aria-expanded', String(open));
+    }
+    setOpen(Boolean(defaultOpen));
+    sectionResets.push(function () { setOpen(Boolean(defaultOpen)); }); // Menü zu → alles zurück auf Standard
+    card.addEventListener('click', function (event) {
+      // Kopfzeile klickbar, zugeklappt die ganze Karte (Polster inklusive), außer Bedienelemente darin (Badge/Link/Input)
+      if (!head.contains(event.target) && !card.hasAttribute('data-collapsed')) return;
+      if (event.target.closest('input,select,textarea,a,label') || (event.target.closest('button') && event.target.closest('button') !== toggle)) return;
+      const open = card.hasAttribute('data-collapsed');
+      card.setAttribute('data-animating', ''); // Inhalt beschneiden, solange die Höhe animiert (sonst bleibt er für negative Ränder sichtbar)
+      clearTimeout(card._ambientAnimTimer);
+      card._ambientAnimTimer = setTimeout(function () { card.removeAttribute('data-animating'); }, 260);
+      setOpen(open);
+    });
     return {element: card, head: head};
+  }
+
+  // Mehrere Karten zu einer thematischen Gruppe: Inhalt wandert unter Zwischenüberschriften in eine Karte (Handler bleiben erhalten)
+  function mergePanelCards(title, cards) {
+    const group = createPanelCard(title);
+    cards.forEach(function (el) {
+      const sub = document.createElement('div');
+      sub.className = 'ambient-subsection';
+      const heading = document.createElement('h4');
+      heading.textContent = el.querySelector('.ambient-panel-toggle').textContent;
+      sub.appendChild(heading);
+      const inner = el.querySelector('.ambient-panel-inner');
+      while (inner.firstChild) sub.appendChild(inner.firstChild);
+      group.element.appendChild(sub);
+    });
+    return group.element;
   }
 
   // Label (+ Chip) und Beschreibung einer Zeile
@@ -6087,27 +8365,36 @@
   // Pro Unterreiter (view) des Anzeige-Tabs: [Schlüssel, Label, Beschreibung]. Unter-Features (FEATURE_PARENTS) stehen direkt hinter
   // ihrem Eltern-Feature und werden eingerückt.
   const FEATURE_MENU = [
-    {view: 'board', title: 'Board-Karten', items: [
+    {view: 'board', title: 'Fortschrittsbalken', items: [
       ['progress', 'Fortschrittsbalken', 'Gebuchte vs. geschätzte Stunden aus dem Portal'],
-      ['portalButtons', 'Portal- & Timesheet-Buttons', 'Direkt zum Ticket im Portal oder zur Buchung'],
-      ['mrBadge', 'MR-Badge', 'Verknüpfte Merge Requests mit Status'],
-      ['mrAvatars', 'Assignee- & Reviewer-Avatare', 'Wer am MR arbeitet und wer reviewt'],
+      ['portalButtons', 'Portal- & Timesheet-Buttons', 'Direkt zum Ticket im Portal oder zur Buchung']
+    ]},
+    {view: 'board', title: 'Schätzung', items: [
       ['estimateBadge', 'Schätzung als Badge', '„(3 SP)“ oder „(Timebox: 4h)“ aus dem Titel wird ein Badge, auch in Ticket und MR'],
-      ['estimateStripTitle', 'Schätzung aus dem Titel nehmen', 'Aus: „(3 SP)“ bleibt zusätzlich im Titel stehen, z. B. für Scripte, die SP aus dem Titel zählen'],
-      ['columnSp', 'SP-Summe im Spalten-Header', 'Alle Tickets der Spalte (auch nicht geladene), berücksichtigt die Board-Filter'],
-      ['onHold', 'On-Hold-Tickets ausgrauen', 'Tickets mit On-Hold-Label erscheinen blasser, weil sie warten (Labels im Tab „Dieses Board“)'],
+      ['estimateStripTitle', 'Schätzung aus dem Titel nehmen', 'Aus: „(3 SP)“ bleibt zusätzlich im Titel stehen, z. B. für Scripte, die SP aus dem Titel zählen']
+    ]},
+    {view: 'board', title: 'Merge Requests', items: [
+      ['mrBadge', 'MR-Badge', 'Verknüpfte Merge Requests mit Status'],
+      ['mrAvatars', 'Assignee- & Reviewer-Avatare', 'Wer am MR arbeitet und wer reviewt']
+    ]},
+    {view: 'board', title: 'Labels & Aktionen', items: [
       ['splitLabels', 'Geteilte Scoped Labels', 'workflow::Review zweifarbig darstellen, auch in Ticket und MR'],
+      ['onHold', 'On-Hold-Tickets ausgrauen', 'Tickets mit On-Hold-Label erscheinen blasser, weil sie warten (Labels im Tab „Dieses Board“)'],
       ['cardActions', 'Ticket-Aktionen-Menü', '⋮ im Karten-Footer mit deinen Ticket-Aktionen (Tab „Dieses Board“)']
     ]},
-    {view: 'board', title: 'Verkaufte SP', items: [
-      ['milestoneSp', 'SP im Board vs. verkauft', 'Chip hinter den Breadcrumbs, Werte im Tab „Dieses Board“']
-    ]},
-    {view: 'board', title: 'Verweildauer', items: [
+    {view: 'board', title: 'Zeit & Aktivität', items: [
       ['columnAge', 'Uhr im Karten-Footer', 'Wie lange das Ticket schon in der Spalte liegt'],
-      ['columnAvg', 'Median im Spalten-Header', 'Typische Liegezeit der Spalte']
-    ]},
-    {view: 'board', title: 'Letzte Aktivität', items: [
       ['lastActivity', 'Aktivitäts-Chip im Karten-Footer', 'Wann zuletzt am Ticket oder MR etwas passiert ist; Hover zeigt den Verlauf']
+    ]},
+    {view: 'board', title: 'Kosten & Marge', items: [
+      ['costPill', 'Kosten-Pille neben dem Balken', 'Kosten, Marge, Zeitlimit oder Kontingent/Rest (braucht „Kosten anzeigen“ im Tab „Dieses Board“)'],
+      ['costMarker', 'Break-even-Marker im Balken', 'Strich für den Break-even, Verlust-Färbung und Limit-Füllung im Balken'],
+      ['costTooltip', 'Kosten im Balken-Tooltip', 'Kosten, Erlös, Marge und Zeitlimit beim Hovern über den Balken']
+    ]},
+    {view: 'column', title: 'Spalten-Header', items: [
+      ['columnSp', 'SP-Summe', 'Alle Tickets der Spalte (auch nicht geladene), berücksichtigt die Board-Filter'],
+      ['columnCost', 'Kosten hinter der SP-Summe', 'Echte Kosten / SP × Verkaufspreis (braucht „Kosten anzeigen“ im Tab „Dieses Board“)'],
+      ['columnAvg', 'Median der Liegezeit', 'Typische Liegezeit der Spalte (braucht die Uhr im Karten-Footer)']
     ]},
     {view: 'ticket', title: 'Ticket-Seitenleiste', items: [
       ['issueDetail', 'Fortschrittsbalken', 'Portal-Balken in der Ticket-Ansicht und im Board-Drawer'],
@@ -6121,7 +8408,10 @@
       ['mrAssigneeButtons', 'Ticket-Assignee-Buttons', 'Ticket per Klick an MR-Assignee, -Author oder -Reviewer geben']
     ]},
     {view: 'topbar', title: 'Breadcrumb-Zeile', items: [
-      ['mrLinks', 'MR-Schnellzugriff', 'Buttons zu deinen offenen MRs neben dem Zahnrad']
+      ['mrLinks', 'MR-Schnellzugriff', 'Buttons zu deinen offenen MRs neben dem Zahnrad'],
+      ['milestoneSp', 'SP im Board vs. verkauft', 'Chip hinter den Breadcrumbs, Werte im Tab „Dieses Board“'],
+      ['milestoneCost', 'Kosten im Meilenstein-Chip', 'Drittes Segment im Chip: Marge oder Kosten / Erlös'],
+      ['financeButton', 'Finanz-Dashboard-Button', 'Euro-Button neben dem Zahnrad (braucht „Kosten anzeigen“ im Tab „Dieses Board“)']
     ]}
   ];
 
@@ -6430,6 +8720,7 @@
     return [
       ['Selektor-Selbsttest', 'Prüft, ob die GitLab-Elemente gefunden werden, auf die sich das Script verlässt', 'Ausführen',
         runSelectorSelftest],
+      ['Toast-Test', 'Zeigt nacheinander Info-, Erfolgs- und Warn-Toast, um das Design zu prüfen', 'Auslösen', showToastDemo],
       ['Portal-Fehler', 'Letzte Portal-Fehler dieser Seitensitzung (Toast + Konsole)', 'Anzeigen', showPortalErrors],
       ['Debug-Info', 'Version, Ansicht und Selektor-Treffer für Fehlerberichte (ohne Portal-URL)', 'Kopieren', function () {
         copyToClipboard(buildDebugInfo(), 'Debug-Info kopiert.');
@@ -6485,11 +8776,17 @@
     lastActivity: '.ambient-activity',
     columnAvg: '.ambient-column-avg',
     columnSp: '.ambient-column-sp',
-    milestoneSp: '#ambient-milestone-sp',
+    milestoneSp: '#ambient-milestone-sp, .ambient-preview-milestone',
     issueDetail: '.ambient-progress-detail-badge',
     mrPageProgress: '.ambient-progress-mr-badge',
     mrAssigneeButtons: '.ambient-ticket-assignee-badge',
-    mrLinks: '.ambient-preview-mr-links'
+    mrLinks: '.ambient-preview-mr-links',
+    costPill: '.ambient-progress-badge .ambient-margin-pill',
+    costMarker: '.ambient-be-marker',
+    costTooltip: '.ambient-progress-badge .ambient-progress-bar',
+    columnCost: '.ambient-column-sp',
+    milestoneCost: '#ambient-milestone-sp .ambient-ms-cost, .ambient-preview-milestone .ambient-ms-cost',
+    financeButton: '.ambient-preview-finance'
   };
   const PREVIEW_SAMPLE_PROGRESS = {booked: '3.5h', bookedLabel: 'Booked Hours'};
   const PREVIEW_SAMPLE_ACTIONS = '[Ticket abschließen]\n/done';
@@ -6569,7 +8866,7 @@
       display: 'flex',
       flexDirection: 'column',
       gap: '0.5rem',
-      width: 'fit-content',
+      width: '100%',
       maxWidth: '100%',
       padding: '0.5rem',
       borderRadius: '8px',
@@ -6578,11 +8875,11 @@
     });
     content.appendChild(column);
 
-    if (header) {
+    if (header && !urls.cardOnly) { // Reiter „Board-Karte“ zeigt nur die Karte
       const headerClone = header.cloneNode(true);
       resetPreviewSplitLabels(headerClone);
       headerClone.querySelectorAll('.ambient-column-avg, .ambient-column-sp').forEach(function (el) { el.remove(); });
-      applyStyles(headerClone, {width: header.getBoundingClientRect().width + 'px', maxWidth: '100%', boxSizing: 'border-box'});
+      applyStyles(headerClone, {width: '100%', maxWidth: '100%', boxSizing: 'border-box'});
       column.appendChild(headerClone); // angehängt, damit berechnete Styles (Label-Farben) stimmen
       // data-testid bleibt am Header: Layout-Regeln (GitLab und unser min-width:0) hängen daran; gesucht wird der
       // Header nur innerhalb einer echten Spalte, die Kopie fällt also nie in einen Scan
@@ -6590,6 +8887,18 @@
       const countBadge = headerClone.querySelector(SEL.issueCountBadge);
       if (countBadge && isFeatureOn('columnAvg')) {
         createColumnAvgElement(countBadge).lastChild.textContent = formatDuration(2 * 24 * 3600 * 1000);
+      }
+      if (countBadge && isFeatureOn('columnSp')) { // Beispiel „Σ 13 SP · Kosten / Wert“ (Daten kommen im Board per Abfrage)
+        const sp = document.createElement('span');
+        sp.className = 'ambient-column-sp gl-flex gl-items-center gl-whitespace-nowrap gl-text-subtle gl-text-sm gl-font-bold gl-mr-3';
+        sp.appendChild(document.createTextNode('Σ 13 SP'));
+        if (isFeatureOn('columnCost')) {
+          const cost = createTextSpan('· 1,9k €');
+          cost.className = 'ambient-cost-ok';
+          sp.appendChild(cost);
+          sp.appendChild(createTextSpan('/ 3,9k €'));
+        }
+        countBadge.insertBefore(sp, countBadge.firstChild);
       }
       // nach dem Median, damit das Split-Label wie im Original auf den restlichen Platz schrumpft
       if (showEnabled && isFeatureOn('splitLabels')) {
@@ -6601,7 +8910,7 @@
     const clone = card.cloneNode(true);
     clone.ambientPreview = true; // isCardInActiveColumn: Kopie gilt als aktive Spalte
     resetPreviewCard(clone);
-    applyStyles(clone, {width: card.getBoundingClientRect().width + 'px', maxWidth: '100%', listStyle: 'none'});
+    applyStyles(clone, {width: '100%', maxWidth: '100%', listStyle: 'none'});
     column.appendChild(clone);
     nodes.push(clone);
     if (showEnabled) {
@@ -6611,7 +8920,7 @@
       if (isFeatureOn('progress')) {
         clone.setAttribute('data-ambient-progress-url', urls.portal);
         clone.setAttribute('data-ambient-timesheet-url', urls.timesheet);
-        injectProgressIntoCard(clone, urls.data);
+        injectProgressIntoCard(clone, Object.assign({}, urls.data, {spent: '3.5h', remaining: '4h'})); // mit Budget, damit Break-even-Marker sichtbar wird
       }
       if (isFeatureOn('mrBadge')) {
         injectMrBadgeIntoCard(clone, [{
@@ -6642,6 +8951,7 @@
         }));
       }
     }
+    if (urls.headerOnly) clone.remove(); // Reiter „Spalten-Header“: nur die Kopfzeile zeigen
     // gleich im selben Durchlauf: Scans und Selektoren dürfen die Kopien nie für echte Elemente halten
     nodes.forEach(stripPreviewIds);
   }
@@ -6684,17 +8994,17 @@
       background: THEME_BG
     };
     const sidebar = document.createElement('div');
-    applyStyles(sidebar, Object.assign({width: '320px', maxWidth: '100%', display: 'flex', flexDirection: 'column'}, sidebarFrame));
+    applyStyles(sidebar, Object.assign({width: '100%', maxWidth: '100%', display: 'flex', flexDirection: 'column'}, sidebarFrame));
 
-    if (view === 'board') {
+    if (view === 'board' || view === 'column') {
       const card = findPreviewCard();
       if (!card) {
         return createTextSpan('Hier ist kein Board geladen – öffne ein Board, um die Karten-Vorschau zu sehen.', FIELD_HINT_STYLES);
       }
       const column = document.createElement('div');
-      applyStyles(column, {display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '100%'});
+      applyStyles(column, {display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%', maxWidth: '100%'});
       column.renderPreview = function () {
-        renderPreviewBoard(column, card, projectSettings, {portal: portalUrl, timesheet: timesheetUrl, data: data});
+        renderPreviewBoard(column, card, projectSettings, {portal: portalUrl, timesheet: timesheetUrl, data: data, headerOnly: view === 'column', cardOnly: view === 'board'});
       };
       return column;
     }
@@ -6727,12 +9037,40 @@
     // Breadcrumb-Zeile: MR-Buttons (falls an) und das Zahnrad
     const row = document.createElement('div');
     applyStyles(row, Object.assign({display: 'flex', alignItems: 'center', gap: '0.25rem'}, sidebarFrame, {padding: '0.35rem 0.6rem'}));
-    row.appendChild(createTextSpan((getCurrentProjectPath() || 'gruppe/projekt') + ' / …', {flex: '1 1 auto', opacity: '0.55', fontSize: '0.85rem'}));
+    row.appendChild(createTextSpan((getCurrentProjectPath() || 'gruppe/projekt') + ' / …', {flex: '0 1 auto', opacity: '0.55', fontSize: '0.85rem'}));
+    if (showEnabled && isFeatureOn('milestoneSp')) { // Beispiel-Chip „Meilenstein · SP · Kosten“
+      const wrap = document.createElement('div');
+      wrap.className = 'ambient-preview-milestone';
+      wrap.style.marginRight = '0.5rem';
+      const chip = document.createElement('span');
+      chip.className = 'ambient-milestone-sp-chip is-equal';
+      [['ambient-ms-name', 'Release 1'], ['ambient-ms-sp', '40 / 40 SP']].forEach(function (part) {
+        const el = createTextSpan(part[1]);
+        el.className = 'ambient-ms-part ' + part[0];
+        chip.appendChild(el);
+      });
+      if (isFeatureOn('milestoneCost')) {
+        const cost = createTextSpan('Marge +1.978 €');
+        cost.className = 'ambient-ms-part ambient-ms-cost ambient-cost-ok';
+        chip.appendChild(cost);
+      }
+      wrap.appendChild(chip);
+      row.appendChild(wrap);
+    }
+
+    row.appendChild(createTextSpan('', {flex: '1 1 auto'}));
     if (mrLinksEnabled && showEnabled) {
       const linksBar = buildMrLinksBar(getCurrentProjectPath() || '');
       linksBar.removeAttribute('id');
       linksBar.classList.add('ambient-preview-mr-links');
       row.appendChild(linksBar);
+    }
+    if (showEnabled && isFeatureOn('financeButton')) {
+      const finance = document.createElement('button');
+      finance.type = 'button';
+      finance.className = 'btn gl-button btn-default btn-md btn-default-tertiary btn-icon ambient-header-btn ambient-preview-finance';
+      finance.appendChild(createHeaderIcon(FINANCE_ICON_SVG));
+      row.appendChild(finance);
     }
     const gear = gearButtonElement && clonePreviewNode(gearButtonElement);
     if (gear) {
@@ -6774,8 +9112,10 @@
     const defaultHint = 'Fahre über einen Schalter, um sein Element zu sehen';
     let highlighted = null;
 
-    function highlight(key) {
-      highlighted = key;
+    let forcedKey = null; // ausgeschaltetes Feature, das beim Überfahren trotzdem gezeigt wird („Maximalset“)
+
+    function paintOutline() {
+      const key = highlighted;
       body.querySelectorAll('[data-ambient-preview-outline]').forEach(function (el) {
         applyStyles(el, {outline: '', outlineOffset: '', backgroundColor: el.getAttribute('data-ambient-preview-outline')});
         el.removeAttribute('data-ambient-preview-outline');
@@ -6790,23 +9130,43 @@
         el.setAttribute('data-ambient-preview-outline', el.style.backgroundColor);
         applyStyles(el, {outline: '2px solid ' + SETTINGS_ACCENT, outlineOffset: '-2px', backgroundColor: 'rgba(31, 117, 203, 0.18)'});
       });
-      hint.textContent = labels[key] + (found.length ? '' : isFeatureOn(key) ? ' – hier gerade nicht sichtbar' : ' – aus, erscheint nicht');
+      hint.textContent = labels[key] + (forcedKey === key ? ' – aus, hier nur zur Ansicht' : '') + (found.length ? '' : ' – in dieser Vorschau nicht darstellbar');
+    }
+
+    function rebuild() {
+      body.textContent = '';
+      previewForceKey = forcedKey;
+      try {
+        const content = buildPreviewContent(view, projectSettings);
+        content.classList.add('ambient-preview-content'); // eigener Knoten: löst keinen Board-Scan aus
+        body.appendChild(content);
+        if (content.renderPreview) content.renderPreview(); // Board-Karte braucht den DOM (berechnete Farben)
+      } finally {
+        previewForceKey = null;
+      }
+    }
+
+    function highlight(key) {
+      highlighted = key;
+      const want = key && !isFeatureOn(key) ? key : null;
+      if (want !== forcedKey) {
+        forcedKey = want;
+        rebuild();
+      }
+      paintOutline();
     }
 
     function refresh() {
-      body.textContent = '';
-      const content = buildPreviewContent(view, projectSettings);
-      content.classList.add('ambient-preview-content'); // eigener Knoten: löst keinen Board-Scan aus
-      body.appendChild(content);
-      if (content.renderPreview) content.renderPreview(); // Board-Karte braucht den DOM (berechnete Farben)
-      highlight(highlighted);
+      forcedKey = highlighted && !isFeatureOn(highlighted) ? highlighted : null;
+      rebuild();
+      paintOutline();
     }
 
     hint.textContent = defaultHint;
     return {element: box, refresh: refresh, highlight: highlight};
   }
 
-  const DISPLAY_SUBTABS = [['board', 'Board-Karte'], ['ticket', 'Ticket'], ['mr', 'Merge Request'], ['topbar', 'Topbar']];
+  const DISPLAY_SUBTABS = [['board', 'Board-Karte'], ['column', 'Spalten-Header'], ['ticket', 'Ticket'], ['mr', 'Merge Request'], ['topbar', 'Topbar']];
   let activeDisplaySubtab = 'board';
 
   function createDisplayTab(onFeatureChanged, onResume, projectSettings) {
@@ -6871,7 +9231,7 @@
     const rows = {};
     const groups = [];
     FEATURE_MENU.forEach(function (group) {
-      const settingsGroup = createSettingsGroup(t(group.title));
+      const settingsGroup = createSettingsGroup(t(group.title), '', {key: 'fold:' + group.view + ':' + group.title, open: false});
       const preview = subtabs[group.view].preview;
       group.items.forEach(function (item) {
         const key = item[0];
@@ -6880,11 +9240,11 @@
             setMrLinksEnabled(val);
           } else {
             saveFeature(key, val);
-            onFeatureChanged();
+            onFeatureChanged(key);
           }
           refresh();
           schedulePreviewRefresh();
-        }, {desc: item[2], child: Boolean(FEATURE_PARENTS[key])});
+        }, {desc: item[2], child: Boolean(FEATURE_PARENTS[key]) && group.items.some(function (other) { return other[0] === FEATURE_PARENTS[key]; })});
         ['mouseenter', 'focusin'].forEach(function (type) {
           row.addEventListener(type, function () { preview.highlight(key); });
         });
@@ -6981,19 +9341,20 @@
     const config = createProjectConfigSection(projectSettings, onValuesChanged);
     const age = createAgeHighlightSection(projectSettings);
     const hold = createHoldLabelSection(projectSettings);
+    // Nach Thema: Verbindung → Schätzung & Verkauf → Karten-Darstellung → Aktionen
+    const sales = mergePanelCards('Schätzung & Verkauf', [createBoardEstimateSection(projectSettings), createMilestoneSpSection(projectSettings)]);
+    const display = mergePanelCards('Board-Darstellung', [age.element, hold.element, createClosedDaysSection(projectSettings)]);
     panel.appendChild(config.portalCard);
-    panel.appendChild(createBoardEstimateSection(projectSettings));
-    panel.appendChild(createClosedDaysSection(projectSettings));
-    panel.appendChild(createMilestoneSpSection(projectSettings));
-    panel.appendChild(age.element);
-    panel.appendChild(hold.element);
+    panel.appendChild(sales);
+    panel.appendChild(createCostRatesSection(projectSettings));
+    panel.appendChild(display);
     panel.appendChild(config.actionsCard);
 
     // Bis Portal-URL und Projekt-ID gespeichert sind, bleiben die übrigen Karten gesperrt
     function updateStatus() {
       const configured = Boolean(projectSettings.projectId && projectSettings.portalBaseUrl);
       config.setConfigured(configured);
-      [age.element, config.actionsCard].forEach(function (el) {
+      [display, config.actionsCard].forEach(function (el) {
         el.inert = !configured;
         el.style.opacity = configured ? '1' : '0.45';
       });
@@ -7008,7 +9369,7 @@
     const panel = document.createElement('div');
     applyStyles(panel, TAB_PANEL_STYLES);
 
-    const general = createSettingsGroup('Allgemein');
+    const general = createSettingsGroup('Allgemein', '', {key: 'fold:global:Allgemein', open: false});
     const languageRow = document.createElement('div');
     languageRow.className = 'ambient-setting-row';
     languageRow.appendChild(createRowText('Sprache', 'Teilweise übersetzt · wirkt nach dem Neuladen'));
@@ -7049,15 +9410,15 @@
 
     panel.appendChild(createEstimatePatternGroup());
 
-    const tools = createSettingsGroup('Diagnose & Daten');
+    const tools = createSettingsGroup('Diagnose & Daten', '', {key: 'fold:global:Diagnose', open: false});
     createDataToolDefs(projectSettings).forEach(function (def) {
       tools.list.appendChild(createActionRow(def[0], def[1], def[2], def[3]));
     });
     panel.appendChild(tools.element);
 
-    const danger = createSettingsGroup('Gefahrenzone');
+    const danger = createSettingsGroup('Gefahrenzone', '', {key: 'fold:global:Gefahr', open: false});
     danger.heading.style.color = SETTINGS_DANGER;
-    danger.list.style.borderColor = SETTINGS_DANGER;
+    danger.element.style.borderColor = SETTINGS_DANGER;
     danger.list.appendChild(createActionRow('Alle lokalen Daten löschen',
       'Entfernt Konfiguration, Cache und Einstellungen auf allen Boards. Lässt sich nicht rückgängig machen.',
       'Löschen…', clearAllScriptData, true));
@@ -7066,7 +9427,7 @@
   }
 
   function createEstimatePatternGroup() {
-    const group = createSettingsGroup('Schätzungs-Muster');
+    const group = createSettingsGroup('Schätzungs-Muster', '', {key: 'fold:global:Muster', open: false});
     group.list.className = '';
     applyStyles(group.list, {padding: '0.9rem 1rem', gap: '0.6rem'});
     group.list.appendChild(createTextSpan('Woran das Script Schätzungen im Titel erkennt. Eine Zeile pro Muster: ' +
@@ -7077,7 +9438,7 @@
     textarea.spellcheck = false;
     textarea.setAttribute('aria-label', 'Schätzungs-Muster');
     textarea.value = String(expSetting('estimatePatterns', DEFAULT_ESTIMATE_PATTERNS));
-    applyStyles(textarea, Object.assign({}, EXPERIMENT_INPUT_STYLES, {fontFamily: 'monospace', fontSize: '0.8rem', resize: 'vertical'}));
+    applyStyles(textarea, Object.assign({}, EXPERIMENT_INPUT_STYLES, {fontFamily: 'monospace', fontSize: '0.8rem', resize: 'none', fieldSizing: 'content', minHeight: '3.5rem'}));
     group.list.appendChild(textarea);
 
     const footer = document.createElement('div');
@@ -7156,7 +9517,7 @@
     }
 
     EXPERIMENT_MENU.forEach(function (group) {
-      const settingsGroup = createSettingsGroup(group.title);
+      const settingsGroup = createSettingsGroup(group.title, '', {key: 'fold:exp:' + group.title, open: false});
       group.items.forEach(function (item) {
         const key = item[0];
         let action = null;
@@ -7188,14 +9549,14 @@
       writeProjectConfigEntry(projectSettings.projectKey, {estimateEnabled: value});
       applyExperimentChange();
     }, {desc: 'Aus, wenn dieses Board keine SP/Timeboxen nutzt. Der globale Schalter liegt unter Anzeige → Board-Karten.'});
-    toggle.style.margin = '0 -1.1rem -1rem';
+    toggle.style.margin = '0 -1.1rem';
     card.element.appendChild(toggle);
     return card.element;
   }
 
   // Pro Board: wie weit die Closed-Spalte zurückschaut (wirkt nur, wenn ihr Auge an ist)
   function createClosedDaysSection(projectSettings) {
-    const card = createPanelCard('Closed-Spalte');
+    const card = createPanelCard('Closed-Spalte: Zeitraum');
     const input = document.createElement('input');
     input.type = 'number';
     input.min = '1';
@@ -7212,9 +9573,399 @@
       writeProjectConfigEntry(projectSettings.projectKey, {closedDays: days});
       if (rescanHook) rescanHook();
     });
-    card.element.appendChild(input);
+    const daysRow = document.createElement('div');
+    applyStyles(daysRow, {display: 'flex', alignItems: 'center', gap: '0.5rem'});
+    daysRow.appendChild(createTextSpan('Nur Tickets der letzten', {fontSize: '0.9rem'}));
+    input.style.width = '5rem';
+    daysRow.appendChild(input);
+    daysRow.appendChild(createTextSpan('Tage', {fontSize: '0.9rem'}));
+    card.element.appendChild(daysRow);
     card.element.appendChild(createTextSpan('Ist das Auge der Closed-Spalte an, läuft das Script nur auf Tickets, die in ' +
       'so vielen Tagen geschlossen wurden (1–' + CLOSED_DAYS_MAX + ').', FIELD_HINT_STYLES));
+    return card.element;
+  }
+
+  // Projektseite des Portals laden und Rollen + Tagessatz auslesen (Login-Session des Browsers, kein Token)
+  function fetchProjectPeople(projectSettings) {
+    const base = getPortalBaseUrl(projectSettings);
+    if (!base || !projectSettings.projectId) return Promise.reject({message: 'Portal-URL und Projekt-ID fehlen'});
+    return new Promise(function (resolve, reject) {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: base + '/management/project/detail/' + encodeURIComponent(String(projectSettings.projectId)) + '/',
+        withCredentials: true,
+        timeout: PORTAL_REQUEST_TIMEOUT_MS,
+        onload: function (response) {
+          if (response.status !== 200) return reject({message: 'Portal antwortet mit ' + response.status});
+          if (looksLikeLoginPage(response)) return reject({message: 'Portal verlangt Login'});
+          const people = parseProjectPeopleFromHtml(response.responseText);
+          if (!people.length) return reject({message: 'Keine Personentabelle (Name/Role/daily rate) gefunden'});
+          resolve(people);
+        },
+        onerror: function () { reject({message: 'Netzwerkfehler'}); },
+        ontimeout: function () { reject({message: 'Zeitüberschreitung'}); }
+      });
+    });
+  }
+
+  // Portal-Kategorie des Projekts (Zeile „Category“ der Projektseite); true bei „Internal“
+  function fetchProjectIsInternal(projectSettings) {
+    const base = getPortalBaseUrl(projectSettings);
+    if (!base || !projectSettings.projectId) return Promise.resolve(null);
+    return fetchPortalPage('/management/project/detail/' + encodeURIComponent(String(projectSettings.projectId)) + '/', base).then(function (html) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const row = Array.from(doc.querySelectorAll('tr')).filter(function (tr) {
+        return tr.cells.length === 2 && /^(category|kategorie)$/i.test(tr.cells[0].textContent.trim());
+      })[0];
+      return row ? /intern/i.test(row.cells[1].textContent) : null;
+    }).catch(function () { return null; });
+  }
+
+  // Pro Board: Rollen aus dem Portal laden, interne €/h pro Rolle von Hand pflegen, intern/extern umschalten (nur lokal im Browser)
+  function createCostRatesSection(projectSettings) {
+    const card = createPanelCard('Kostensätze',
+      'Gilt nur für dieses Projekt und liegt nur lokal. Ohne „Kosten anzeigen“ erscheint nichts davon auf dem Board (aus lassen bei Screenshare), die Einstellungen darunter sind dann ohne Wirkung.');
+    const status = createTextSpan('', FIELD_HINT_STYLES);
+    const warning = document.createElement('div'); // rote Prüfung: ohne Sätze zeigt die Karte nichts, das soll nicht lautlos bleiben
+    warning.setAttribute('role', 'alert');
+    warning.className = 'ambient-cost-warning';
+    // Warnung klappt weich auf/zu (Höhe animiert), damit das Menü nicht springt
+    const warnWrap = document.createElement('div');
+    warnWrap.className = 'ambient-collapse';
+    const warnInner = document.createElement('div');
+    warnInner.className = 'ambient-collapse-inner';
+    warnInner.appendChild(warning);
+    warnWrap.appendChild(warnInner);
+    const headBadge = createTextSpan('⚠ Sätze fehlen'); // bleibt sichtbar, wenn die Karte eingeklappt ist
+    headBadge.className = 'ambient-cost-over';
+    headBadge.hidden = true;
+    card.head.appendChild(headBadge);
+    const rateInputs = {}; // Rolle → Eingabefeld, zum Markieren fehlender Sätze
+    const table = document.createElement('div');
+    applyStyles(table, {display: 'flex', flexDirection: 'column', gap: '0.4rem'});
+
+    // Eingaben wirken nach kurzer Tipppause (Debounce) auf Karten und Chip, beim Verlassen des Felds sofort
+    function onTyped(input, apply) {
+      let timer = null;
+      input.addEventListener('input', function () {
+        clearTimeout(timer);
+        timer = setTimeout(apply, 500);
+      });
+      input.addEventListener('change', function () {
+        clearTimeout(timer);
+        apply();
+      });
+    }
+
+    function saveProject() {
+      writeProjectConfigEntry(projectSettings.projectKey, {costMode: projectSettings.costMode, costPeople: projectSettings.costPeople, costShow: projectSettings.costShow, costSplit: projectSettings.costSplit, spPrice: projectSettings.spPrice, spPricing: projectSettings.spPricing, timeLimits: projectSettings.timeLimits, hoursPerSp: projectSettings.hoursPerSp, escalationLimits: projectSettings.escalationLimits});
+      rerenderProgressFromCache();
+      scheduleMilestoneChipRefresh();
+      if (rescanHook) rescanHook();
+    }
+
+    // Gründe, warum bei „Kosten anzeigen“ nichts (oder nicht alles) auf den Karten erscheint
+    function validate() {
+      const problems = [];
+      const rates = readInternalRates(projectSettings.projectKey);
+      const internal = projectSettings.costMode !== 'external';
+      const roles = projectSettings.costPeople.map(function (p) { return p.role; }).concat(projectSettings.costHistoryRoles).filter(function (r, i, all) { return all.indexOf(r) === i; });
+      const missing = internal ? roles.filter(function (r) { return !(Number(rates[r]) > 0); }) : [];
+      if (!projectSettings.costPeople.length) problems.push('Keine Rollen geladen: „Rollen aus Portal laden“ klicken.');
+      if (missing.length) problems.push('Interner Satz fehlt für ' + missing.join(', ') + '. Buchungen dieser Rollen zählen nicht in die Kosten.');
+      if (internal && projectSettings.spPricing && !projectSettings.spPrice) problems.push('Story-Point-basierte Abrechnung: „Verkaufspreis pro SP“ muss gepflegt sein, sonst gibt es keine Marge und keinen Break-even.');
+      Object.keys(rateInputs).forEach(function (role) {
+        const bad = projectSettings.costShow && missing.indexOf(role) >= 0;
+        if (bad) rateInputs[role].setAttribute('aria-invalid', 'true');
+        else rateInputs[role].removeAttribute('aria-invalid');
+      });
+      headBadge.hidden = !(projectSettings.costShow && problems.length);
+      if (projectSettings.costShow && problems.length) {
+        warning.textContent = '';
+        problems.forEach(function (text) { warning.appendChild(createTextSpan('⚠ ' + text)); });
+        warnWrap.setAttribute('data-open', '');
+      } else {
+        warnWrap.removeAttribute('data-open'); // Text bleibt stehen, bis die Animation durch ist
+      }
+    }
+
+    function renderTable() {
+      table.textContent = '';
+      Object.keys(rateInputs).forEach(function (role) { delete rateInputs[role]; });
+      const rates = readInternalRates(projectSettings.projectKey);
+      const roles = {};
+      projectSettings.costPeople.forEach(function (p) { (roles[p.role] = roles[p.role] || []).push(p); });
+      projectSettings.costHistoryRoles.forEach(function (r) { roles[r] = roles[r] || []; }); // Rollen aus der Level-Historie ohne Person im Projekt
+      const names = Object.keys(roles).sort();
+      if (!names.length) {
+        table.appendChild(createTextSpan('Noch keine Rollen geladen.', FIELD_HINT_STYLES));
+        validate();
+        return;
+      }
+      names.forEach(function (role) {
+        const row = document.createElement('div');
+        applyStyles(row, {display: 'flex', alignItems: 'center', gap: '0.5rem'});
+        const dailies = roles[role].map(function (p) { return p.daily; }).filter(function (d) { return d > 0; });
+        const external = dailies.length ? Math.min.apply(null, dailies) / HOURS_PER_DAY : null;
+        const label = document.createElement('span'); // Rolle, darunter die Personen, wegen denen sie geladen wurde
+        applyStyles(label, {flex: '1 1 auto', minWidth: '0', overflowWrap: 'anywhere', display: 'flex', flexDirection: 'column'});
+        label.appendChild(createTextSpan(role));
+        label.appendChild(createTextSpan(roles[role].length ? roles[role].map(function (p) { return p.name; }).filter(function (n, i, all) { return all.indexOf(n) === i; }).join(', ') : 'aus der Level-Historie', FIELD_HINT_STYLES));
+        const ext = createTextSpan(external === null ? '—' : external.toLocaleString('de-DE', {maximumFractionDigits: 2}) + ' €/h extern', FIELD_HINT_STYLES);
+        applyStyles(ext, {flex: '0 0 auto', width: '6.8rem', textAlign: 'right', whiteSpace: 'nowrap'}); // feste Spalte, kein Umbruch
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '0';
+        input.step = '0.5';
+        input.placeholder = '€/h intern';
+        input.value = rates[role] === undefined ? '' : String(rates[role]);
+        input.setAttribute('aria-label', 'Interner Stundensatz für ' + role);
+        input.className = FORM_INPUT_CLASSES;
+        applyStyles(input, EXPERIMENT_INPUT_STYLES);
+        input.style.width = '6.5rem';
+        input.style.flex = '0 0 auto';
+        onTyped(input, function () {
+          const next = readInternalRates(projectSettings.projectKey);
+          if (input.value === '' || !Number.isFinite(Number(input.value))) delete next[role];
+          else next[role] = Number(input.value);
+          writeInternalRates(projectSettings.projectKey, next);
+          validate();
+          rerenderProgressFromCache();
+          scheduleMilestoneChipRefresh();
+          if (rescanHook) rescanHook();
+        });
+        rateInputs[role] = input;
+        [label, ext, input].forEach(function (el) { row.appendChild(el); });
+        table.appendChild(row);
+      });
+      validate();
+    }
+
+    // Das Dashboard lädt Rollen nach: die Tabelle muss die neuen Rollen zeigen, sonst warnt die Prüfung vor Zeilen, die man nicht sieht
+    const onPeopleChanged = function () {
+      if (!card.element.isConnected) document.removeEventListener('ambient-cost-people', onPeopleChanged);
+      else renderTable();
+    };
+    document.addEventListener('ambient-cost-people', onPeopleChanged);
+
+    const load = document.createElement('button');
+    load.type = 'button';
+    load.textContent = 'Rollen aus Portal laden';
+    load.className = 'ambient-btn btn gl-button btn-default btn-sm';
+    load.addEventListener('click', function () {
+      status.textContent = 'Lade …';
+      fetchProjectPeople(projectSettings).then(function (people) {
+        const extras = projectSettings.costPeople.filter(function (p) {
+          return p.extra && !people.some(function (q) { return q.name === p.name; });
+        });
+        projectSettings.costPeople = people.concat(extras); // zusätzlich geladene Buchende (Dashboard) bleiben erhalten
+        saveProject();
+        renderTable();
+        status.textContent = people.length + ' Personen geladen' + (projectSettings.costPeople.length > people.length ? ' (+' + (projectSettings.costPeople.length - people.length) + ' aus dem Finanz-Dashboard)' : '') + '.';
+      }, function (reason) {
+        status.textContent = 'Fehlgeschlagen: ' + ((reason && reason.message) || 'unbekannt');
+      });
+    });
+
+    const loadRates = document.createElement('button');
+    loadRates.type = 'button';
+    loadRates.textContent = 'Interne Sätze aus Admin laden';
+    loadRates.className = 'ambient-btn btn gl-button btn-default btn-sm';
+    loadRates.title = 'Liest die Level-Kostensätze aus dem Django-Admin des Portals (nur mit Staff-Zugang) und trägt sie für die Rollen oben ein.';
+    loadRates.addEventListener('click', function () {
+      status.textContent = 'Lade Sätze aus dem Admin …';
+      fetchAdminRates(projectSettings).then(function (adminRates) {
+        const roles = projectSettings.costPeople.map(function (p) { return p.role; }).concat(projectSettings.costHistoryRoles).filter(function (r, i, all) { return r && all.indexOf(r) === i; });
+        const next = readInternalRates(projectSettings.projectKey);
+        let matched = 0;
+        roles.forEach(function (role) {
+          if (adminRates[role] > 0) { next[role] = adminRates[role]; matched += 1; }
+        });
+        writeInternalRates(projectSettings.projectKey, next);
+        renderTable();
+        validate();
+        rerenderProgressFromCache();
+        scheduleMilestoneChipRefresh();
+        if (rescanHook) rescanHook();
+        status.textContent = matched + ' von ' + roles.length + ' Rollen aus dem Admin eingetragen' + (matched < roles.length ? ' (Rest dort nicht gefunden, von Hand ergänzen)' : '') + '.';
+      }, function (reason) {
+        status.textContent = 'Fehlgeschlagen: ' + ((reason && reason.message) || 'unbekannt');
+      });
+    });
+
+    const external = makeSwitch('Mit externen Sätzen rechnen', projectSettings.costMode === 'external', function (value) {
+      projectSettings.costMode = value ? 'external' : 'internal';
+      saveProject();
+      validate();
+    }, {desc: 'Aus: interne €/h (interne Projekte, Story-Point-Festpreis). An: Tagessatz aus dem Portal ÷ 8 (Kundenprojekte nach Stunden).'});
+    external.style.margin = '0 -1.1rem';
+
+    const show = makeSwitch('Kosten anzeigen', projectSettings.costShow, function (value) {
+      projectSettings.costShow = value;
+      saveProject();
+      validate();
+      document.dispatchEvent(new Event('ambient-cost-show')); // Finanz-Button ein-/ausblenden
+      show.dispatchEvent(new Event('ambient-rest-refresh'));
+    }, {desc: 'Hauptschalter: Kosten, Marge und Break-even auf Karten, im Meilenstein-Chip und in den Spalten-Headern sowie das Finanz-Dashboard. Standard aus, damit nichts bei einem Screenshare auffällt.'});
+    show.style.margin = '0 -1.1rem';
+
+    // Anzeige des Ergebnisses: Dropdown statt Schalter; wirkt nur mit Erlös (SP-basierte Abrechnung)
+    const split = document.createElement('div');
+    split.className = 'ambient-setting-row';
+    split.style.margin = '0 -1.1rem';
+    split.appendChild(createRowText('Ergebnis anzeigen als', 'Nur mit SP-basierter Abrechnung (ohne Erlös gibt es nur Kosten). Auf der Karte und im Meilenstein-Chip.'));
+    const splitSelect = createListbox('Ergebnis anzeigen als', [[0, 'Marge (+340 €)'], [1, 'Kosten / Erlös (722 € / 2.700 €)']]);
+    splitSelect.value = projectSettings.costSplit ? 1 : 0;
+    splitSelect.onChange(function () {
+      projectSettings.costSplit = splitSelect.value === '1';
+      saveProject();
+    });
+    split.appendChild(splitSelect.element);
+
+    const priceRow = document.createElement('div');
+    applyStyles(priceRow, {display: 'flex', alignItems: 'center', gap: '0.5rem'});
+    const spPricingSwitch = makeSwitch('Story-Point-basierte Abrechnung', projectSettings.spPricing, function (value) {
+      projectSettings.spPricing = value;
+      updatePriceState();
+      saveProject();
+      validate();
+    }, {desc: 'Ja: Erlös je Ticket = SP × Verkaufspreis pro SP, daraus Marge und Break-even; der Preis ist dann Pflicht. Nein: nur Kosten, Preisfeld ausgegraut.'});
+    spPricingSwitch.style.margin = '0 -1.1rem';
+    const priceInput = document.createElement('input');
+    priceInput.type = 'number';
+    priceInput.min = '0';
+    priceInput.step = '1';
+    priceInput.placeholder = '€ pro SP';
+    priceInput.value = projectSettings.spPrice ? String(projectSettings.spPrice) : '';
+    priceInput.setAttribute('aria-label', 'Verkaufspreis pro Story Point in Euro');
+    priceInput.className = FORM_INPUT_CLASSES;
+    applyStyles(priceInput, EXPERIMENT_INPUT_STYLES);
+    priceInput.style.width = '6.5rem';
+    onTyped(priceInput, function () {
+      projectSettings.spPrice = Number(priceInput.value) > 0 ? Number(priceInput.value) : null;
+      saveProject();
+      validate();
+    });
+    priceRow.appendChild(createTextSpan('Verkaufspreis (VP) pro SP', {flex: '1 1 auto'}));
+    priceRow.appendChild(priceInput);
+    priceRow.appendChild(createTextSpan('€', FIELD_HINT_STYLES));
+    function updatePriceState() { // ohne SP-Abrechnung ausgegraut
+      priceInput.disabled = !projectSettings.spPricing;
+      priceRow.style.opacity = projectSettings.spPricing ? '1' : '0.45';
+      splitSelect.disabled = !projectSettings.spPricing;
+      split.style.opacity = projectSettings.spPricing ? '1' : '0.45';
+    }
+    updatePriceState();
+
+    const actions = document.createElement('div');
+    applyStyles(actions, {display: 'flex', flexDirection: 'column', gap: '0.6rem'});
+    const buttonRow = document.createElement('div'); // zwei gleich breite Buttons, Status darunter (kein Umbruch neben den Buttons)
+    applyStyles(buttonRow, {display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem'});
+    [load, loadRates].forEach(function (b) { applyStyles(b, {width: '100%', whiteSpace: 'nowrap', padding: '0.4rem 0.6rem'}); buttonRow.appendChild(b); });
+    actions.appendChild(buttonRow);
+    actions.appendChild(status);
+    // Zeitabrechnung: Karte zeigt gebuchte Stunden gegen das SP-Limit (Escalation-Limits des Portals, sonst Standard-h pro SP)
+    const limitBox = document.createElement('div');
+    applyStyles(limitBox, {display: 'flex', flexDirection: 'column', gap: '0.5rem', transition: 'opacity .2s ease'});
+    const hoursRow = document.createElement('div');
+    applyStyles(hoursRow, {display: 'flex', alignItems: 'center', gap: '0.5rem'});
+    const hoursInput = document.createElement('input');
+    hoursInput.type = 'number';
+    hoursInput.min = '0.5';
+    hoursInput.step = '0.5';
+    hoursInput.value = String(projectSettings.hoursPerSp);
+    hoursInput.setAttribute('aria-label', 'Standard-Stunden pro Story Point');
+    hoursInput.className = FORM_INPUT_CLASSES;
+    applyStyles(hoursInput, EXPERIMENT_INPUT_STYLES);
+    hoursInput.style.width = '6.5rem';
+    onTyped(hoursInput, function () {
+      projectSettings.hoursPerSp = Number(hoursInput.value) > 0 ? Number(hoursInput.value) : DEFAULT_HOURS_PER_SP;
+      saveProject();
+    });
+    hoursRow.appendChild(createTextSpan('Standard: Stunden pro SP', {flex: '1 1 auto'}));
+    hoursRow.appendChild(hoursInput);
+    hoursRow.appendChild(createTextSpan('h', FIELD_HINT_STYLES));
+    const limitStatus = createTextSpan('', FIELD_HINT_STYLES);
+    const limitLoad = document.createElement('button');
+    limitLoad.type = 'button';
+    limitLoad.textContent = 'Limits aus Portal laden';
+    limitLoad.className = 'ambient-btn btn gl-button btn-default btn-sm';
+    applyStyles(limitLoad, {width: '100%', whiteSpace: 'nowrap'});
+    limitLoad.title = 'Liest die Escalation-Limits dieses Projekts (Portal: Ticket-Story-Points, Warn- und Eskalationsstunden je SP).';
+    function describeLimits() {
+      limitStatus.textContent = projectSettings.escalationLimits.length
+        ? projectSettings.escalationLimits.filter(function (e) { return e.limit > 0; }).length + ' Stufen aus dem Portal (' + projectSettings.escalationLimits.filter(function (e) { return e.limit > 0; }).map(function (e) { return e.sp + ' SP: ' + e.limit + ' h'; }).join(', ') + '). Dazwischen wird linear gerechnet.'
+        : 'Keine Limits geladen: es gilt der Standard (SP × Stunden pro SP).';
+    }
+    function loadLimits() {
+      limitStatus.textContent = 'Lade Limits …';
+      fetchEscalationLimits(projectSettings).then(function (table) {
+        projectSettings.escalationLimits = table;
+        saveProject();
+        describeLimits();
+        if (!table.length) limitStatus.textContent = 'Im Portal sind keine Limits gepflegt: es gilt der Standard (SP × Stunden pro SP).';
+      }, function (reason) {
+        limitStatus.textContent = 'Fehlgeschlagen: ' + ((reason && reason.message) || 'unbekannt');
+      });
+    }
+    limitLoad.addEventListener('click', loadLimits);
+    limitBox.appendChild(hoursRow);
+    limitBox.appendChild(limitLoad);
+    limitBox.appendChild(limitStatus);
+    describeLimits();
+    function updateLimitState() {
+      limitBox.style.opacity = projectSettings.timeLimits ? '1' : '0.45';
+      limitBox.style.pointerEvents = projectSettings.timeLimits ? '' : 'none';
+      hoursInput.disabled = !projectSettings.timeLimits;
+    }
+    const timeSwitch = makeSwitch('Zeitabrechnung mit SP-Limit', projectSettings.timeLimits, function (value) {
+      projectSettings.timeLimits = value;
+      updateLimitState();
+      saveProject();
+      if (value && !projectSettings.escalationLimits.length) loadLimits();
+    }, {desc: 'Kundenprojekt nach Zeit: die Karte zeigt gebuchte Stunden / maximale Stunden für die SP (gelb ab der Warnschwelle, rot ab dem Eskalationslimit) und einen Limit-Strich im Balken. Hat Vorrang vor der Marge.'});
+    timeSwitch.style.margin = '0 -1.1rem';
+    updateLimitState();
+
+    // Reihenfolge: Hauptschalter, dann Berechnung (Modus, Sätze), Abrechnung (SP, VP), Darstellung; ohne „Kosten anzeigen“ ist der Rest abgeblendet
+    const ratesHint = createTextSpan('Rollen und Tagessatz (extern) kommen aus der Portal-Projektseite. Die internen €/h trägst du von Hand ein oder holst sie aus dem Admin.', FIELD_HINT_STYLES);
+    const rest = document.createElement('div');
+    applyStyles(rest, {display: 'flex', flexDirection: 'column', gap: '0.8rem', transition: 'opacity .2s ease'});
+    rest.setAttribute('data-ambient-cost-rest', '');
+    // Internes Projekt (Portal-Kategorie): Verkaufs- und Abrechnungsoptionen ausgegraut, mit Begründung
+    const internalNote = createTextSpan('Internes Projekt laut Portal: es wird nichts verkauft, deshalb zählen hier nur interne Kosten. Sätze extern, Story-Point-Abrechnung, Zeitlimit und Ergebnis-Darstellung sind ausgegraut.', FIELD_HINT_STYLES);
+    internalNote.hidden = true;
+    const sellingControls = [external, spPricingSwitch, priceRow, timeSwitch, limitBox, split];
+    function updateInternalState() {
+      const internal = Boolean(projectSettings.projectInternal);
+      internalNote.hidden = !internal;
+      sellingControls.forEach(function (el) {
+        el.inert = internal;
+        if (internal) el.style.opacity = '0.45';
+        else if (el === priceRow) updatePriceState();
+        else if (el === limitBox) updateLimitState();
+        else el.style.opacity = '1';
+      });
+      if (!internal) updatePriceState();
+    }
+    fetchProjectIsInternal(projectSettings).then(function (internal) {
+      if (internal === null || internal === Boolean(projectSettings.projectInternal)) return;
+      projectSettings.projectInternal = internal;
+      writeProjectConfigEntry(projectSettings.projectKey, {projectInternal: internal});
+      updateInternalState();
+      rerenderProgressFromCache();
+      scheduleMilestoneChipRefresh();
+    });
+    [internalNote, external, ratesHint, table, actions, spPricingSwitch, priceRow, timeSwitch, limitBox, split].forEach(function (el) { rest.appendChild(el); });
+    updateInternalState();
+    function updateRestState() {
+      applyStyles(rest, {opacity: projectSettings.costShow ? '1' : '0.45', pointerEvents: projectSettings.costShow ? '' : 'none'});
+      rest.setAttribute('aria-disabled', String(!projectSettings.costShow));
+    }
+    updateRestState();
+    show.addEventListener('ambient-rest-refresh', updateRestState);
+    [show, warnWrap, rest].forEach(function (el) { card.element.appendChild(el); });
+    renderTable();
     return card.element;
   }
 
@@ -7277,26 +10028,35 @@
           projectSettings.milestoneSp.splice(index, 1);
           save();
           renderList();
+          renderPicker();
         });
         [show, name, sold, createTextSpan('SP', FIELD_HINT_STYLES), remove].forEach(function (el) { row.appendChild(el); });
         list.appendChild(row);
       });
     }
 
-    // Neuer Eintrag: Name mit Vorschlägen aus GitLab (aktive Meilensteine des Projekts und der Gruppe), leer = gesamt
+    // Neuer Eintrag: Dropdown mit allen noch nicht eingetragenen Meilensteinen aus GitLab (aktive des Projekts und der Gruppe) plus „Gesamt“
     const addRow = document.createElement('div');
     applyStyles(addRow, {display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem'});
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.placeholder = 'Meilenstein (leer = gesamt)';
-    nameInput.setAttribute('aria-label', 'Meilenstein, leer für gesamt');
-    nameInput.className = FORM_INPUT_CLASSES;
-    applyStyles(nameInput, EXPERIMENT_INPUT_STYLES);
-    nameInput.style.flex = '1 1 9rem';
-    nameInput.style.minWidth = '0';
-    const datalist = document.createElement('datalist');
-    datalist.id = 'ambient-milestone-sp-names';
-    nameInput.setAttribute('list', datalist.id);
+    let knownMilestones = [];
+    let picker = null;
+    const pickerSlot = document.createElement('div');
+    pickerSlot.style.flex = '1 1 9rem';
+    pickerSlot.style.minWidth = '0';
+    function renderPicker() {
+      const taken = {};
+      projectSettings.milestoneSp.forEach(function (entry) { taken[entry.name] = true; });
+      const entries = [];
+      if (!taken['']) entries.push(['', 'Gesamt (ganzes Projekt)']);
+      knownMilestones.filter(function (title) { return !taken[title]; }).forEach(function (title) { entries.push([title, title]); });
+      const none = !entries.length;
+      picker = createListbox('Meilenstein, „Gesamt“ für das ganze Projekt', none ? [['', 'Alle Meilensteine eingetragen']] : entries);
+      picker.disabled = none;
+      picker.element.style.width = '100%';
+      picker.element.querySelector('.ambient-listbox-btn').style.width = '100%';
+      pickerSlot.textContent = '';
+      pickerSlot.appendChild(picker.element);
+    }
     const soldInput = createSoldInput('Verkaufte SP', '', function () {});
     soldInput.placeholder = 'SP';
     const add = document.createElement('button');
@@ -7306,7 +10066,8 @@
     add.setAttribute('aria-label', 'Hinzufügen');
     add.className = 'ambient-btn btn gl-button btn-default btn-sm';
     add.addEventListener('click', function () {
-      const name = nameInput.value.trim();
+      if (picker.disabled) return;
+      const name = picker.value;
       if (soldInput.value === '' || !Number.isFinite(Number(soldInput.value))) return;
       const existing = projectSettings.milestoneSp.filter(function (entry) { return entry.name === name; })[0];
       if (existing) {
@@ -7314,36 +10075,32 @@
       } else {
         projectSettings.milestoneSp.push({name: name, sold: Number(soldInput.value), show: true});
       }
-      nameInput.value = '';
       soldInput.value = '';
       save();
       renderList();
+      renderPicker();
     });
-    [nameInput, soldInput].forEach(function (input) { // Enter in einem der Felder = Hinzufügen
-      input.addEventListener('keydown', function (event) {
-        if (event.key === 'Enter') add.click();
-      });
+    soldInput.addEventListener('keydown', function (event) { // Enter im SP-Feld = Hinzufügen
+      if (event.key === 'Enter') add.click();
     });
-    [nameInput, soldInput, add, datalist].forEach(function (el) { addRow.appendChild(el); });
+    [pickerSlot, soldInput, add].forEach(function (el) { addRow.appendChild(el); });
 
-    const filterOnly = makeSwitch('Nur Board-Filter-Meilenstein', projectSettings.milestoneSpFilterOnly, function (value) {
+    const filterOnly = makeSwitch('Nur Chip des gefilterten Meilensteins', projectSettings.milestoneSpFilterOnly, function (value) {
       projectSettings.milestoneSpFilterOnly = value;
       save();
-    }, {desc: 'Zeigt nur den Meilenstein, nach dem das Board gefiltert ist (und „gesamt“).'});
+    }, {desc: 'Aus: ein Chip pro eingetragenem Meilenstein. An: nur der Chip des Meilensteins, nach dem das Board gerade gefiltert ist. „Gesamt“ bleibt immer sichtbar.'});
     filterOnly.style.margin = '0 -1.1rem';
 
     card.element.appendChild(list);
     card.element.appendChild(addRow);
     card.element.appendChild(filterOnly);
     renderList();
+    renderPicker();
     if (projectSettings.projectPath) {
       glApi(projectSettings.projectPath, '/milestones?state=active&include_parent_milestones=true&per_page=100', 'Meilensteine')
         .then(function (milestones) {
-          (milestones || []).forEach(function (milestone) {
-            const option = document.createElement('option');
-            option.value = milestone.title;
-            datalist.appendChild(option);
-          });
+          knownMilestones = (milestones || []).map(function (milestone) { return milestone.title; });
+          renderPicker();
         }).catch(function (err) { warn('Meilenstein-Vorschläge nicht ladbar:', err); });
     }
     return card.element;
@@ -7353,51 +10110,14 @@
     const card = createPanelCard('Liegezeit hervorheben');
     const hint = createTextSpan('', FIELD_HINT_STYLES);
     card.element.appendChild(hint);
-    const chips = document.createElement('div');
-    chips.setAttribute('role', 'group');
-    chips.setAttribute('aria-label', 'Spalten mit rotem Rahmen');
-    applyStyles(chips, {display: 'flex', flexWrap: 'wrap', gap: '0.5rem'});
-    card.element.appendChild(chips);
-
-    function createChip(key, text, enabled) {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.disabled = !enabled;
-      applyStyles(chip, {
-        minHeight: '32px',
-        padding: '0.3rem 0.8rem',
-        borderRadius: '999px',
-        border: '1px solid',
-        fontSize: '0.85rem',
-        fontWeight: '500',
-        cursor: enabled ? 'pointer' : 'not-allowed',
-        opacity: enabled ? '1' : '0.45'
-      });
-
-      function paint() {
-        const on = Boolean(ageHighlightLookup[key]);
-        chip.textContent = (on ? '✓ ' : '') + text;
-        chip.setAttribute('aria-pressed', String(on));
-        applyStyles(chip, {
-          background: on ? SETTINGS_ACCENT : 'transparent',
-          borderColor: on ? SETTINGS_ACCENT : 'var(--gl-border-color-strong, #5c5a62)',
-          color: on ? '#ffffff' : 'inherit'
-        });
-      }
-
-      chip.addEventListener('click', function () {
-        if (ageHighlightLookup[key]) {
-          delete ageHighlightLookup[key];
-        } else {
-          ageHighlightLookup[key] = true;
-        }
+    const picker = createMultiselect('Spalten mit rotem Rahmen', 'Keine Label-Spalten gefunden',
+      function (key) { return Boolean(ageHighlightLookup[key]); },
+      function (key) {
+        if (ageHighlightLookup[key]) delete ageHighlightLookup[key]; else ageHighlightLookup[key] = true;
         saveAgeHighlightLookup();
-        paint();
         document.querySelectorAll(SEL.boardList).forEach(updateColumnAgeAverage);
       });
-      paint();
-      return chip;
-    }
+    card.element.appendChild(picker.element);
 
     // Spalten erst beim Öffnen lesen – Board ist beim Toolbar-Aufbau evtl. noch nicht gerendert
     function refresh() {
@@ -7407,8 +10127,8 @@
       hint.textContent = enabled
         ? 'Tickets, die länger als der Spalten-Median liegen, bekommen in diesen Spalten einen roten Rahmen.'
         : 'Benötigt „Uhr im Karten-Footer“ im Tab Anzeige.';
-      chips.textContent = '';
       const seen = {};
+      const entries = [];
       document.querySelectorAll(SEL.boardList).forEach(function (boardListElem) {
         const header = getBoardListHeaderElement(boardListElem);
         if (!header || !header.querySelector('.board-title-text .gl-label')) return; // Open/Closed ohne Label
@@ -7416,11 +10136,9 @@
         const key = normalizeLabelNameForMatching(text);
         if (!key || seen[key]) return;
         seen[key] = true;
-        chips.appendChild(createChip(key, text, enabled));
+        entries.push({key: key, text: text, disabled: !enabled});
       });
-      if (!chips.firstChild) {
-        chips.appendChild(createTextSpan('Keine Label-Spalten gefunden.', FIELD_HINT_STYLES));
-      }
+      picker.setOptions(entries);
     }
 
     return {element: card.element, refresh: refresh};
@@ -7429,55 +10147,31 @@
   function createHoldLabelSection(projectSettings) {
     const card = createPanelCard('On-Hold-Labels');
     card.element.appendChild(createTextSpan('Tickets mit diesen Labels erscheinen ausgegraut. Ohne eigene Auswahl zählt jedes „On Hold“-Label.', FIELD_HINT_STYLES));
-    const chips = document.createElement('div');
-    chips.setAttribute('role', 'group');
-    chips.setAttribute('aria-label', 'Labels, die ausgegraut werden');
-    applyStyles(chips, {display: 'flex', flexWrap: 'wrap', gap: '0.5rem'});
-    card.element.appendChild(chips);
     let seenKeys = [];
-
-    function createChip(key, text) {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      applyStyles(chip, {minHeight: '32px', padding: '0.3rem 0.8rem', borderRadius: '999px', border: '1px solid', fontSize: '0.85rem', fontWeight: '500', cursor: 'pointer'});
-      function paint() {
-        const on = isHoldLabelKey(key);
-        chip.textContent = (on ? '✓ ' : '') + text;
-        chip.setAttribute('aria-pressed', String(on));
-        applyStyles(chip, {
-          background: on ? SETTINGS_ACCENT : 'transparent',
-          borderColor: on ? SETTINGS_ACCENT : 'var(--gl-border-color-strong, #5c5a62)',
-          color: on ? '#ffffff' : 'inherit'
-        });
-      }
-      chip.addEventListener('click', function () {
+    const picker = createMultiselect('Labels, die ausgegraut werden', 'Keine Labels auf den Karten gefunden',
+      function (key) { return isHoldLabelKey(key); },
+      function (key) {
         if (!holdLookup) { // erste eigene Auswahl: Standard-Treffer übernehmen
           holdLookup = {};
           seenKeys.forEach(function (k) { if (HOLD_LABEL_DEFAULT.test(k)) holdLookup[k] = true; });
         }
         if (holdLookup[key]) delete holdLookup[key]; else holdLookup[key] = true;
         saveHoldLookup();
-        chips.querySelectorAll('button').forEach(function (b) { b.dispatchEvent(new Event('ambient-paint')); });
         document.querySelectorAll(SEL.boardCard).forEach(applyHoldDimming);
       });
-      chip.addEventListener('ambient-paint', paint);
-      paint();
-      return chip;
-    }
+    card.element.appendChild(picker.element);
 
     // Labels erst beim Öffnen von den Karten lesen (Spalten-Labels stehen im Header, nicht in den Karten)
     function refresh() {
       loadHoldLookup(projectSettings.projectKey);
-      chips.textContent = '';
       const seen = {};
       document.querySelectorAll(SEL.boardCard + ' ' + SEL.cardLabel).forEach(function (label) {
         const text = normalizeWhitespace(label.textContent);
         const key = normalizeLabelNameForMatching(text);
         if (key && !seen[key]) seen[key] = text;
       });
-      seenKeys = Object.keys(seen);
-      seenKeys.sort().forEach(function (key) { chips.appendChild(createChip(key, seen[key])); });
-      if (!chips.firstChild) chips.appendChild(createTextSpan('Keine Labels auf den Karten gefunden.', FIELD_HINT_STYLES));
+      seenKeys = Object.keys(seen).sort();
+      picker.setOptions(seenKeys.map(function (key) { return {key: key, text: seen[key]}; }));
     }
 
     return {element: card.element, refresh: refresh};
@@ -7485,7 +10179,7 @@
 
   // Portal-Verbindung (Karte mit Status) und Ticket-Aktionen; Felder speichern per Autosave (onValuesChanged)
   function createProjectConfigSection(projectSettings, onValuesChanged) {
-    const portal = createPanelCard('Portal-Verbindung');
+    const portal = createPanelCard('Portal-Verbindung', undefined, !(projectSettings.projectId && projectSettings.portalBaseUrl)); // offen, solange die Verbindung fehlt
     const pill = document.createElement('span');
     applyStyles(pill, {display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', fontWeight: '500'});
     pill.appendChild(createTextSpan('', {width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor'}));
@@ -7613,12 +10307,12 @@
     const actions = createPanelCard('Ticket-Aktionen im Merge Request',
       'Eine Zeile [Name] startet einen Button, die Zeilen darunter sind seine Quick Actions.');
     const actionsInput = document.createElement('textarea');
-    actionsInput.rows = 5;
+    actionsInput.rows = 2;
     actionsInput.setAttribute('aria-label', 'Ticket-Aktionen im MR');
     actionsInput.placeholder = '[Ticket abschließen]\n/unassign me\n/label ~"workflow::Done"\n/unlabel ~"workflow::Review"';
     actionsInput.value = projectSettings.ticketActions || '';
     actionsInput.className = FORM_INPUT_CLASSES;
-    applyStyles(actionsInput, {padding: '0.5rem 0.6rem', fontSize: '0.85rem', fontFamily: 'monospace', resize: 'vertical'});
+    applyStyles(actionsInput, {padding: '0.5rem 0.6rem', fontSize: '0.85rem', fontFamily: 'monospace', resize: 'none', fieldSizing: 'content', minHeight: '3.5rem'});
     ticketActionsInputElement = actionsInput;
     actions.element.appendChild(actionsInput);
     // Vorschau der Buttons, die aus dem Text entstehen

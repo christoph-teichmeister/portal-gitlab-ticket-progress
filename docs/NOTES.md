@@ -15,7 +15,7 @@
 - Mehrere Tabs teilen sich den Progress-Cache im `localStorage`; Schreibzugriffe werden gebündelt und mit dem
   gespeicherten Stand zusammengeführt.
 - GitLab-Selektoren stehen zentral in der `SEL`-Tabelle im Skript. Findet GitLab nach einem Update Elemente nicht
-  mehr, zeigt der „Selektor-Selbsttest“ (Erweitert) welche.
+  mehr, zeigt der „Selektor-Selbsttest“ (Global) welche.
 - Solange das Portal antwortet, zeigt jede Karte einen pulsierenden Platzhalter („Skeleton“) an der Stelle der Bar. Er
   verschwindet bei Fehlern oder „keine Buchungen“ wieder; bei `prefers-reduced-motion` pulsiert er nicht.
 - Split-Labels: Scoped Labels wie `workflow::Design` werden als `[Workflow | Design]` gezeichnet (links in der
