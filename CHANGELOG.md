@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.17
+
+- Kosten rechnen jetzt standardmäßig mit externen Sätzen (Tagessatz ÷ 8), nach dem Stakeholder-Feedback: so lassen sich die Kosten pro Story Point direkt mit dem Verkaufspreis pro SP vergleichen. Der Schalter „Mit externen Sätzen rechnen“ bleibt pro Board; bereits gespeicherte interne Boards bleiben intern.
+- Mit externen Sätzen zeigen Karte, Tooltip und Meilenstein-Chip auch den Erlös (SP × VP) und den „Abstand zum SP-Preis“ (extern ist es keine Marge, weil abrechenbare Rollen die übrigen querfinanzieren).
+- Finanz-Dashboard: neue Kachel „Kosten pro SP (Closed)“ gegen den VP und neue Karte „Nach Rolle“ mit Stunden und Anteilen je Rolle.
+
 ## 2026.11.16
 
 - Der Update-Hinweis steht jetzt oben im Einstellungs-Panel über den Reitern (lange Neuerungen scrollen) statt unter der Vorschau. Die Neuerungen darin sind auf vier Einträge begrenzt und sauber an Wortgrenzen gekürzt, der Rest steht unter „Was ist neu“.
