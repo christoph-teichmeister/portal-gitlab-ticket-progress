@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Portal GitLab Ticket Progress
 // @namespace    https://beyonder.de/
-// @version      2026.11.16
+// @version      2026.11.17
 // @description  Zeigt gebuchte Stunden aus dem Portal (konfigurierbare Base-URL) in GitLab-Issue-Boards an (nur bestimmte Spalten, z. B. WIP) als Progressbar, inkl. Debug-/Anzeigen-Toggles, Cache-Tools und Konfigurations-Toast.
 // @author       christoph-teichmeister
 // @match        https://gitlab.beyonder.de/*/-/*
@@ -25,7 +25,7 @@
    ******************************************************************/
 
     // Host- / Projekt-Konfiguration
-  const SCRIPT_VERSION = '2026.11.16';
+  const SCRIPT_VERSION = '2026.11.17';
   const TOOLBAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="GitLab ticket icon"><g fill="none" stroke="currentColor" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10v2a1 1 0 0 1 0 4v2h-10v-2a1 1 0 0 1 0 -4z"/><path d="M6 7h4"/><path d="M6 9h3"/></g></svg>';
   const TIMESHEET_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="gl-button-icon gl-icon s16" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z"></path></svg>';
   // Sprite-URL enthält einen Hash, der sich pro GitLab-Release ändert → zur Laufzeit von der Seite lesen
@@ -331,9 +331,10 @@
       '@keyframes ambient-complete-out{to{opacity:0;transform:scale(.96)}}' +
       '.ambient-fin-roles-loader{padding:.75rem 1rem;border:1px solid var(--gl-border-color-default,#4c4b51);border-radius:8px;flex-direction:row;gap:1rem;align-items:center}' +
       '.ambient-fin-roles-loader .ambient-fin-overall{display:none}' +
-      '.ambient-fin-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem}' +
+      '.ambient-fin-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.75rem}' +
       '.ambient-fin-tile{display:flex;flex-direction:column;gap:.15rem;padding:.8rem 1rem;border:1px solid var(--gl-border-color-default,#4c4b51);border-radius:8px}' +
       '.ambient-fin-tile b{font-size:1.05rem;font-weight:600;white-space:nowrap}' +
+      '.ambient-fin-sub{font-size:.72rem;line-height:1.3;color:var(--gl-text-color-subtle,rgba(128,128,128,.95))}' +
       '.ambient-fin-label{font-size:.78rem;color:var(--gl-text-color-subtle,rgba(128,128,128,.95));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
       '.ambient-fin-stack{position:relative;display:flex;height:24px;border-radius:999px;overflow:hidden;background:var(--gl-background-color-strong,rgba(128,128,128,.2))}' +
       '.ambient-fin-seg{height:100%;min-width:2px;box-shadow:inset -1px 0 0 var(--gl-background-color-default,#18171d)}' +
@@ -379,6 +380,7 @@
       '.ambient-fin-card .ambient-fin-role{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
       '.ambient-fin-row.is-month{grid-template-columns:minmax(0,1.5fr) 3.8rem 4.8rem 5.4rem 6.6rem 3.4rem}' +
       '.ambient-fin-row.is-compare{grid-template-columns:minmax(0,1.2fr) 3.8rem 5.4rem 6.6rem minmax(5rem,1.4fr)}' +
+      '.ambient-fin-row.is-compare.has-sp{grid-template-columns:minmax(0,1.2fr) 3.8rem 5.4rem 6.6rem 4.6rem minmax(4rem,1.2fr)}' +
       '.ambient-fin-stack.is-mini{height:12px}' +
       '.ambient-fin-card{border:1px solid var(--gl-border-color-default,#4c4b51);border-radius:10px;padding:.35rem 0;overflow:hidden}' +
       '.ambient-fin-card .ambient-fin-role,.ambient-fin-card select{margin-top:.15rem}' +
@@ -1740,7 +1742,7 @@
   }
 
   // Zeile „Timesheet-Button | Balken | Portal-Button" (Karte, Ticket, MR); Optik je Ort über className
-  // Pille neben dem Balken: mit Erlös Marge bzw. „Kosten / Erlös“ (Ampel), ohne Erlös (keine SP, externer Modus) nur die Kosten
+  // Pille neben dem Balken: mit Erlös Marge bzw. „Kosten / Erlös“ (Ampel), ohne Erlös (keine SP oder kein SP-Preis) nur die Kosten
   function createMarginPill(info) {
     if (!info) return null;
     const pill = createTextSpan('');
@@ -1756,12 +1758,12 @@
     if (info.margin === null) {
       pill.textContent = formatEuro(info.cost);
       pill.className = 'ambient-margin-pill';
-      pill.title = 'Kosten ' + formatEuro(info.cost) + ' (kein Erlös: keine SP im Titel oder externer Modus)';
+      pill.title = 'Kosten ' + formatEuro(info.cost) + ' (kein Erlös: keine SP im Titel oder kein SP-Preis)';
       return pill;
     }
     pill.textContent = info.split ? formatEuro(info.cost) + ' / ' + formatEuro(info.revenue) : formatSignedEuro(info.margin);
     pill.className = 'ambient-margin-pill ' + costTone(info.cost, info.revenue);
-    pill.title = 'Marge ' + formatSignedEuro(info.margin) + ': Erlös ' + formatEuro(info.revenue) + ' − Kosten ' + formatEuro(info.cost);
+    pill.title = marginLabel(info.mode) + ' ' + formatSignedEuro(info.margin) + ': Erlös ' + formatEuro(info.revenue) + ' − Kosten ' + formatEuro(info.cost);
     return pill;
   }
 
@@ -1900,7 +1902,7 @@
       closedDays: clampClosedDays(storedProjectConfig && storedProjectConfig.closedDays),
       milestoneSp: normalizeMilestoneSp(storedProjectConfig && storedProjectConfig.milestoneSp),
       milestoneSpFilterOnly: Boolean(storedProjectConfig && storedProjectConfig.milestoneSpFilterOnly),
-      costMode: storedProjectConfig && storedProjectConfig.costMode === 'external' ? 'external' : 'internal',
+      costMode: storedProjectConfig && storedProjectConfig.costMode === 'internal' ? 'internal' : 'external', // Standard extern: Kosten pro SP gegen den Verkaufspreis
       costShow: Boolean(storedProjectConfig && storedProjectConfig.costShow),
       financePeriod: (storedProjectConfig && storedProjectConfig.financePeriod) || 'all', // 'all' | 'current' | 'YYYY-MM' | 'last:N' | 'year' | 'custom'
       timeLimits: Boolean(storedProjectConfig && storedProjectConfig.timeLimits), // Zeitabrechnung: Stunden gegen das SP-Limit
@@ -3534,15 +3536,18 @@
   function fetchColumnSp(projectPath, query) {
     return memoPromise(columnSpCache, projectPath + '?' + query, 5 * 60 * 1000, function () {
       const patterns = getEstimatePatterns();
-      const total = {sp: 0, issues: 0, missing: 0, truncated: false, iids: []};
+      const total = {sp: 0, issues: 0, missing: 0, truncated: false, iids: [], closed: []}; // closed: SP je Ticket mit Schließzeit, für SP pro Zeitraum
       function loadPage(page) {
         return glApi(projectPath, '/issues?' + query + '&per_page=100&page=' + page, 'SP-Summe').then(function (issues) {
           issues.forEach(function (issue) {
             const estimate = parseEstimate(issue.title || '', patterns);
             total.issues++;
             total.iids.push(issue.iid);
-            if (estimate.kind === 'sp') total.sp += parseFloat(estimate.label.replace(',', '.')) || 0;
-            else if (estimate.kind === 'none') total.missing++;
+            if (estimate.kind === 'sp') {
+              const issueSp = parseFloat(estimate.label.replace(',', '.')) || 0;
+              total.sp += issueSp;
+              if (issue.closed_at) total.closed.push({sp: issueSp, at: Date.parse(issue.closed_at), iid: issue.iid});
+            } else if (estimate.kind === 'none') total.missing++;
           });
           if (issues.length < 100) return total;
           // ponytail: max. 1000 Tickets pro Spalte (Closed ohne Filter), danach „≥“
@@ -3575,7 +3580,7 @@
       return !(node.classList && /\bambient-/.test(node.className));
     }).map(function (node) { return node.textContent; }).join('').trim();
     const query = buildColumnIssueQuery(window.location.search, columnLabel);
-    const key = query + '|' + gitlabCount + '|' + (projectSettings.costShow ? 'c' : '');
+    const key = query + '|' + gitlabCount + '|' + (projectSettings.costShow ? 'c' + effectiveCostMode(projectSettings) + effectiveSpPrice(projectSettings) : ''); // Modus und VP im Schlüssel, sonst bleibt der Header nach dem Umschalten alt
     if (el && el.getAttribute('data-ambient-key') === key) return;
     if (!el) {
       el = document.createElement('span');
@@ -3727,14 +3732,14 @@
           let costTitle = '';
           let costCost = 0;
           let costRevenue = 0;
-          if (projectSettings.costShow && isFeatureOn('milestoneCost') && effectiveSpPrice(projectSettings) && effectiveCostMode(projectSettings) !== 'external' && projectSettings.costPeople.length) {
-            const mc = milestoneCostFromCache(projectSettings, total.iids);
+          if (projectSettings.costShow && isFeatureOn('milestoneCost') && effectiveSpPrice(projectSettings) && projectSettings.costPeople.length) {
+            const mc = milestoneCostFromCache(projectSettings, total.iids, effectiveCostMode(projectSettings));
             if (mc.covered) {
               const revenue = entry.sold * effectiveSpPrice(projectSettings);
               costCost = mc.cost;
               costRevenue = revenue;
-              costText = (projectSettings.costSplit ? formatEuro(mc.cost) + ' / ' + formatEuro(revenue) : 'Marge ' + formatSignedEuro(revenue - mc.cost));
-              costTitle = '. Kosten bisher ' + formatEuro(mc.cost) + ' von ' + formatEuro(revenue) + ' Erlös (Marge ' + formatSignedEuro(revenue - mc.cost) +
+              costText = (projectSettings.costSplit ? formatEuro(mc.cost) + ' / ' + formatEuro(revenue) : marginLabel(effectiveCostMode(projectSettings)) + ' ' + formatSignedEuro(revenue - mc.cost));
+              costTitle = '. Kosten bisher (' + (effectiveCostMode(projectSettings) === 'external' ? 'extern' : 'intern') + ') ' + formatEuro(mc.cost) + ' von ' + formatEuro(revenue) + ' Erlös (' + marginLabel(effectiveCostMode(projectSettings)) + ' ' + formatSignedEuro(revenue - mc.cost) +
                 '), aus den Buchungen von ' + mc.covered + ' von ' + total.issues + ' Tickets, deren Fortschritt geladen ist';
             }
           }
@@ -4237,14 +4242,14 @@
     return ps.spPricing && ps.spPrice > 0 ? ps.spPrice : null;
   }
 
-  // Kosten, Erlös (nur intern: SP × €/SP), Marge und Break-even-Stunden eines Tickets; null = nichts zu zeigen
+  // Kosten, Erlös (SP × €/SP), Marge bzw. Abstand zum SP-Preis und Break-even-Stunden eines Tickets; null = nichts zu zeigen
   function buildCostInfo(hoursByEmployee, people, internalRates, mode, sp, spPrice) {
     if (!hoursByEmployee || !people || !people.length) return null;
     const result = computeTicketCost(hoursByEmployee, people, internalRates, mode);
     const hours = Object.keys(hoursByEmployee).reduce(function (sum, name) {
       return result.missing.indexOf(name) >= 0 ? sum : sum + hoursByEmployee[name];
     }, 0);
-    const revenue = mode !== 'external' && sp > 0 && spPrice > 0 ? sp * spPrice : null;
+    const revenue = sp > 0 && spPrice > 0 ? sp * spPrice : null;
     const avgRate = hours > 0 ? result.cost / hours : 0;
     return {
       mode: mode, cost: result.cost, hours: hours, missing: result.missing, revenue: revenue,
@@ -4313,6 +4318,56 @@
     return {rows: rows, total: Math.round(total * 100) / 100, missing: rows.filter(function (r) { return r.cost === null; }).length};
   }
 
+  // SP der Tickets, die im Monatsfenster [first, last] ('YYYY-MM') geschlossen wurden; ohne Fenster alle
+  function closedSpInSpan(closed, first, last) {
+    return Math.round((closed || []).reduce(function (sum, c) {
+      const key = monthKeyOf(c.at);
+      return !first || (key >= first && key <= last) ? sum + c.sp : sum;
+    }, 0) * 10) / 10;
+  }
+
+  // Geschlossene Tickets mit SP im Monatsfenster: SP und die Kosten ihrer gebuchten Stunden (alle Buchungen des Tickets, auch aus früheren Monaten).
+  // tickets: [{sp, at, hours: {Name: Stunden} | null}]; hours null = Buchungen nicht ladbar (zählt nicht, steht in missing)
+  function closedTicketStats(tickets, first, last, people, internalRates, mode) {
+    const stats = {sp: 0, cost: 0, tickets: 0, missing: 0};
+    (tickets || []).forEach(function (t) {
+      const key = monthKeyOf(t.at);
+      if (first && (key < first || key > last) || !(t.sp > 0)) return;
+      if (!t.hours) { stats.missing++; return; }
+      stats.sp += t.sp;
+      stats.tickets++;
+      stats.cost += computeTicketCost(t.hours, people, internalRates, mode).cost;
+    });
+    stats.sp = Math.round(stats.sp * 10) / 10;
+    stats.cost = Math.round(stats.cost * 100) / 100;
+    return stats;
+  }
+
+  // Wartungsprojekte (Stundenkontingent im Portal) rechnen im Dashboard immer extern gegen das Budget, sonst nach dem Schalter
+  function financeCostMode(ps, hasQuota) {
+    return hasQuota && !ps.projectInternal ? 'external' : effectiveCostMode(ps);
+  }
+
+  // Stunden und Kosten je Rolle mit Anteil an der Summe (Grundlage für Pauschalen neben den SP: wie viel entfällt auf Dev, PO, Design, SM)
+  function buildRoleShares(rows) {
+    const byRole = {};
+    let hours = 0;
+    let cost = 0;
+    (rows || []).forEach(function (r) {
+      const key = r.role || 'Ohne Rolle';
+      const e = byRole[key] || (byRole[key] = {role: key, hours: 0, cost: 0});
+      e.hours += r.hours;
+      e.cost += r.cost || 0;
+      hours += r.hours;
+      cost += r.cost || 0;
+    });
+    return Object.keys(byRole).map(function (key) {
+      const e = byRole[key];
+      return {role: e.role, hours: Math.round(e.hours * 100) / 100, cost: Math.round(e.cost * 100) / 100,
+        hoursShare: hours > 0 ? e.hours / hours * 100 : 0, costShare: cost > 0 ? e.cost / cost * 100 : 0};
+    }).sort(function (a, b) { return b.cost - a.cost || b.hours - a.hours; });
+  }
+
   // Ampel für Kosten gegen Erlös: grün, gelb ab WARN_PCT % des Erlöses, rot ab 100 %
   function costTone(cost, revenue) {
     if (!(revenue > 0)) return '';
@@ -4338,6 +4393,11 @@
     return (Math.round(value * 10) / 10).toLocaleString('de-DE', {maximumFractionDigits: 1});
   }
 
+  // Extern gerechnet ist es keine Marge (Querfinanzierung nicht abrechenbarer Rollen), sondern der Abstand zum SP-Preis
+  function marginLabel(mode) {
+    return mode === 'external' ? 'Abstand zum SP-Preis' : 'Marge';
+  }
+
   function formatSignedEuro(value) {
     return (value > 0 ? '+' : value < 0 ? '−' : '') + formatEuro(Math.abs(value));
   }
@@ -4348,7 +4408,7 @@
     let text = ' · Kosten (' + (info.mode === 'external' ? 'extern' : 'intern') + '): ' + formatEuro(info.cost);
     if (info.timeLimit) text += ' · Zeitlimit ' + sp + ' SP: ' + formatHours(info.timeLimit.limit) + ' h (Warnung ab ' + formatHours(info.timeLimit.warn) + ' h)';
     if (info.revenue !== null) {
-      text += ' · Erlös ' + sp + ' SP: ' + formatEuro(info.revenue) + ' · Marge ' + formatSignedEuro(info.margin);
+      text += ' · Erlös ' + sp + ' SP: ' + formatEuro(info.revenue) + ' · ' + marginLabel(info.mode) + ' ' + formatSignedEuro(info.margin);
       if (info.breakEvenHours !== null) text += ' · Break-even ' + info.breakEvenHours + 'h';
     }
     if (info.missing.length) text += ' (ohne Satz: ' + info.missing.join(', ') + ')';
@@ -7032,11 +7092,118 @@
       return a;
     }
 
+    // Kosten pro SP (Kosten ÷ SP der im Zeitraum geschlossenen Tickets) gegen den VP: unter dem VP ist gut, sinkend über die Zeit noch besser
+    const closedTicketCache = {};
+    let financeTokenToastShown = false;
+
+    // Geschlossene Tickets mit SP samt gebuchten Stunden (aus dem Fortschritts-Cache, sonst Portal; 5 Minuten gemerkt)
+    function closedTicketData() {
+      const hasToken = Boolean(getApiToken()) && !apiEndpointMissing; // ohne Token keine Einzelabfragen (HTML-Weg läuft aus): nur Tickets aus dem Cache
+      return memoPromise(closedTicketCache, (projectSettings.projectKey || projectSettings.projectPath) + '|' + hasToken, 5 * 60 * 1000, function () {
+        return fetchColumnSp(projectSettings.projectPath, buildColumnIssueQuery('', null)).then(function (closed) {
+          // ponytail: höchstens 300 Tickets nachladen (je eine Portal-Anfrage ohne API-Token); mehr, wenn gebraucht
+          const list = closed.closed.filter(function (c) { return c.sp > 0; }).sort(function (a, b) { return b.at - a.at; }).slice(0, 300);
+          let needsToken = false;
+          return Promise.all(list.map(function (c) {
+            const key = buildProgressCacheKey(projectSettings, c.iid);
+            const url = buildPortalUrl(projectSettings, c.iid);
+            const cached = key && getProgressCacheEntry(key);
+            if (cached) return Promise.resolve({sp: c.sp, at: c.at, hours: cached.notFound ? {} : cached.hoursByEmployee || {}});
+            if (!url || !key) return Promise.resolve({sp: c.sp, at: c.at, hours: null});
+            if (!hasToken) { needsToken = true; return Promise.resolve({sp: c.sp, at: c.at, hours: null}); }
+            return loadProgressData(url, c.iid).then(function (d) {
+              setProgressCacheEntry(key, d || NOT_FOUND_SENTINEL, d ? undefined : NOT_FOUND_TTL_MS);
+              return {sp: c.sp, at: c.at, hours: d ? d.hoursByEmployee || {} : {}};
+            }, function () { return {sp: c.sp, at: c.at, hours: null}; });
+          })).then(function (tickets) { if (needsToken && !financeTokenToastShown) { // einmal pro Seitenaufruf, die Kacheln zeigen den Grund zusätzlich
+            financeTokenToastShown = true;
+            showToast({variant: 'warning', text: 'Manche Finanzwerte (Kosten pro SP, Nicht zugeordnet) fehlen, weil kein API-Token gesetzt ist. Bitte unter Zahnrad → Portal-Verbindung eintragen.'});
+          }
+          return {tickets: tickets, needsToken: needsToken, truncated: closed.truncated || closed.closed.length > list.length}; });
+        });
+      });
+    }
+
+    function closedStats(first, last, mode) {
+      return closedTicketData().then(function (data) {
+        const stats = closedTicketStats(data.tickets, first, last, projectSettings.costPeople, readInternalRates(projectSettings.projectKey), mode);
+        stats.truncated = data.truncated;
+        stats.needsToken = data.needsToken;
+        return stats;
+      });
+    }
+
+    const PER_SP_MIN_SP = 10; // darunter ist Kosten ÷ SP kaum aussagekräftig
+    const TOKEN_HINT = 'braucht API-Token (Zahnrad → Portal-Verbindung)';
+    const PER_SP_HELP = 'Kosten pro SP = Kosten der Buchungen auf den geschlossenen Tickets (mit SP) ÷ deren Story Points, verglichen mit dem Verkaufspreis (VP) pro SP. Die Kosten gehören zum Zeitraum, in dem das Ticket geschlossen wurde. Nicht zugeordnet = Gesamtkosten minus diese Ticketkosten: offene Tickets, Termine und Rollen ohne Ticket (PO, Design, SM) sowie Tickets ohne SP.';
+
+    function perSpTile(first, last, spPrice, label, modeText, mode) {
+      const tileEl = tile('Kosten pro SP (' + label + ')', '…', PER_SP_HELP);
+      const sub = createTextSpan('VP ' + formatEuro(spPrice));
+      sub.className = 'ambient-fin-sub';
+      tileEl.appendChild(sub);
+      closedStats(first, last, mode).then(function (st) {
+        const b = tileEl.querySelector('b');
+        if (st.needsToken) { b.textContent = '—'; sub.textContent = 'VP ' + formatEuro(spPrice) + ' · ' + TOKEN_HINT; return; }
+        if (!st.sp) { b.textContent = '—'; sub.textContent = 'VP ' + formatEuro(spPrice) + ' · keine SP geschlossen'; return; }
+        const perSp = st.cost / st.sp;
+        b.textContent = formatEuro(perSp);
+        b.className = 'ambient-fin-tone ' + costTone(perSp, spPrice);
+        sub.textContent = 'VP ' + formatEuro(spPrice) + ' · ' + st.sp + ' SP, ' + formatEuro(st.cost) + ' auf ' + st.tickets + ' Tickets' + (st.sp < PER_SP_MIN_SP ? ' (wenig Aussage)' : '') + (st.missing ? ' · ' + st.missing + ' ohne Buchungsdaten' : '');
+        tileEl.title = 'Kosten pro SP – ' + formatEuro(st.cost) + ' (' + modeText + ') ÷ ' + st.sp + ' SP = ' + formatEuro(perSp) + ' gegen VP ' + formatEuro(spPrice) + (st.truncated ? ' (nur die 300 jüngsten geschlossenen Tickets)' : '') + '. ' + PER_SP_HELP;
+      }).catch(function (err) { warn('Kosten pro SP fehlgeschlagen:', err); sub.textContent = 'VP ' + formatEuro(spPrice) + ' · Laden fehlgeschlagen'; });
+      return tileEl;
+    }
+
+    // Gesamtkosten minus Kosten der geschlossenen SP-Tickets
+    function unassignedTile(total, modeText, mode) {
+      const tileEl = tile('Nicht zugeordnet', '…', PER_SP_HELP);
+      const sub = createTextSpan('offene Tickets, Termine, PO/SM');
+      sub.className = 'ambient-fin-sub';
+      tileEl.appendChild(sub);
+      closedStats(null, null, mode).then(function (st) {
+        if (st.needsToken) { tileEl.querySelector('b').textContent = '—'; sub.textContent = TOKEN_HINT; return; }
+        const rest = Math.max(0, total - st.cost);
+        tileEl.querySelector('b').textContent = formatEuro(rest);
+        sub.textContent = (total > 0 ? Math.round(rest / total * 100) + ' % der Kosten · ' : '') + 'offene Tickets, Termine, PO/SM';
+        tileEl.title = 'Nicht zugeordnet – ' + formatEuro(total) + ' Gesamtkosten (' + modeText + ') − ' + formatEuro(st.cost) + ' auf geschlossenen Tickets. ' + PER_SP_HELP;
+      }).catch(function () { sub.textContent = 'Laden fehlgeschlagen'; });
+      return tileEl;
+    }
+
+    // Stunden und Kosten je Rolle samt Anteil (z. B. Umsetzung gegen PO, Design, SM), für Gesamt und Zeiträume
+    function roleCard(rows) {
+      const roles = buildRoleShares(rows);
+      if (roles.length < 2) return null;
+      const card = document.createElement('div');
+      card.className = 'ambient-fin-card';
+      const head = document.createElement('div');
+      head.className = 'ambient-fin-row is-head';
+      ['Nach Rolle', 'Stunden', 'Anteil Std.', 'Anteil Kosten'].forEach(function (text, i) {
+        const cell = createTextSpan(text);
+        if (i > 0) cell.className = 'num';
+        head.appendChild(cell);
+      });
+      card.appendChild(head);
+      roles.forEach(function (e) {
+        const row = document.createElement('div');
+        row.className = 'ambient-fin-row';
+        row.appendChild(createTextSpan(e.role));
+        [e.hours.toLocaleString('de-DE', {maximumFractionDigits: 1}), (Math.round(e.hoursShare * 10) / 10).toLocaleString('de-DE') + ' %', (Math.round(e.costShare * 10) / 10).toLocaleString('de-DE') + ' %'].forEach(function (text) {
+          const cell = createTextSpan(text);
+          cell.className = 'num';
+          row.appendChild(cell);
+        });
+        card.appendChild(row);
+      });
+      return card;
+    }
+
     function renderTotal() {
       content.textContent = '';
       if (!store.loaded) return;
       const data = store.loaded.data;
-      const mode = effectiveCostMode(projectSettings);
+      const mode = financeCostMode(projectSettings, Boolean(data.quota));
       const model = buildFinanceRows(data.hours, projectSettings.costPeople, projectSettings.costRoleOverrides, readInternalRates(projectSettings.projectKey), mode);
       const budget = data.budget;
       const modeText = mode === 'external' ? 'extern (Tagessatz ÷ 8)' : 'intern';
@@ -7059,6 +7226,11 @@
         quotaTile.querySelector('b').className = costTone(q.booked, q.quota);
         quotaTile.style.gridColumn = '1 / -1';
         summary.appendChild(quotaTile);
+      }
+      const spPrice = effectiveSpPrice(projectSettings);
+      if (spPrice && model.total > 0 && projectSettings.projectPath) {
+        summary.appendChild(perSpTile(null, null, spPrice, 'gesamt', modeText, mode));
+        summary.appendChild(unassignedTile(model.total, modeText, mode));
       }
       content.appendChild(summary);
 
@@ -7146,7 +7318,11 @@
       });
       content.appendChild(table);
 
+      const totalRoles = roleCard(model.rows);
+      if (totalRoles) content.appendChild(totalRoles);
+
       const notes = [];
+      if (spPrice && model.total > 0) notes.push(PER_SP_HELP);
       if (!projectSettings.costPeople.length) notes.push('Keine Rollen geladen: unter Einstellungen → Kostensätze „Rollen aus Portal laden“.');
       if (mode !== 'external' && model.rows.some(function (r) { return r.known && r.rate === null; })) notes.push('Für manche Rollen fehlt der interne Satz (Einstellungen → Kostensätze).');
       if (model.rows.some(function (r) { return !r.known && !projectSettings.costRoleOverrides[r.name]; })) notes.push('Personen ohne Rolle im Projekt: Rolle oben wählen, dann zählen sie mit.');
@@ -7295,7 +7471,7 @@
 
     function monthModel() {
       const sp = periodSpan();
-      const report = buildMonthReport(store.monthData.rows, store.monthData.histories, projectSettings.costPeople, projectSettings.costRoleOverrides, readInternalRates(projectSettings.projectKey), effectiveCostMode(projectSettings));
+      const report = buildMonthReport(store.monthData.rows, store.monthData.histories, projectSettings.costPeople, projectSettings.costRoleOverrides, readInternalRates(projectSettings.projectKey), financeCostMode(projectSettings, Boolean(store.loaded.data.quota)));
       const names = {};
       Object.keys(report.months).forEach(function (key) {
         Object.keys(report.months[key].persons).forEach(function (name) { names[name] = (names[name] || 0) + report.months[key].persons[name].cost; });
@@ -7308,7 +7484,7 @@
       content.textContent = '';
       if (!store.loaded || !store.monthData) return;
       const model = monthModel();
-      const mode = effectiveCostMode(projectSettings);
+      const mode = financeCostMode(projectSettings, Boolean(store.loaded.data.quota));
       const modeText = mode === 'external' ? 'extern' : 'intern';
       const budget = store.loaded.data.budget;
       const empty = {hours: 0, cost: 0, persons: {}};
@@ -7325,6 +7501,8 @@
       summary.appendChild(tile('Budget', budget === null ? '—' : formatEuro(budget), 'Initial budget des ganzen Projekts'));
       summary.appendChild(tile('Kosten ' + label + ' (' + modeText + ')', formatEuro(cur.cost), cur.hours.toLocaleString('de-DE', {maximumFractionDigits: 2}) + ' Stunden'));
       summary.appendChild(tile(sp.len === 1 ? 'Δ zum ' + prevLabel : 'Δ zur Vorperiode', prev ? deltaText(cur.cost, prev.cost) : '—', prev ? hoursDeltaTitle(cur.hours, prev.hours, prevLabel) : 'Keine Buchungen in ' + prevLabel, prev && Math.abs(cur.cost - prev.cost) >= 0.5 ? (cur.cost > prev.cost ? 'is-up' : 'is-down') : null));
+      const monthSpPrice = effectiveSpPrice(projectSettings);
+      if (monthSpPrice && cur.cost > 0 && projectSettings.projectPath) summary.appendChild(perSpTile(sp.first, sp.last, monthSpPrice, label, modeText, mode));
       content.appendChild(summary);
 
       const people = Object.keys(cur.persons).filter(function (n) { return cur.persons[n].hours > 0; })
@@ -7402,6 +7580,9 @@
       });
       content.appendChild(table);
 
+      const periodRoles = roleCard(Object.keys(cur.persons).map(function (n) { return {role: cur.persons[n].role, hours: cur.persons[n].hours, cost: cur.persons[n].cost}; }));
+      if (periodRoles) content.appendChild(periodRoles);
+
       const n = projectSettings.financeCompare;
       // Verlauf-Kopf mit der Vergleichsauswahl (wirkt nur auf den Verlauf), unter der Personentabelle; immer sichtbar, auch bei „Kein Vergleich“
       const verlaufHead = document.createElement('div');
@@ -7418,10 +7599,11 @@
         const cmp = document.createElement('div');
         cmp.className = 'ambient-fin-card';
         const chead = document.createElement('div');
-        chead.className = 'ambient-fin-row is-compare is-head';
-        ['Monat', 'Stunden', 'Kosten ' + modeText, 'Δ Vormonat', ''].forEach(function (text, i) {
+        const showPerSp = Boolean(monthSpPrice && projectSettings.projectPath);
+        chead.className = 'ambient-fin-row is-compare is-head' + (showPerSp ? ' has-sp' : '');
+        ['Monat', 'Stunden', 'Kosten ' + modeText, 'Δ Vormonat'].concat(showPerSp ? ['€ / SP'] : [], ['']).forEach(function (text, i) {
           const cell = createTextSpan(text);
-          if (i > 0 && i < 4) cell.className = 'num';
+          if (i > 0 && i < (showPerSp ? 5 : 4)) cell.className = 'num';
           chead.appendChild(cell);
         });
         cmp.appendChild(chead);
@@ -7429,7 +7611,7 @@
           const m = model.report.months[key] || empty;
           const before = model.report.months[addMonthsKey(key, -1)];
           const row = document.createElement('div');
-          row.className = 'ambient-fin-row is-compare';
+          row.className = 'ambient-fin-row is-compare' + (showPerSp ? ' has-sp' : '');
           row.appendChild(createTextSpan(monthLabel(key)));
           [m.hours.toLocaleString('de-DE', {maximumFractionDigits: 2}), formatEuro(m.cost)].forEach(function (text) {
             const cell = createTextSpan(text);
@@ -7437,6 +7619,18 @@
             row.appendChild(cell);
           });
           row.appendChild(deltaCell(m.cost, before ? before.cost : null, before ? hoursDeltaTitle(m.hours, before.hours, monthLabel(addMonthsKey(key, -1))) : ''));
+          if (showPerSp) { // Trend der Kosten pro SP: Kosten des Monats ÷ SP der in dem Monat geschlossenen Tickets
+            const spCell = createTextSpan('…');
+            spCell.className = 'num';
+            row.appendChild(spCell);
+            closedStats(key, key, mode).then(function (st) {
+              if (st.needsToken) { spCell.textContent = '—'; spCell.title = 'Braucht einen API-Token (Zahnrad → Portal-Verbindung)'; return; }
+              if (!st.sp) { spCell.textContent = '—'; spCell.title = 'Keine SP in diesem Monat geschlossen'; return; }
+              spCell.textContent = formatEuro(st.cost / st.sp);
+              spCell.className = 'num ' + costTone(st.cost / st.sp, monthSpPrice);
+              spCell.title = formatEuro(st.cost) + ' auf geschlossenen Tickets ÷ ' + st.sp + ' SP gegen VP ' + formatEuro(monthSpPrice);
+            }).catch(function () { spCell.textContent = '—'; });
+          }
           const stack = document.createElement('div');
           stack.className = 'ambient-fin-stack is-mini';
           Object.keys(m.persons).sort(function (a, b) { return model.order.indexOf(a) - model.order.indexOf(b); }).forEach(function (name) {
@@ -7456,6 +7650,7 @@
       }
 
       const notes = [];
+      if (monthSpPrice && cur.cost > 0) notes.push(PER_SP_HELP);
       const noRate = Object.keys(cur.persons).filter(function (name) { return cur.persons[name].missing; });
       if (noRate.length) notes.push('Ohne Satz (Rolle oder Satz fehlt, nicht in den Kosten): ' + noRate.join(', ') + '. Sätze unter Einstellungen → Kostensätze.');
       notes.push('Preis nach dem Level zum Buchungsdatum (Level-Historie im Portal); ohne Historie zählt das aktuelle Level. Δ = Kosten gegenüber dem Vormonat.');
@@ -9789,7 +9984,7 @@
       const missing = internal ? roles.filter(function (r) { return !(Number(rates[r]) > 0); }) : [];
       if (!projectSettings.costPeople.length) problems.push('Keine Rollen geladen: „Rollen aus Portal laden“ klicken.');
       if (missing.length) problems.push('Interner Satz fehlt für ' + missing.join(', ') + '. Buchungen dieser Rollen zählen nicht in die Kosten.');
-      if (internal && projectSettings.spPricing && !projectSettings.spPrice) problems.push('Story-Point-basierte Abrechnung: „Verkaufspreis pro SP“ muss gepflegt sein, sonst gibt es keine Marge und keinen Break-even.');
+      if (projectSettings.spPricing && !projectSettings.spPrice) problems.push('Story-Point-basierte Abrechnung: „Verkaufspreis pro SP“ muss gepflegt sein, sonst gibt es keinen Erlös und keinen Abstand zum SP-Preis.');
       Object.keys(rateInputs).forEach(function (role) {
         const bad = projectSettings.costShow && missing.indexOf(role) >= 0;
         if (bad) rateInputs[role].setAttribute('aria-invalid', 'true');
@@ -9913,7 +10108,7 @@
       projectSettings.costMode = value ? 'external' : 'internal';
       saveProject();
       validate();
-    }, {desc: 'Aus: interne €/h (interne Projekte, Story-Point-Festpreis). An: Tagessatz aus dem Portal ÷ 8 (Kundenprojekte nach Stunden).'});
+    }, {desc: 'An (Standard): Tagessatz aus dem Portal ÷ 8, so bleibt der Abstand zum Verkaufspreis pro SP vergleichbar (Querfinanzierung der Supportrollen steckt im Satz). Aus: interne €/h, nur für die interne Kostenrechnung.'});
     external.style.margin = '0 -1.1rem';
 
     const show = makeSwitch('Kosten anzeigen', projectSettings.costShow, function (value) {
@@ -9945,7 +10140,7 @@
       updatePriceState();
       saveProject();
       validate();
-    }, {desc: 'Ja: Erlös je Ticket = SP × Verkaufspreis pro SP, daraus Marge und Break-even; der Preis ist dann Pflicht. Nein: nur Kosten, Preisfeld ausgegraut.'});
+    }, {desc: 'Ja: Erlös je Ticket = SP × Verkaufspreis pro SP, daraus Marge (intern) bzw. Abstand zum SP-Preis (extern) und Break-even; der Preis ist dann Pflicht. Nein: nur Kosten, Preisfeld ausgegraut.'});
     spPricingSwitch.style.margin = '0 -1.1rem';
     const priceInput = document.createElement('input');
     priceInput.type = 'number';

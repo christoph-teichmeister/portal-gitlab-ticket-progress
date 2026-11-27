@@ -261,12 +261,13 @@ die Schätzung daraus).
   trägt sie für die Rollen der Tabelle ein (Schlüssel „Rolle (Level X)“). Ohne Zugriff meldet der Button das, die Hand-Eingabe bleibt.
 - Die internen €/h pro Rolle (z. B. „Developer (Level 3)“) trägst du selbst ein. Es gibt keine API dafür, die Werte
   liegen nur lokal im Tampermonkey-Speicher (`GM_*`, wie der API-Token, nicht in `localStorage`, den andere Scripte lesen könnten) und gelten nur für das jeweilige Projekt (Board). Extern = Tagessatz ÷ 8.
-- Schalter „Mit externen Sätzen rechnen“ (pro Projekt): aus = intern (interne Projekte, Story-Point-Festpreis), an = extern
-  (Kundenprojekte nach Stunden).
+- Schalter „Mit externen Sätzen rechnen“ (pro Projekt, Standard an): an = extern (Tagessatz ÷ 8; die Supportrollen sind darin
+  querfinanziert, so bleiben Kosten und SP-Preis vergleichbar), aus = intern (interne €/h, für die interne Kostenrechnung).
+  Wartungsprojekte (Portal-Projekt mit „Hour quota“) rechnen im Finanz-Dashboard und in der Zeile für zusätzliche Projekte immer extern gegen das Budget, der Schalter gilt dort nicht.
 - Schalter „Kosten anzeigen“ (Standard aus, damit bei Screenshares nichts auffällt) und „Verkaufspreis pro SP“. Erlös eines
-  Tickets = SP × Preis, Marge = Erlös − Kosten (nur im internen Modus).
+  Tickets = SP × Preis; Marge = Erlös − Kosten (intern) bzw. „Abstand zum SP-Preis“ (extern, keine echte Marge).
 - Bei „Kosten anzeigen“ an prüft der Block selbst und warnt rot (mit rot markierten Feldern): keine Rollen geladen, interner Satz je Rolle fehlt, Verkaufspreis pro SP fehlt.
-- Tickets ohne SP im Titel (und im externen Modus) bekommen nur die Kosten als Pille, ohne Ampel.
+- Tickets ohne SP im Titel (oder ohne SP-Preis) bekommen nur die Kosten als Pille, ohne Ampel.
 - Ampel: die Kostenzahl (Pille, Meilenstein-Chip) ist grün, gelb ab 80 % des Erlöses (wie die Warnschwelle des Balkens) und rot ab 100 %.
 - Dropdown „Ergebnis anzeigen als“ (Marge oder Kosten / Erlös; pro Projekt, Standard Marge; nur mit SP-basierter Abrechnung aktiv): Pille und Meilenstein-Chip zeigen `722 € / 2.700 €` statt der Marge als Summe (`+1.978 €`).
 - Anzeige mit Schalter an: Marge-Pille neben dem Balken (`+340 €`, rot bei Minus); Break-even-Strich auf dem Balken, wenn
@@ -282,6 +283,9 @@ die Schätzung daraus).
   `/management/project/financial-rows/load/<ID>/` (Browser-Login, kein Token): Initial budget und Tabelle „Hours per employee“.
 - Anzeige: Budget, Kosten (Ampel), Rest, ein Balken für das ganze Budget mit je einem Segment pro Person (Tooltip: Kosten und Anteil; über Budget wächst die Skala, roter Strich am Budget) und je Person Stunden, €/h, Kosten und Anteil am Budget, absteigend
   nach Kosten. Sätze und Modus (intern/extern) kommen aus Einstellungen → Kostensätze.
+- Kachel „Kosten pro SP“ (nur mit VP, für Gesamt und jeden Zeitraum): Kosten der Buchungen auf den im Zeitraum geschlossenen Tickets (Schließdatum aus GitLab, die 300 jüngsten) ÷ deren SP gegen den VP, mit Ampel; darunter VP, SP, Ticketzahl und Kosten. Im Verlauf steht je Monat eine Spalte „€ / SP“ als Trend. In „Gesamt“ zeigt die Kachel „Nicht zugeordnet“ den Rest der Gesamtkosten (offene Tickets, Termine, PO/SM, Tickets ohne SP). Die Buchungen je Ticket kommen aus dem Fortschritts-Cache, sonst gebündelt über die Portal-API. Ohne API-Token lädt das Dashboard nichts nach: die Kacheln zeigen „braucht API-Token“. Karte „Nach Rolle“ (Gesamt und Zeiträume):
+  Stunden sowie Anteil an Stunden und Kosten je Rolle (z. B. Umsetzung gegen PO, Design, SM) als Grundlage für Pauschalen neben den SP.
+- Zeitbasierte Kundenprojekte (Kosten gegen Stundenbudget) sind mangels Testprojekt noch nicht an echten Daten geprüft.
 - Zeitraum (oben im Panel) und Vergleich (Auswahl im Abschnitt „Verlauf“, wirkt nur auf den Verlauf; beides pro Projekt gemerkt): „Gesamt“ nutzt die Summen des Portals. Ein Monat (dieser oder
   einer der letzten 12) oder eine Spanne (letzte 3/6/12 Monate, dieses Jahr, „Eigene Spanne“ von–bis) lädt die Timesheets (`/management/timesheet/table-grid/data/`, 50 je Seite) und zeigt nur Personen mit
   Buchungen im Zeitraum (je Person mit ↗-Link zur vorgefilterten Timesheet-Tabelle im Portal): Stunden, Ø €/h, Kosten, Δ zum Vormonat bzw. zur gleich langen Vorperiode (Tooltip: Stunden) und Anteil am Budget. „Vergleich“ (nur Vormonat
