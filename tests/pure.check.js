@@ -22,7 +22,7 @@ const names = ['parseVersionSegments', 'isRemoteVersionGreater', 'formatDuration
   'normalizeListNameForMatching', 'normalizeLabelNameForMatching', 'parseTicketActions', 'assigneeSortKey', 'planReorder',
   'parseLooseNumber', 'extractHourNumber', 'computeEnteredAt', 'parseEstimatePatterns', 'parseEstimate', 'relativeLuminance',
   'parseCssColorToRgb', 'getContrastTextColor', 'formatBookedHoursDisplay', 'isNumericId',
-  'parseExtraProjectIds', 'activityTone', 'newestTimestamp', 'parseBookingDate', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays', 'mapApiProgress', 'normalizeMilestoneSp', 'milestoneSpToShow', 'milestoneSpQuery', 'sumHoursByEmployee', 'personHourlyRate', 'computeTicketCost', 'buildCostInfo', 'formatEuro', 'formatSignedEuro', 'formatEuroShort', 'costTooltipSuffix', 'marginLabel', 'buildRoleShares', 'parseProjectFinanceFromHtml', 'buildFinanceRows', 'effectiveSpPrice', 'parseHoursHM', 'monthKeyOf', 'addMonthsKey', 'monthLabel', 'monthRangeParams', 'roleAtDate', 'buildMonthReport', 'adminRatesFromRows', 'escalationLimitsFromFields', 'limitForSp', 'parseQuotaText', 'monthSpanLength', 'resolvePeriodSpan', 'sumMonthSpan', 'effectiveCostMode', 'formatStand', 'isInternalCategory', 'formatHours', 'parseChangelog', 'summarizeChangelogNotes'];
+  'parseExtraProjectIds', 'activityTone', 'newestTimestamp', 'parseBookingDate', 'extraProjectIdsFromConfig', 'buildColumnIssueQuery', 'clampClosedDays', 'mapApiProgress', 'normalizeMilestoneSp', 'milestoneSpToShow', 'milestoneSpQuery', 'sumHoursByEmployee', 'personHourlyRate', 'computeTicketCost', 'buildCostInfo', 'formatEuro', 'formatSignedEuro', 'formatEuroShort', 'costTooltipSuffix', 'marginLabel', 'buildRoleShares', 'closedSpInSpan', 'closedTicketStats', 'financeCostMode', 'parseProjectFinanceFromHtml', 'buildFinanceRows', 'effectiveSpPrice', 'parseHoursHM', 'monthKeyOf', 'addMonthsKey', 'monthLabel', 'monthRangeParams', 'roleAtDate', 'buildMonthReport', 'adminRatesFromRows', 'escalationLimitsFromFields', 'limitForSp', 'parseQuotaText', 'monthSpanLength', 'resolvePeriodSpan', 'sumMonthSpan', 'effectiveCostMode', 'formatStand', 'isInternalCategory', 'formatHours', 'parseChangelog', 'summarizeChangelogNotes'];
 const isExp = function () { return false; };
 const patternsStart = source.indexOf('  const DEFAULT_ESTIMATE_PATTERNS');
 const defaultPatterns = source.slice(patternsStart, source.indexOf(';\n', patternsStart) + 1);
@@ -242,6 +242,17 @@ console.log('milestoneSp ok');
   assert(/Marge \+500/.test(f.costTooltipSuffix(info, 3)));
   const shares = f.buildRoleShares([{role: 'Dev', hours: 30, cost: 3000}, {role: 'PO', hours: 10, cost: 1500}, {role: null, hours: 0, cost: null}]);
   assert.deepStrictEqual(shares.map(function (e) { return [e.role, Math.round(e.hoursShare), Math.round(e.costShare)]; }), [['Dev', 75, 67], ['PO', 25, 33], ['Ohne Rolle', 0, 0]]);
+  const closed = [{sp: 3, at: Date.parse('2026-10-15')}, {sp: 5, at: Date.parse('2026-11-02')}, {sp: 2, at: Date.parse('2026-11-20')}];
+  assert.strictEqual(f.closedSpInSpan(closed, '2026-11', '2026-11'), 7);
+  assert.strictEqual(f.closedSpInSpan(closed, '2026-10', '2026-11'), 10);
+  assert.strictEqual(f.closedSpInSpan(closed, null, null), 10);
+  assert.strictEqual(f.financeCostMode({costMode: 'internal'}, true), 'external');
+  assert.strictEqual(f.financeCostMode({costMode: 'internal'}, false), 'internal');
+  assert.strictEqual(f.financeCostMode({costMode: 'internal', projectInternal: true}, true), 'internal');
+  const tk = [{sp: 2, at: Date.parse('2026-11-03'), hours: {A: 8}}, {sp: 3, at: Date.parse('2026-10-20'), hours: {A: 4}}, {sp: 1, at: Date.parse('2026-11-10'), hours: null}, {sp: 0, at: Date.parse('2026-11-11'), hours: {A: 1}}];
+  const peopleA = [{name: 'A', role: 'Web', daily: 800}];
+  assert.deepStrictEqual(f.closedTicketStats(tk, '2026-11', '2026-11', peopleA, {}, 'external'), {sp: 2, cost: 800, tickets: 1, missing: 1});
+  assert.deepStrictEqual(f.closedTicketStats(tk, null, null, peopleA, {}, 'external'), {sp: 5, cost: 1200, tickets: 2, missing: 1});
   console.log('buildCostInfo ok');
 }
 

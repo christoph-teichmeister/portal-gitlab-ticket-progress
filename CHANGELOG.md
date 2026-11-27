@@ -4,7 +4,9 @@
 
 - Kosten rechnen jetzt standardmäßig mit externen Sätzen (Tagessatz ÷ 8), nach dem Stakeholder-Feedback: so lassen sich die Kosten pro Story Point direkt mit dem Verkaufspreis pro SP vergleichen. Der Schalter „Mit externen Sätzen rechnen“ bleibt pro Board; bereits gespeicherte interne Boards bleiben intern.
 - Mit externen Sätzen zeigen Karte, Tooltip und Meilenstein-Chip auch den Erlös (SP × VP) und den „Abstand zum SP-Preis“ (extern ist es keine Marge, weil abrechenbare Rollen die übrigen querfinanzieren).
-- Finanz-Dashboard: neue Kachel „Kosten pro SP (Closed)“ gegen den VP und neue Karte „Nach Rolle“ mit Stunden und Anteilen je Rolle.
+- Finanz-Dashboard: neue Kachel „Kosten pro SP“ gegen den VP (Gesamt und jeder Zeitraum, nach Schließdatum), im Verlauf eine Spalte „€ / SP“ je Monat als Trend, und eine Karte „Nach Rolle“ mit Stunden und Anteilen je Rolle (Gesamt und Zeiträume).
+- Wartungsprojekte rechnen im Finanz-Dashboard immer extern, unabhängig vom Schalter.
+- Die Kacheln im Finanz-Dashboard stehen in einer Zeile. „Kosten pro SP“ rechnet nur mit den Kosten der Buchungen auf geschlossenen Tickets ÷ deren SP (darunter VP, SP, Tickets, „wenig Aussage“ unter 10 SP). Neu: Kachel „Nicht zugeordnet“ (Gesamt) für den Rest der Kosten (offene Tickets, Termine, PO/SM). Erklärung im Tooltip und als Hinweis am Ende. Die Buchungen der geschlossenen Tickets lädt das Dashboard nur mit API-Token (gebündelt); ohne Token zeigen die Kacheln „braucht API-Token“.
 
 ## 2026.11.16
 
